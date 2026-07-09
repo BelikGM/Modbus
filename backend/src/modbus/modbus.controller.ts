@@ -37,12 +37,21 @@ export class ModbusController {
 
   @Post('connect')
   async connect(
-    @Body() body: { portPath: string; baudRate?: number },
+    @Body() body: {
+      portPath: string;
+      baudRate?: number;
+      dataBits?: 7 | 8;
+      stopBits?: 1 | 2;
+      parity?: 'none' | 'even' | 'odd' | 'mark' | 'space';
+    },
   ) {
     if (!body.portPath) throw new BadRequestException('portPath is required');
     await this.modbusService.connect({
       portPath: body.portPath,
       baudRate: body.baudRate ?? 9600,
+      dataBits: body.dataBits,
+      stopBits: body.stopBits,
+      parity: body.parity,
     });
     return { success: true };
   }
