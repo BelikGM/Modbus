@@ -79,7 +79,7 @@ export default function App() {
   }, [])
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout style={{ height: '100vh', overflow: 'hidden' }}>
       <Header
         style={{
           display: 'flex',
@@ -125,16 +125,19 @@ export default function App() {
       </Header>
 
       {mode === 'modbus' ? (
-        <Layout style={{ flex: 1, flexDirection: siderSide === 'right' ? 'row-reverse' : 'row' }}>
+        <Layout style={{ flex: 1, minHeight: 0, flexDirection: siderSide === 'right' ? 'row-reverse' : 'row' }}>
           <Sider
             width={270}
             style={{
               background: '#fff',
               borderRight: siderSide === 'left' ? '1px solid #f0f0f0' : 'none',
               borderLeft: siderSide === 'right' ? '1px solid #f0f0f0' : 'none',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
             }}
           >
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ flexShrink: 0, padding: '12px 16px', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Typography.Text strong style={{ fontSize: 13, color: '#666' }}>
                 УСТРОЙСТВА
               </Typography.Text>
@@ -148,16 +151,18 @@ export default function App() {
                 {siderSide === 'left' ? '→' : '←'}
               </Button>
             </div>
-            <DeviceList
-              devices={devices}
-              selectedIds={selectedIds}
-              onSelectionChange={setSelectedIds}
-              connected={connected}
-              hasProject={!!activeProjectId}
-            />
+            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+              <DeviceList
+                devices={devices}
+                selectedIds={selectedIds}
+                onSelectionChange={setSelectedIds}
+                connected={connected}
+                hasProject={!!activeProjectId}
+              />
+            </div>
           </Sider>
 
-          <Content style={{ padding: 24, background: '#fafafa' }}>
+          <Content style={{ padding: 24, background: '#fafafa', overflowY: 'auto', minHeight: 0 }}>
             {(() => {
               const selectedDevices = devices.filter(d => selectedIds.has(d.id))
               if (selectedIds.size > 1) {
@@ -177,7 +182,7 @@ export default function App() {
           </Content>
         </Layout>
       ) : (
-        <Layout style={{ flex: 1, overflow: 'hidden' }}>
+        <Layout style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
           <OlaPage />
         </Layout>
       )}
