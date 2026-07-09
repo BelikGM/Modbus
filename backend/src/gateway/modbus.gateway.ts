@@ -28,6 +28,8 @@ export class ModbusGateway
   private monitorInterval: NodeJS.Timeout | null = null;
   private scanning = false;
   private scanCancelled = false;
+  private autoDetecting = false;
+  private autoDetectCancelled = false;
 
   private reconnectTimer: NodeJS.Timeout | null = null;
   private reconnectAttempt = 0;
@@ -293,6 +295,92 @@ export class ModbusGateway
 
   @SubscribeMessage('bus:scan:cancel')
   handleBusScanCancel() {
+    this.scanCancelled = true;
+  }
+
+  // ─── Умный автопоиск: перебор baud/dataBits/stopBits/parity + скан slaveId ──
+
+  @SubscribeMessage('bus:autodetect:start')
+  async handleBusAutoDetectStart(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { portPath: string; from?: number; to?: number },
+  ) {
+    if (!payload.portPath) {
+      client.emit('bus:autodetect:error', { message: 'portPath is required' });
+      return;
+    }
+    if (this.autoDetecting || this.scanning) {
+      client.emit('bus:autodetect:error', { message: 'Поиск уже запущен' });
+      return;
+    }
+
+    this.stopReconnect();
+    this.stopPortWatch();
+    this.stopMonitor();
+    if (this.modbusService.isConnected()) await this.modbusService.disconnect();
+
+    this.autoDetecting = true;
+    this.autoDetectCancelled = false;
+
+    const from = Math.max(1, payload.from ?? 1);
+    const to   = Math.min(247, payload.to ?? 32);
+
+    try {
+      const combo = await this.modbusService.autoDetectBus(
+        payload.portPath, from, to,
+        ({ comboIndex, totalCombos, combo }) => {
+          client.emit('bus:autodetect:progress', { comboIndex, totalCombos, combo });
+        },
+        () => this.autoDetectCancelled,
+      );
+
+      if (!combo) {
+        client.emit('bus:autodetect:notfound');
+        return;
+      }
+
+      client.emit('bus:autodetect:found', { combo });
+      const activeProject = this.projectsService.getActiveProjectId();
+      if (activeProject) {
+        this.settingsService.saveProjectConnection(activeProject, {
+          portPath: combo.portPath,
+          baudRate: combo.baudRate,
+          dataBits: combo.dataBits,
+          stopBits: combo.stopBits,
+          parity: combo.parity,
+        });
+      }
+      this.server.emit('modbus:status', this.buildStatus());
+
+      this.scanning = true;
+      this.scanCancelled = false;
+      try {
+        const found = await this.modbusService.scanBus(
+          from, to,
+          (addr, foundSoFar) => {
+            client.emit('bus:scan:progress', {
+              current: addr - from + 1,
+              total: to - from + 1,
+              scannedAddr: addr,
+              found: foundSoFar,
+            });
+          },
+          () => this.autoDetectCancelled || this.scanCancelled,
+        );
+        client.emit('bus:scan:done', { found });
+      } finally {
+        this.scanning = false;
+      }
+    } catch (e) {
+      client.emit('bus:autodetect:error', { message: (e as Error).message });
+    } finally {
+      this.autoDetecting = false;
+    }
+  }
+
+  @SubscribeMessage('bus:autodetect:cancel')
+  handleBusAutoDetectCancel() {
+    this.autoDetectCancelled = true;
     this.scanCancelled = true;
   }
 

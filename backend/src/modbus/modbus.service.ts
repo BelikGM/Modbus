@@ -206,6 +206,27 @@ export class ModbusService implements OnModuleDestroy {
     });
   }
 
+  private async probeAddress(addr: number, timeoutMs = 150): Promise<boolean> {
+    return this.withLock(async () => {
+      this.client.setTimeout(timeoutMs);
+      try {
+        this.client.setID(addr);
+        // Пробуем PUMP-диапазон (0) и VH-диапазон (0xF000)
+        try {
+          await this.client.readHoldingRegisters(0, 1);
+          return true;
+        } catch {
+          await this.client.readHoldingRegisters(0xF000, 1);
+          return true;
+        }
+      } catch {
+        return false;
+      } finally {
+        this.client.setTimeout(2000);
+      }
+    });
+  }
+
   async scanBus(
     from: number,
     to: number,
@@ -215,29 +236,73 @@ export class ModbusService implements OnModuleDestroy {
     const found: number[] = [];
     for (let addr = from; addr <= to; addr++) {
       if (isCancelled()) break;
-      const responded = await this.withLock(async () => {
-        this.client.setTimeout(150);
-        try {
-          this.client.setID(addr);
-          // Пробуем PUMP-диапазон (0) и VH-диапазон (0xF000)
-          try {
-            await this.client.readHoldingRegisters(0, 1);
-            return true;
-          } catch {
-            await this.client.readHoldingRegisters(0xF000, 1);
-            return true;
-          }
-        } catch {
-          return false;
-        } finally {
-          this.client.setTimeout(2000);
-        }
-      });
+      const responded = await this.probeAddress(addr);
       if (isCancelled()) break;
       if (responded) found.push(addr);
       onProgress(addr, [...found]);
     }
     return found;
+  }
+
+  private static readonly AUTODETECT_BAUD_RATES = [9600, 19200, 38400, 4800, 57600, 115200, 2400, 1200];
+
+  private static buildAutoDetectCombos(): ConnectOptions[] {
+    const combos: ConnectOptions[] = [];
+    const bauds = ModbusService.AUTODETECT_BAUD_RATES;
+    // 1) самый частый случай — 8N1 на разных скоростях
+    for (const baudRate of bauds) combos.push({ portPath: '', baudRate, dataBits: 8, stopBits: 1, parity: 'none' });
+    // 2) чётность (реже, но встречается на некоторых шинах)
+    for (const baudRate of bauds) {
+      for (const parity of ['even', 'odd'] as const) {
+        combos.push({ portPath: '', baudRate, dataBits: 8, stopBits: 1, parity });
+      }
+    }
+    // 3) 2 стоп-бита
+    for (const baudRate of bauds) combos.push({ portPath: '', baudRate, dataBits: 8, stopBits: 2, parity: 'none' });
+    // 4) 7 бит данных (устаревшие/нестандартные конфигурации)
+    for (const baudRate of bauds) combos.push({ portPath: '', baudRate, dataBits: 7, stopBits: 1, parity: 'none' });
+    return combos;
+  }
+
+  /**
+   * Перебирает типовые сочетания baudRate/dataBits/stopBits/parity на заданном порту,
+   * на каждом сочетании пробует несколько адресов из диапазона [from, to] — как только
+   * хоть один адрес ответил корректным Modbus-пакетом, считает эту конфигурацию рабочей
+   * и оставляет порт открытым с ней (готово для последующего scanBus по всему диапазону).
+   */
+  async autoDetectBus(
+    portPath: string,
+    from: number,
+    to: number,
+    onProgress: (info: { comboIndex: number; totalCombos: number; combo: ConnectOptions }) => void,
+    isCancelled: () => boolean,
+  ): Promise<ConnectOptions | null> {
+    const combos = ModbusService.buildAutoDetectCombos();
+    const probeAddrs: number[] = [];
+    for (let a = from; a <= to && probeAddrs.length < 5; a++) probeAddrs.push(a);
+
+    for (let i = 0; i < combos.length; i++) {
+      if (isCancelled()) return null;
+      const combo = { ...combos[i], portPath };
+      onProgress({ comboIndex: i, totalCombos: combos.length, combo });
+
+      try {
+        await this.connect(combo);
+      } catch {
+        // сам порт не открылся (занят/не существует) — дальше перебирать бессмысленно
+        return null;
+      }
+
+      let matched = false;
+      for (const addr of probeAddrs) {
+        if (isCancelled()) { await this.disconnect(); return null; }
+        if (await this.probeAddress(addr, 150)) { matched = true; break; }
+      }
+
+      if (matched) return combo;
+      await this.disconnect();
+    }
+    return null;
   }
 
   async findAdapterPort(opts: { baudRate?: number }): Promise<{ portPath: string; baudRate: number } | null> {

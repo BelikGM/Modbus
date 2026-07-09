@@ -1,12 +1,17 @@
 import { useState, useEffect } from 'react'
 import {
   Button, Modal, InputNumber, Progress, Space,
-  Tag, Typography, Alert, Row, Col, Divider, Tooltip, List, Spin,
+  Tag, Typography, Alert, Row, Col, Divider, Tooltip, List, Spin, Select,
 } from 'antd'
-import { ApartmentOutlined, CloseCircleOutlined, PlusCircleOutlined, CheckCircleOutlined, ExclamationCircleOutlined, LoadingOutlined, InfoCircleOutlined } from '@ant-design/icons'
+import { ApartmentOutlined, CloseCircleOutlined, PlusCircleOutlined, CheckCircleOutlined, ExclamationCircleOutlined, LoadingOutlined, InfoCircleOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import socket from '../socket'
 import api from '../api'
 import { addLog } from '../log'
+
+const PARITY_LETTER = { none: 'N', even: 'E', odd: 'O', mark: 'M', space: 'S' }
+function formatCombo(c) {
+  return `${c.baudRate} бод, ${c.dataBits}${PARITY_LETTER[c.parity] ?? c.parity}${c.stopBits}`
+}
 
 export default function BusScanner({ connected }) {
   const [open, setOpen] = useState(false)
@@ -22,6 +27,13 @@ export default function BusScanner({ connected }) {
   const [identifyResults, setIdentifyResults] = useState([]) // { slaveId, model, deviceId?, name?, error? }
   const [identifyDone, setIdentifyDone] = useState(false)
   const [probeModal, setProbeModal] = useState(null) // { slaveId, loading, data }
+
+  const [ports, setPorts] = useState([])
+  const [loadingPorts, setLoadingPorts] = useState(false)
+  const [selectedPort, setSelectedPort] = useState(null)
+  const [sweeping, setSweeping] = useState(false)
+  const [sweepProgress, setSweepProgress] = useState(null) // { comboIndex, totalCombos, combo }
+  const [sweepResult, setSweepResult] = useState(null) // null | 'notfound' | combo
 
 
   useEffect(() => {
@@ -53,20 +65,56 @@ export default function BusScanner({ connected }) {
       setIdentifying(false)
       setIdentifyDone(true)
     }
+    function onAutoProgress(p) {
+      setSweepProgress(p)
+    }
+    function onAutoFound({ combo }) {
+      setSweeping(false)
+      setSweepResult(combo)
+      setRunning(true) // сразу за этим сервер начинает bus:scan по диапазону
+      addLog('success', `Настройки шины подобраны: ${formatCombo(combo)} (${combo.portPath})`)
+    }
+    function onAutoNotFound() {
+      setSweeping(false)
+      setSweepResult('notfound')
+      addLog('warning', 'Не удалось подобрать рабочие настройки порта')
+    }
+    function onAutoError({ message: msg }) {
+      setSweeping(false)
+      setError(msg)
+      addLog('error', `Ошибка умного автопоиска: ${msg}`)
+    }
 
     socket.on('bus:scan:progress', onProgress)
     socket.on('bus:scan:done', onDone)
     socket.on('bus:scan:error', onError)
     socket.on('bus:identify:progress', onIdentifyProgress)
     socket.on('bus:identify:done', onIdentifyDone)
+    socket.on('bus:autodetect:progress', onAutoProgress)
+    socket.on('bus:autodetect:found', onAutoFound)
+    socket.on('bus:autodetect:notfound', onAutoNotFound)
+    socket.on('bus:autodetect:error', onAutoError)
     return () => {
       socket.off('bus:scan:progress', onProgress)
       socket.off('bus:scan:done', onDone)
       socket.off('bus:scan:error', onError)
       socket.off('bus:identify:progress', onIdentifyProgress)
       socket.off('bus:identify:done', onIdentifyDone)
+      socket.off('bus:autodetect:progress', onAutoProgress)
+      socket.off('bus:autodetect:found', onAutoFound)
+      socket.off('bus:autodetect:notfound', onAutoNotFound)
+      socket.off('bus:autodetect:error', onAutoError)
     }
   }, [])
+
+  useEffect(() => {
+    if (!open || connected) return
+    setLoadingPorts(true)
+    api.get('/modbus/ports')
+      .then(({ data }) => setPorts(data))
+      .catch(() => {})
+      .finally(() => setLoadingPorts(false))
+  }, [open, connected])
 
   function handleOpen() {
     setOpen(true)
@@ -83,6 +131,9 @@ export default function BusScanner({ connected }) {
     setIdentifying(false)
     setIdentifyResults([])
     setIdentifyDone(false)
+    setSweeping(false)
+    setSweepProgress(null)
+    setSweepResult(null)
   }
 
   async function handleProbe(slaveId) {
@@ -113,12 +164,23 @@ export default function BusScanner({ connected }) {
 
   function handleCancel() {
     socket.emit('bus:scan:cancel')
+    socket.emit('bus:autodetect:cancel')
     setRunning(false)
-    addLog('info', 'Сканирование шины отменено')
+    setSweeping(false)
+    addLog('info', 'Поиск отменён')
+  }
+
+  function handleAutoDetect() {
+    if (!selectedPort) return
+    reset()
+    setSweeping(true)
+    setTotal(to - from + 1)
+    socket.emit('bus:autodetect:start', { portPath: selectedPort, from, to })
+    addLog('info', `Умный автопоиск на ${selectedPort}: перебор скорости/чётности/стоп-бит, адреса ${from}–${to}`)
   }
 
   function handleClose() {
-    if (running) handleCancel()
+    if (running || sweeping) handleCancel()
     setOpen(false)
   }
 
@@ -128,15 +190,14 @@ export default function BusScanner({ connected }) {
 
   return (
     <>
-      <Tooltip title="Поиск устройств на шине RS-485">
+      <Tooltip title="Поиск устройств на шине RS-485 (работает и без подключения — подберёт настройки порта)">
         <Button
           icon={<ApartmentOutlined />}
-          disabled={!connected}
           onClick={handleOpen}
           style={{
             background: 'transparent',
             borderColor: '#ffffff40',
-            color: connected ? '#fff' : '#ffffff40',
+            color: '#fff',
           }}
         >
           Сканер шины
@@ -202,6 +263,30 @@ export default function BusScanner({ connected }) {
       >
         <Space orientation="vertical" style={{ width: '100%' }} size={16}>
 
+          {!connected && (
+            <>
+              <Select
+                placeholder="Выберите COM-порт для умного автопоиска"
+                style={{ width: '100%' }}
+                value={selectedPort}
+                onChange={setSelectedPort}
+                loading={loadingPorts}
+                disabled={sweeping || running}
+                options={ports.map(p => ({
+                  value: p.path,
+                  disabled: p.busy,
+                  label: p.busy
+                    ? `${p.path} — занят`
+                    : (p.manufacturer ? `${p.path} — ${p.manufacturer}` : p.path),
+                }))}
+              />
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                Порт не подключён — сначала переберём скорость/чётность/стоп-биты (8 скоростей × варианты чётности и стоп-бит),
+                как только что-то ответит на одном из первых адресов диапазона — останемся на этих настройках и просканируем весь диапазон.
+              </Typography.Text>
+            </>
+          )}
+
           {/* Настройка диапазона */}
           <Row gutter={12} align="middle">
             <Col>
@@ -210,21 +295,21 @@ export default function BusScanner({ connected }) {
                 <InputNumber
                   min={1} max={to - 1} value={from}
                   onChange={v => v && setFrom(v)}
-                  disabled={running}
+                  disabled={running || sweeping}
                   style={{ width: 70 }}
                 />
                 <Typography.Text>по</Typography.Text>
                 <InputNumber
                   min={from + 1} max={247} value={to}
                   onChange={v => v && setTo(v)}
-                  disabled={running}
+                  disabled={running || sweeping}
                   style={{ width: 70 }}
                 />
               </Space>
             </Col>
             <Col>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                ≈ {estSec} сек
+                ≈ {estSec} сек{!connected ? ' на комбинацию настроек' : ''}
               </Typography.Text>
             </Col>
           </Row>
@@ -232,6 +317,38 @@ export default function BusScanner({ connected }) {
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             Программа последовательно обращается к каждому адресу. Устройство, которое откликнулось — добавляется в список.
           </Typography.Text>
+
+          {/* Перебор настроек порта (умный автопоиск) */}
+          {sweeping && (
+            <div>
+              <Progress
+                percent={sweepProgress ? Math.round(((sweepProgress.comboIndex + 1) / sweepProgress.totalCombos) * 100) : 0}
+                status="active"
+                format={() => sweepProgress ? `${sweepProgress.comboIndex + 1} / ${sweepProgress.totalCombos}` : '…'}
+              />
+              {sweepProgress && (
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  Пробуем: {formatCombo(sweepProgress.combo)}…
+                </Typography.Text>
+              )}
+            </div>
+          )}
+          {sweepResult === 'notfound' && (
+            <Alert
+              type="warning"
+              showIcon
+              message="Не удалось подобрать рабочие настройки"
+              description="Ни одна комбинация скорости/чётности/стоп-бит не дала ответа в этом диапазоне адресов. Проверьте, что устройства подключены и запитаны, либо расширьте диапазон адресов."
+            />
+          )}
+          {sweepResult && sweepResult !== 'notfound' && (
+            <Alert
+              type="success"
+              showIcon
+              message={`Настройки найдены: ${formatCombo(sweepResult)}`}
+              description={`Порт ${sweepResult.portPath} подключён с этими настройками, сейчас сканируем адреса устройств.`}
+            />
+          )}
 
           {/* Прогресс */}
           {(running || done) && (
@@ -343,13 +460,17 @@ export default function BusScanner({ connected }) {
 
           {/* Кнопки управления */}
           <Space>
-            {running ? (
+            {(running || sweeping) ? (
               <Button danger onClick={handleCancel}>
-                Отменить сканирование
+                Отменить
+              </Button>
+            ) : connected ? (
+              <Button type="primary" onClick={handleStart}>
+                {done ? 'Сканировать снова' : 'Начать сканирование'}
               </Button>
             ) : (
-              <Button type="primary" onClick={handleStart} disabled={!connected}>
-                {done ? 'Сканировать снова' : 'Начать сканирование'}
+              <Button type="primary" icon={<ThunderboltOutlined />} onClick={handleAutoDetect} disabled={!selectedPort}>
+                Умный автопоиск
               </Button>
             )}
             <Button onClick={handleClose}>Закрыть</Button>
