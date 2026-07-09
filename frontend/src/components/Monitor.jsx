@@ -123,7 +123,9 @@ export default function Monitor({ device, modbusConnected }) {
 
       if (fired && !wasActive) {
         activeAlertsRef.current.add(alert.id)
-        const msg = alert.message.replace('{{value}}', Number(entry.value).toFixed(1))
+        const v = Number(entry.value)
+        const formatted = Number.isInteger(v) ? String(v) : v.toFixed(1)
+        const msg = alert.message.replace('{{value}}', formatted)
         notification[alert.level]?.({ message: 'Оповещение', description: msg, duration: 0 })
         addLog(alert.level, `Оповещение: ${msg}`)
       } else if (!fired && wasActive) {
