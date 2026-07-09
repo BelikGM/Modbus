@@ -42,11 +42,10 @@
     "25": "Блокировка двигателя (заклинивание)",
     "30": "Внешняя авария (вход DI)"
   },
-  "alerts": [],
-  "alerts1": [
+  "alerts": [
     {
       "id": "fault-active",
-      "paramId": "F0.17",
+      "paramId": "F0.10",
       "condition": "gt",
       "threshold": 0,
       "level": "error",
@@ -54,7 +53,7 @@
     },
     {
       "id": "temp-high",
-      "paramId": "F0.09",
+      "paramId": "F0.06",
       "condition": "gt",
       "threshold": 70,
       "level": "warning",
@@ -62,7 +61,7 @@
     },
     {
       "id": "current-high",
-      "paramId": "F0.02",
+      "paramId": "F0.03",
       "condition": "gt",
       "threshold": 20,
       "level": "warning",

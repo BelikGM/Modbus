@@ -42,27 +42,26 @@
     "25": "Блокировка двигателя (заклинивание)",
     "30": "Внешняя авария (вход DI)"
   },
-  "alerts": [],
-  "alerts1": [
+  "alerts": [
     {
       "id": "fault-active",
-      "paramId": "F0.10",
+      "paramId": "FAULT_CODE",
       "condition": "gt",
       "threshold": 0,
       "level": "error",
-      "message": "Авария E{{value}}"
+      "message": "Авария ПЧ, код {{value}}"
     },
     {
       "id": "temp-high",
-      "paramId": "F0.08",
+      "paramId": "P7.07",
       "condition": "gt",
       "threshold": 70,
       "level": "warning",
-      "message": "Перегрев радиатора: {{value}} °C"
+      "message": "Перегрев IGBT-модуля: {{value}} °C"
     },
     {
       "id": "current-high",
-      "paramId": "F0.03",
+      "paramId": "D0.04",
       "condition": "gt",
       "threshold": 20,
       "level": "warning",
@@ -310,31 +309,31 @@
               "label": "Внешний аварийный сигнал (EF)"
             },
             {
-              "value": 10,
+              "value": 16,
               "label": "Ошибка подключения Modbus (CE)"
             },
             {
-              "value": 12,
+              "value": 18,
               "label": "Неисправность платы управления"
             },
             {
-              "value": 13,
+              "value": 19,
               "label": "Ошибка автоматической настройки двигателя (TE)"
             },
             {
-              "value": 14,
+              "value": 20,
               "label": "Неисправность энкодера (PG)"
             },
             {
-              "value": 15,
+              "value": 21,
               "label": "Ошибка чтения/записи параметров (EEP)"
             },
             {
-              "value": 16,
+              "value": 22,
               "label": "Неисправность ПЧ (OUOC)"
             },
             {
-              "value": 17,
+              "value": 23,
               "label": "Короткое замыкание на землю (GND)"
             },
             {
