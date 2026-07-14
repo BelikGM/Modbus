@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Button, Select, Space, Tag, Modal, Form, message, Tooltip, Collapse, Row, Col } from 'antd'
+import { Button, Select, AutoComplete, Space, Tag, Modal, Form, message, Tooltip, Collapse, Row, Col } from 'antd'
 import { ReloadOutlined, ScanOutlined, LoadingOutlined } from '@ant-design/icons'
 import socket from '../socket'
 import api from '../api'
@@ -170,12 +170,12 @@ export default function ConnectionPanel({ connected, reconnecting, reconnectAtte
               </Space>
             }
             rules={[{ required: true, message: 'Укажите порт' }]}
+            extra="Не видите нужный порт в списке (например, виртуальный com0com)? Впишите его имя вручную, напр. COM6"
           >
-            <Select
+            <AutoComplete
               options={portOptions}
-              placeholder="Выберите порт"
+              placeholder="Выберите или впишите порт, напр. COM6"
               notFoundContent={loadingPorts ? 'Загрузка...' : 'Порты не найдены'}
-              showSearch
               filterOption={(input, option) =>
                 String(option.value).toLowerCase().includes(input.toLowerCase())
               }

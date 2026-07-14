@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   Button, Modal, InputNumber, Progress, Space,
-  Tag, Typography, Alert, Row, Col, Divider, Tooltip, List, Spin, Select,
+  Tag, Typography, Alert, Row, Col, Divider, Tooltip, List, Spin, AutoComplete,
 } from 'antd'
 import { ApartmentOutlined, CloseCircleOutlined, PlusCircleOutlined, CheckCircleOutlined, ExclamationCircleOutlined, LoadingOutlined, InfoCircleOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import socket from '../socket'
@@ -265,16 +265,15 @@ export default function BusScanner({ connected }) {
 
           {!connected && (
             <>
-              <Select
-                placeholder="Выберите COM-порт для умного автопоиска"
+              <AutoComplete
+                placeholder="Выберите или впишите COM-порт (напр. COM6 для com0com)"
                 style={{ width: '100%' }}
                 value={selectedPort}
                 onChange={setSelectedPort}
-                loading={loadingPorts}
                 disabled={sweeping || running}
+                notFoundContent={loadingPorts ? 'Загрузка...' : 'Порты не найдены'}
                 options={ports.map(p => ({
                   value: p.path,
-                  disabled: p.busy,
                   label: p.busy
                     ? `${p.path} — занят`
                     : (p.manufacturer ? `${p.path} — ${p.manufacturer}` : p.path),
@@ -283,6 +282,7 @@ export default function BusScanner({ connected }) {
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 Порт не подключён — сначала переберём скорость/чётность/стоп-биты (8 скоростей × варианты чётности и стоп-бит),
                 как только что-то ответит на одном из первых адресов диапазона — останемся на этих настройках и просканируем весь диапазон.
+                Виртуальные порты (com0com) не всегда попадают в автообнаруженный список — впишите имя порта вручную.
               </Typography.Text>
             </>
           )}

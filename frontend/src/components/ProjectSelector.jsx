@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import {
   Dropdown, Button, Modal, Form, Input, Space, Popconfirm,
-  message, Alert, Typography, Select, Tag,
+  message, Alert, Typography, Select, AutoComplete, Tag,
 } from 'antd'
 import {
   PlusOutlined, FolderOpenOutlined, DownOutlined,
@@ -374,16 +374,16 @@ export default function ProjectSelector({ onProjectChange, onProjectInit }) {
             />
           )}
           <Typography.Text type="secondary">
-            Выберите COM-порт для подключения к устройствам этого проекта
+            Выберите COM-порт для подключения к устройствам этого проекта. Если нужного порта нет
+            в списке (например, виртуальный com0com) — впишите его имя вручную.
           </Typography.Text>
-          <Select
+          <AutoComplete
             style={{ width: '100%' }}
-            placeholder="Выберите порт"
+            placeholder="Выберите или впишите порт, напр. COM6"
             value={selectedPort}
             onChange={setSelectedPort}
             options={ports.map(p => ({
               value: p.path,
-              disabled: p.busy,
               label: (
                 <Space>
                   <span style={{ color: p.busy ? '#999' : undefined }}>
