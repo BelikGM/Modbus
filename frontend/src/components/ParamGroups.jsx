@@ -99,6 +99,11 @@ export default function ParamGroups({
   const [groupValues, setGroupValues]   = useState({})
   const [search, setSearch]             = useState('')
   const [groupProgress, setGroupProgress] = useState(null) // { index, total, groupName, kind }
+  const [openGroupIds, setOpenGroupIds] = useState(() => new Set(device.groups[0] ? [device.groups[0].id] : []))
+
+  const expandGroup = useCallback((groupId) => {
+    setOpenGroupIds(prev => (prev.has(groupId) ? prev : new Set(prev).add(groupId)))
+  }, [])
 
   const clearGroupValue = useCallback((paramId) => {
     setGroupValues(prev => {
@@ -261,9 +266,11 @@ export default function ParamGroups({
 
   async function readGroup(group, e) {
     e.stopPropagation()
+    expandGroup(group.id)
     setReadingGroup(group.id)
     const results = {}
     for (const param of group.params) {
+      if (bulkCancelRef.current) break
       try {
         const { data } = await api.post('/modbus/read', { deviceId: device.id, paramId: param.id })
         results[param.id] = data.value
@@ -289,10 +296,12 @@ export default function ParamGroups({
       message.info(`В группе ${group.id} нет значений для записи`)
       return
     }
+    expandGroup(group.id)
     setReadingGroup(group.id)
     let ok = 0
     const results = {}
     for (const param of toWrite) {
+      if (bulkCancelRef.current) break
       try {
         await api.post('/modbus/write', { deviceId: device.id, paramId: param.id, value: latestPendingWrites.current[param.id] })
         results[param.id] = latestPendingWrites.current[param.id]
@@ -322,16 +331,18 @@ export default function ParamGroups({
       if (bulkCancelRef.current) break
       const group = groupsInScope[i]
       setGroupProgress({ index: i, total: groupsInScope.length, groupName: group.name, kind })
+      expandGroup(group.id)
       setReadingGroup(group.id)
       const fakeEvent = { stopPropagation: () => {} }
+      const isCancelled = () => bulkCancelRef.current
       if (kind === 'read') {
-        if (onReadGroup) await onReadGroup(group)
+        if (onReadGroup) await onReadGroup(group, isCancelled)
         else await readGroup(group, fakeEvent)
       } else if (kind === 'write') {
-        if (onWriteGroup) await onWriteGroup(group, latestPendingWrites.current)
+        if (onWriteGroup) await onWriteGroup(group, latestPendingWrites.current, isCancelled)
         else await writeGroup(group, fakeEvent)
       } else {
-        if (onResetGroup) await onResetGroup(group)
+        if (onResetGroup) await onResetGroup(group, isCancelled)
         else await resetGroup(group, fakeEvent)
       }
       setReadingGroup(null)
@@ -368,11 +379,12 @@ export default function ParamGroups({
           loading={readingGroup === group.id}
           disabled={!modbusConnected || (readingGroup !== null && readingGroup !== group.id)}
           onClick={async e => {
-            if (onReadGroup) { setReadingGroup(group.id); await onReadGroup(group); setReadingGroup(null) }
+            expandGroup(group.id)
+            if (onReadGroup) { setReadingGroup(group.id); await onReadGroup(group, () => false); setReadingGroup(null) }
             else readGroup(group, e)
           }}
         >
-          Прочитать всё
+          Прочитать группу
         </Button>
         <Button
           size="small"
@@ -381,11 +393,12 @@ export default function ParamGroups({
           loading={readingGroup === group.id}
           onClick={async e => {
             e.stopPropagation()
-            if (onWriteGroup) { setReadingGroup(group.id); await onWriteGroup(group); setReadingGroup(null) }
+            expandGroup(group.id)
+            if (onWriteGroup) { setReadingGroup(group.id); await onWriteGroup(group, latestPendingWrites.current, () => false); setReadingGroup(null) }
             else writeGroup(group, e)
           }}
         >
-          Записать всё
+          Записать группу
         </Button>
         <Popconfirm
           title="Сброс до заводских"
@@ -394,7 +407,8 @@ export default function ParamGroups({
           cancelText="Отмена"
           okButtonProps={{ danger: true }}
           onConfirm={async e => {
-            if (onResetGroup) { setReadingGroup(group.id); await onResetGroup(group); setReadingGroup(null) }
+            expandGroup(group.id)
+            if (onResetGroup) { setReadingGroup(group.id); await onResetGroup(group, () => false); setReadingGroup(null) }
             else resetGroup(group, e ?? { stopPropagation: () => {} })
           }}
         >
@@ -446,10 +460,12 @@ export default function ParamGroups({
       message.info('Нет параметров с заводскими значениями')
       return
     }
+    expandGroup(group.id)
     setReadingGroup(group.id)
     let ok = 0
     const results = {}
     for (const param of toWrite) {
+      if (bulkCancelRef.current) break
       try {
         await api.post('/modbus/write', { deviceId: device.id, paramId: param.id, value: param.default })
         results[param.id] = param.default
@@ -560,15 +576,23 @@ export default function ParamGroups({
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={filteredGroups.map(g => g.id)} strategy={verticalListSortingStrategy}>
           <div style={{ paddingLeft: 20 }}>
-            {filteredGroups.map((group, i) => {
+            {filteredGroups.map((group) => {
               const item = items.find(it => it.key === group.id)
               if (!item) return null
+              const isOpen = query ? true : openGroupIds.has(group.id)
               return (
                 <SortableCollapseItem key={group.id} id={group.id}>
                   <Collapse
                     items={[item]}
-                    defaultActiveKey={i === 0 ? [group.id] : []}
-                    activeKey={query ? [group.id] : undefined}
+                    activeKey={isOpen ? [group.id] : []}
+                    onChange={keys => {
+                      setOpenGroupIds(prev => {
+                        const next = new Set(prev)
+                        if (keys.length) next.add(group.id)
+                        else next.delete(group.id)
+                        return next
+                      })
+                    }}
                     style={{ marginBottom: 4 }}
                   />
                 </SortableCollapseItem>

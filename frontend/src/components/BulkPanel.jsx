@@ -1,27 +1,59 @@
 import { useState, useEffect } from 'react'
-import { Space, Typography, Tag, Alert, message, Tabs } from 'antd'
-import { CloseOutlined } from '@ant-design/icons'
+import { Space, Typography, Tag, Alert, message, Tabs, Table, Button } from 'antd'
+import { CloseOutlined, ClearOutlined } from '@ant-design/icons'
 import api from '../api'
 import ParamGroups from './ParamGroups'
 import BulkMonitor from './BulkMonitor'
 import { isParamWritable } from '../access'
 import { useDeviceSettings } from '../useDeviceSettings'
 
+// Pump-Full и Pump-OWN — один и тот же физический ПЧ, у OWN просто урезанный
+// (но регистрово идентичный) набор параметров — сверено вручную: все параметры
+// OWN присутствуют в Full с теми же номерами регистров. Групповые операции между
+// ними безопасны, поэтому они считаются одним "семейством". VH — другая карта
+// регистров, отдельное семейство.
+function deviceFamily(templateId) {
+  return (templateId ?? '').toLowerCase().includes('vh') ? 'vh' : 'pump'
+}
+
+function formatResult(entry) {
+  if (!entry) return <span style={{ color: '#bbb' }}>—</span>
+  if (entry.error) return <span style={{ color: '#ff4d4f', fontSize: 12 }}>ошибка</span>
+  const v = entry.value
+  const formatted = typeof v === 'number' ? (Number.isInteger(v) ? v : v.toFixed(2)) : v
+  return <span>{formatted}{entry.unit ? ` ${entry.unit}` : ''}</span>
+}
+
 export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
   const templateIds = [...new Set(devices.map(d => d.templateId))]
-  const sameType = templateIds.length === 1
+  const families = [...new Set(devices.map(d => deviceFamily(d.templateId)))]
+  const sameType = families.length === 1
+  // Устройство с наибольшим числом параметров в выборке (напр. Full среди Full+OWN) —
+  // используется как эталон для отображения групп, чтобы не потерять группы,
+  // которых нет у "урезанного" варианта.
+  const templateDevice = sameType
+    ? devices.reduce((best, d) => (
+        d.groups.flatMap(g => g.params).length > best.groups.flatMap(g => g.params).length ? d : best
+      ), devices[0])
+    : devices[0]
 
-  const [deviceSettings, saveDeviceSettings] = useDeviceSettings(sameType ? devices[0].templateId : '__mixed__')
+  const [deviceSettings, saveDeviceSettings] = useDeviceSettings(sameType ? templateDevice.templateId : '__mixed__')
   const [visibleGroupIds, setVisibleGroupIds] = useState(new Set())
+  const [bulkReadResults, setBulkReadResults] = useState({}) // { [deviceId]: { [paramId]: { value/error, unit, name } } }
 
   useEffect(() => {
     if (!sameType || deviceSettings === null) return
     setVisibleGroupIds(
       deviceSettings.visibleGroups
         ? new Set(deviceSettings.visibleGroups)
-        : new Set(devices[0].groups.map(g => g.id)),
+        : new Set(templateDevice.groups.map(g => g.id)),
     )
   }, [deviceSettings, sameType])
+
+  // Сбрасываем накопленные результаты чтения при смене состава выбранных устройств
+  useEffect(() => {
+    setBulkReadResults({})
+  }, [devices.map(d => d.id).join(',')])
 
   function handleVisibleGroupIdsChange(next) {
     setVisibleGroupIds(next)
@@ -39,59 +71,110 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
     message.success(`Записано на ${ok} из ${devices.length} устройств`)
   }
 
-  async function handleBulkReadGroup(group) {
+  async function handleBulkReadGroup(group, isCancelled = () => false) {
     let ok = 0
     const total = devices.length * group.params.length
+    outer:
     for (const device of devices) {
       for (const param of group.params) {
+        if (isCancelled()) break outer
         try {
-          await api.post('/modbus/read', { deviceId: device.id, paramId: param.id })
+          const { data } = await api.post('/modbus/read', { deviceId: device.id, paramId: param.id })
           ok++
-        } catch {}
+          setBulkReadResults(prev => ({
+            ...prev,
+            [device.id]: { ...prev[device.id], [param.id]: { value: data.value, unit: param.unit, name: param.name } },
+          }))
+        } catch (e) {
+          setBulkReadResults(prev => ({
+            ...prev,
+            [device.id]: { ...prev[device.id], [param.id]: { error: e?.response?.data?.message ?? 'ошибка', name: param.name } },
+          }))
+        }
       }
     }
-    message.success(`Группа «${group.name}» прочитана: ${ok} из ${total} (${devices.length} устройств)`)
+    if (isCancelled()) message.info(`Остановлено: группа «${group.name}» прочитана частично`)
+    else message.success(`Группа «${group.name}» прочитана: ${ok} из ${total} (${devices.length} устройств)`)
   }
 
-  async function handleBulkWriteGroup(group, pendingWrites) {
+  async function handleBulkWriteGroup(group, pendingWrites, isCancelled = () => false) {
     const toWrite = group.params.filter(
-      p => isParamWritable(devices[0], p) && pendingWrites[p.id] != null,
+      p => isParamWritable(templateDevice, p) && pendingWrites[p.id] != null,
     )
     if (toWrite.length === 0) {
       message.info(`В группе «${group.name}» нет значений для записи`)
       return
     }
     let ok = 0
+    outer:
     for (const device of devices) {
       for (const param of toWrite) {
+        if (isCancelled()) break outer
         try {
           await api.post('/modbus/write', { deviceId: device.id, paramId: param.id, value: pendingWrites[param.id] })
           ok++
         } catch {}
       }
     }
-    message.success(`Группа «${group.name}» записана: ${ok} из ${toWrite.length * devices.length} (${devices.length} устройств)`)
+    if (isCancelled()) message.info(`Остановлено: группа «${group.name}» записана частично (${ok})`)
+    else message.success(`Группа «${group.name}» записана: ${ok} из ${toWrite.length * devices.length} (${devices.length} устройств)`)
   }
 
-  async function handleBulkResetGroup(group) {
+  async function handleBulkResetGroup(group, isCancelled = () => false) {
     const toWrite = group.params.filter(
-      p => isParamWritable(devices[0], p) && p.default !== undefined && p.default !== null,
+      p => isParamWritable(templateDevice, p) && p.default !== undefined && p.default !== null,
     )
     if (toWrite.length === 0) {
       message.info(`В группе «${group.name}» нет параметров с заводскими значениями`)
       return
     }
     let ok = 0
+    outer:
     for (const device of devices) {
       for (const param of toWrite) {
+        if (isCancelled()) break outer
         try {
           await api.post('/modbus/write', { deviceId: device.id, paramId: param.id, value: param.default })
           ok++
         } catch {}
       }
     }
-    message.success(`Группа «${group.name}» сброшена: ${ok} из ${toWrite.length * devices.length} (${devices.length} устройств)`)
+    if (isCancelled()) message.info(`Остановлено: группа «${group.name}» сброшена частично (${ok})`)
+    else message.success(`Группа «${group.name}» сброшена: ${ok} из ${toWrite.length * devices.length} (${devices.length} устройств)`)
   }
+
+  const readResultParamIds = [...new Set(devices.flatMap(d => Object.keys(bulkReadResults[d.id] ?? {})))]
+  const templateParamOrder = sameType ? templateDevice.groups.flatMap(g => g.params.map(p => p.id)) : []
+  const readResultRows = readResultParamIds
+    .slice()
+    .sort((a, b) => templateParamOrder.indexOf(a) - templateParamOrder.indexOf(b))
+
+  const readResultsColumns = [
+    {
+      title: 'Параметр',
+      dataIndex: 'name',
+      key: 'name',
+      fixed: 'left',
+      width: 220,
+    },
+    ...devices.map(d => ({
+      title: (
+        <div>
+          <div style={{ fontSize: 12 }}>{d.name}</div>
+          <Typography.Text type="secondary" style={{ fontSize: 11 }}>ID {d.connection.slaveId}</Typography.Text>
+        </div>
+      ),
+      dataIndex: d.id,
+      key: d.id,
+      width: 130,
+      render: (_, row) => formatResult(bulkReadResults[d.id]?.[row.paramId]),
+    })),
+  ]
+
+  const readResultsDataSource = readResultRows.map(paramId => {
+    const name = devices.map(d => bulkReadResults[d.id]?.[paramId]?.name).find(Boolean) ?? paramId
+    return { key: paramId, paramId, name }
+  })
 
   return (
     <div>
@@ -117,7 +200,7 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
           type="warning"
           showIcon
           message="Недопустима групповая работа с ПЧ разных типов"
-          description={`Выбраны устройства разных шаблонов (${templateIds.join(', ')}) — у них разные карты регистров, групповое чтение/запись для них не имеют смысла и могут записать не те значения не в те регистры. Выберите только однотипные устройства (снимите лишние галочки в списке слева).`}
+          description={`Выбраны устройства разных семейств (${templateIds.join(', ')}) — у них разные карты регистров, групповое чтение/запись для них не имеют смысла и могут записать не те значения не в те регистры. Выберите только однотипные устройства (снимите лишние галочки в списке слева). Pump-Full и Pump-OWN между собой совместимы — это один и тот же ПЧ с урезанным набором параметров.`}
         />
       ) : (
         <Tabs
@@ -127,16 +210,40 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
               key: 'params',
               label: 'Параметры',
               children: (
-                <ParamGroups
-                  device={devices[0]}
-                  modbusConnected={modbusConnected}
-                  onWrite={handleBulkWrite}
-                  onReadGroup={handleBulkReadGroup}
-                  onWriteGroup={handleBulkWriteGroup}
-                  onResetGroup={handleBulkResetGroup}
-                  visibleGroupIds={visibleGroupIds}
-                  onVisibleGroupIdsChange={handleVisibleGroupIdsChange}
-                />
+                <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                  {readResultRows.length > 0 && (
+                    <div>
+                      <Space style={{ marginBottom: 8 }}>
+                        <Typography.Text strong style={{ fontSize: 12 }}>Результаты группового чтения</Typography.Text>
+                        <Button
+                          size="small"
+                          icon={<ClearOutlined />}
+                          onClick={() => setBulkReadResults({})}
+                        >
+                          Очистить
+                        </Button>
+                      </Space>
+                      <Table
+                        size="small"
+                        pagination={false}
+                        bordered
+                        scroll={{ x: 'max-content' }}
+                        columns={readResultsColumns}
+                        dataSource={readResultsDataSource}
+                      />
+                    </div>
+                  )}
+                  <ParamGroups
+                    device={templateDevice}
+                    modbusConnected={modbusConnected}
+                    onWrite={handleBulkWrite}
+                    onReadGroup={handleBulkReadGroup}
+                    onWriteGroup={handleBulkWriteGroup}
+                    onResetGroup={handleBulkResetGroup}
+                    visibleGroupIds={visibleGroupIds}
+                    onVisibleGroupIdsChange={handleVisibleGroupIdsChange}
+                  />
+                </Space>
               ),
             },
             {

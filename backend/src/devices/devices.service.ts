@@ -162,8 +162,12 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     const template = this.templates.get(templateId);
     if (!template) throw new NotFoundException(`Шаблон '${templateId}' не найден`);
 
-    const projectId = this.projectsService.getActiveProjectId();
-    if (!projectId) throw new BadRequestException('Нет активного проекта. Создайте или выберите проект.');
+    let projectId = this.projectsService.getActiveProjectId();
+    if (!projectId) {
+      const meta = this.projectsService.createProject(this.projectsService.generateDefaultProjectName());
+      this.projectsService.setActiveProject(meta.id);
+      projectId = meta.id;
+    }
 
     const baseName = name.trim().replace(/\s+/g, '_').replace(/[\\/:*?"<>|]/g, '') || `device_${Date.now()}`;
     let id = baseName;

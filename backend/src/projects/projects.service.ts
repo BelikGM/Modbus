@@ -177,6 +177,17 @@ export class ProjectsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  // Первый свободный порядковый номер ("1", "2", ...), не занятый ни одной
+  // существующей папкой проекта — используется для автосоздания проекта, когда
+  // пользователь пытается что-то сделать (например, определить устройства на
+  // шине), а активного проекта ещё нет.
+  generateDefaultProjectName(): string {
+    const existing = new Set(this.listProjects().map(p => p.id));
+    let n = 1;
+    while (existing.has(String(n))) n++;
+    return String(n);
+  }
+
   // ─── CRUD ──────────────────────────────────────────────────────────────────
 
   listProjects(): ProjectMeta[] {

@@ -465,7 +465,7 @@ export default function BusScanner({ connected }) {
                 Отменить
               </Button>
             ) : connected ? (
-              <Button type="primary" onClick={handleStart}>
+              <Button type={done ? 'default' : 'primary'} onClick={handleStart}>
                 {done ? 'Сканировать снова' : 'Начать сканирование'}
               </Button>
             ) : (
