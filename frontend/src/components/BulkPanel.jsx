@@ -1,42 +1,30 @@
-import { useState } from 'react'
-import { Button, Space, Typography, Tag, Popconfirm, Progress, message } from 'antd'
-import { DownloadOutlined, RollbackOutlined, CloseOutlined } from '@ant-design/icons'
+import { useState, useEffect } from 'react'
+import { Space, Typography, Tag, Alert, message } from 'antd'
+import { CloseOutlined } from '@ant-design/icons'
 import api from '../api'
 import ParamGroups from './ParamGroups'
 import { isParamWritable } from '../access'
+import { useDeviceSettings } from '../useDeviceSettings'
 
 export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
-  const [progress, setProgress] = useState(null)
+  const templateIds = [...new Set(devices.map(d => d.templateId))]
+  const sameType = templateIds.length === 1
 
-  async function readAll() {
-    const ops = devices.flatMap(d => d.groups.flatMap(g => g.params.map(p => ({ device: d, param: p }))))
-    setProgress({ done: 0, total: ops.length })
-    let done = 0
-    for (const { device, param } of ops) {
-      try { await api.post('/modbus/read', { deviceId: device.id, paramId: param.id }) } catch {}
-      setProgress({ done: ++done, total: ops.length })
-    }
-    setProgress(null)
-    message.success(`Прочитано со всех ${devices.length} устройств`)
-  }
+  const [deviceSettings, saveDeviceSettings] = useDeviceSettings(sameType ? devices[0].templateId : '__mixed__')
+  const [visibleGroupIds, setVisibleGroupIds] = useState(new Set())
 
-  async function resetAll() {
-    const ops = devices.flatMap(d =>
-      d.groups.flatMap(g =>
-        g.params
-          .filter(p => isParamWritable(d, p) && p.default != null)
-          .map(p => ({ device: d, param: p }))
-      )
+  useEffect(() => {
+    if (!sameType || deviceSettings === null) return
+    setVisibleGroupIds(
+      deviceSettings.visibleGroups
+        ? new Set(deviceSettings.visibleGroups)
+        : new Set(devices[0].groups.map(g => g.id)),
     )
-    if (ops.length === 0) { message.info('Нет параметров с заводскими значениями'); return }
-    setProgress({ done: 0, total: ops.length })
-    let done = 0
-    for (const { device, param } of ops) {
-      try { await api.post('/modbus/write', { deviceId: device.id, paramId: param.id, value: param.default }) } catch {}
-      setProgress({ done: ++done, total: ops.length })
-    }
-    setProgress(null)
-    message.success(`Сброшено на ${devices.length} устройствах`)
+  }, [deviceSettings, sameType])
+
+  function handleVisibleGroupIdsChange(next) {
+    setVisibleGroupIds(next)
+    saveDeviceSettings({ visibleGroups: Array.from(next) })
   }
 
   async function handleBulkWrite(paramId, value) {
@@ -52,28 +40,57 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
 
   async function handleBulkReadGroup(group) {
     let ok = 0
+    const total = devices.length * group.params.length
     for (const device of devices) {
       for (const param of group.params) {
-        try { await api.post('/modbus/read', { deviceId: device.id, paramId: param.id }); ok++ } catch {}
+        try {
+          await api.post('/modbus/read', { deviceId: device.id, paramId: param.id })
+          ok++
+        } catch {}
       }
     }
-    message.success(`Группа ${group.id} прочитана на ${devices.length} устройствах`)
+    message.success(`Группа «${group.name}» прочитана: ${ok} из ${total} (${devices.length} устройств)`)
   }
 
-  async function handleBulkResetGroup(group) {
-    const toWrite = group.params.filter(p => isParamWritable(devices[0], p) && p.default != null)
-    if (toWrite.length === 0) { message.info('Нет параметров с заводскими значениями'); return }
+  async function handleBulkWriteGroup(group, pendingWrites) {
+    const toWrite = group.params.filter(
+      p => isParamWritable(devices[0], p) && pendingWrites[p.id] != null,
+    )
+    if (toWrite.length === 0) {
+      message.info(`В группе «${group.name}» нет значений для записи`)
+      return
+    }
     let ok = 0
     for (const device of devices) {
       for (const param of toWrite) {
-        try { await api.post('/modbus/write', { deviceId: device.id, paramId: param.id, value: param.default }); ok++ } catch {}
+        try {
+          await api.post('/modbus/write', { deviceId: device.id, paramId: param.id, value: pendingWrites[param.id] })
+          ok++
+        } catch {}
       }
     }
-    message.success(`Группа ${group.id} сброшена на ${devices.length} устройствах`)
+    message.success(`Группа «${group.name}» записана: ${ok} из ${toWrite.length * devices.length} (${devices.length} устройств)`)
   }
 
-  const busy = !!progress
-  const percent = progress ? Math.round((progress.done / progress.total) * 100) : 0
+  async function handleBulkResetGroup(group) {
+    const toWrite = group.params.filter(
+      p => isParamWritable(devices[0], p) && p.default !== undefined && p.default !== null,
+    )
+    if (toWrite.length === 0) {
+      message.info(`В группе «${group.name}» нет параметров с заводскими значениями`)
+      return
+    }
+    let ok = 0
+    for (const device of devices) {
+      for (const param of toWrite) {
+        try {
+          await api.post('/modbus/write', { deviceId: device.id, paramId: param.id, value: param.default })
+          ok++
+        } catch {}
+      }
+    }
+    message.success(`Группа «${group.name}» сброшена: ${ok} из ${toWrite.length * devices.length} (${devices.length} устройств)`)
+  }
 
   return (
     <div>
@@ -83,7 +100,7 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
           {devices.map(d => (
             <Tag
               key={d.id}
-              color="blue"
+              color={sameType ? 'blue' : 'orange'}
               closable
               closeIcon={<CloseOutlined />}
               onClose={() => onDeselect(d.id)}
@@ -92,46 +109,27 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
             </Tag>
           ))}
         </Space>
-        <Space style={{ marginLeft: 'auto' }}>
-          <Button
-            icon={<DownloadOutlined />}
-            disabled={!modbusConnected || busy}
-            loading={busy}
-            onClick={readAll}
-          >
-            Прочитать все
-          </Button>
-          <Popconfirm
-            title="Сброс до заводских"
-            description={`Записать заводские значения на все ${devices.length} выбранных устройства?`}
-            okText="Сбросить"
-            cancelText="Отмена"
-            okButtonProps={{ danger: true }}
-            onConfirm={resetAll}
-          >
-            <Button icon={<RollbackOutlined />} danger disabled={!modbusConnected || busy}>
-              Сбросить до заводских
-            </Button>
-          </Popconfirm>
-        </Space>
       </div>
 
-      {progress && (
-        <Progress
-          percent={percent}
-          status="active"
-          format={() => `${progress.done} / ${progress.total}`}
-          style={{ marginBottom: 16 }}
+      {!sameType ? (
+        <Alert
+          type="warning"
+          showIcon
+          message="Недопустима групповая работа с ПЧ разных типов"
+          description={`Выбраны устройства разных шаблонов (${templateIds.join(', ')}) — у них разные карты регистров, групповое чтение/запись для них не имеют смысла и могут записать не те значения не в те регистры. Выберите только однотипные устройства (снимите лишние галочки в списке слева).`}
+        />
+      ) : (
+        <ParamGroups
+          device={devices[0]}
+          modbusConnected={modbusConnected}
+          onWrite={handleBulkWrite}
+          onReadGroup={handleBulkReadGroup}
+          onWriteGroup={handleBulkWriteGroup}
+          onResetGroup={handleBulkResetGroup}
+          visibleGroupIds={visibleGroupIds}
+          onVisibleGroupIdsChange={handleVisibleGroupIdsChange}
         />
       )}
-
-      <ParamGroups
-        device={devices[0]}
-        modbusConnected={modbusConnected && !busy}
-        onWrite={handleBulkWrite}
-        onReadGroup={handleBulkReadGroup}
-        onResetGroup={handleBulkResetGroup}
-      />
     </div>
   )
 }

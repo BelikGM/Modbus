@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Collapse, Button, Input, message, Typography, Popconfirm, Space, Modal, Table, Checkbox } from 'antd'
+import { Collapse, Button, Input, message, Typography, Popconfirm, Space, Modal, Table, Checkbox, Progress } from 'antd'
 import { DownloadOutlined, SearchOutlined, RollbackOutlined, HolderOutlined, HistoryOutlined, DatabaseOutlined, UploadOutlined } from '@ant-design/icons'
 import {
   DndContext,
@@ -91,10 +91,14 @@ function ParamTableHeader({ cols, onResizeStart }) {
   )
 }
 
-export default function ParamGroups({ device, modbusConnected, deviceRunning, onWrite, onReadGroup, onResetGroup }) {
+export default function ParamGroups({
+  device, modbusConnected, deviceRunning, onWrite, onReadGroup, onResetGroup, onWriteGroup,
+  visibleGroupIds: controlledVisibleGroupIds, onVisibleGroupIdsChange,
+}) {
   const [readingGroup, setReadingGroup] = useState(null)
   const [groupValues, setGroupValues]   = useState({})
   const [search, setSearch]             = useState('')
+  const [groupProgress, setGroupProgress] = useState(null) // { index, total, groupName, kind }
 
   const clearGroupValue = useCallback((paramId) => {
     setGroupValues(prev => {
@@ -105,7 +109,9 @@ export default function ParamGroups({ device, modbusConnected, deviceRunning, on
   }, [])
   const [cols, setCols]             = useState(DEFAULT_COLS)
   const [groupOrder, setGroupOrder] = useState(null)
-  const [visibleGroupIds, setVisibleGroupIds] = useState(new Set(device.groups.map(g => g.id)))
+  const isGroupVisibilityControlled = controlledVisibleGroupIds !== undefined
+  const [ownVisibleGroupIds, setOwnVisibleGroupIds] = useState(new Set(device.groups.map(g => g.id)))
+  const visibleGroupIds = isGroupVisibilityControlled ? controlledVisibleGroupIds : ownVisibleGroupIds
   const [pendingWrites, setPendingWrites] = useState({})
   const [fillStamp, setFillStamp] = useState(0)
   const [currentValues, setCurrentValues] = useState({})
@@ -128,27 +134,35 @@ export default function ParamGroups({ device, modbusConnected, deviceRunning, on
       latestCols.current = c
     }
     setGroupOrder(deviceSettings.groupOrder ?? null)
-    setVisibleGroupIds(
-      deviceSettings.visibleGroups
-        ? new Set(deviceSettings.visibleGroups)
-        : new Set(device.groups.map(g => g.id)),
-    )
+    if (!isGroupVisibilityControlled) {
+      setOwnVisibleGroupIds(
+        deviceSettings.visibleGroups
+          ? new Set(deviceSettings.visibleGroups)
+          : new Set(device.groups.map(g => g.id)),
+      )
+    }
   }, [deviceSettings])
 
   function toggleGroupVisible(groupId, checked) {
-    setVisibleGroupIds(prev => {
-      const next = new Set(prev)
-      if (checked) next.add(groupId)
-      else next.delete(groupId)
+    const next = new Set(visibleGroupIds)
+    if (checked) next.add(groupId)
+    else next.delete(groupId)
+    if (isGroupVisibilityControlled) {
+      onVisibleGroupIdsChange(next)
+    } else {
+      setOwnVisibleGroupIds(next)
       saveDeviceSettings({ visibleGroups: Array.from(next) })
-      return next
-    })
+    }
   }
 
   function setAllGroupsVisible(checked) {
     const next = checked ? new Set(device.groups.map(g => g.id)) : new Set()
-    setVisibleGroupIds(next)
-    saveDeviceSettings({ visibleGroups: Array.from(next) })
+    if (isGroupVisibilityControlled) {
+      onVisibleGroupIdsChange(next)
+    } else {
+      setOwnVisibleGroupIds(next)
+      saveDeviceSettings({ visibleGroups: Array.from(next) })
+    }
   }
 
   useEffect(() => {
@@ -290,27 +304,43 @@ export default function ParamGroups({ device, modbusConnected, deviceRunning, on
     message.success(`Записано ${ok} из ${toWrite.length} параметров группы ${group.id}`)
   }
 
-  async function writeAll() {
-    const allParams = groupsInScope.flatMap(g => g.params).filter(
-      p => isParamWritable(device, p) && latestPendingWrites.current[p.id] != null
-    )
-    if (allParams.length === 0) {
-      message.info('Нет значений для записи')
+  const bulkCancelRef = useRef(false)
+
+  function stopGroupedOperation() {
+    bulkCancelRef.current = true
+  }
+
+  async function processAllGroups(kind) {
+    if (groupsInScope.length === 0) {
+      message.info('Нет отображаемых групп — отметьте хотя бы одну галочкой ниже')
       return
     }
-    setReadingGroup('__all__')
-    let ok = 0
-    const results = {}
-    for (const param of allParams) {
-      try {
-        await api.post('/modbus/write', { deviceId: device.id, paramId: param.id, value: latestPendingWrites.current[param.id] })
-        results[param.id] = latestPendingWrites.current[param.id]
-        ok++
-      } catch { }
+    bulkCancelRef.current = false
+    setGroupProgress({ index: 0, total: groupsInScope.length, groupName: groupsInScope[0].name, kind })
+    let processed = 0
+    for (let i = 0; i < groupsInScope.length; i++) {
+      if (bulkCancelRef.current) break
+      const group = groupsInScope[i]
+      setGroupProgress({ index: i, total: groupsInScope.length, groupName: group.name, kind })
+      setReadingGroup(group.id)
+      const fakeEvent = { stopPropagation: () => {} }
+      if (kind === 'read') {
+        if (onReadGroup) await onReadGroup(group)
+        else await readGroup(group, fakeEvent)
+      } else if (kind === 'write') {
+        if (onWriteGroup) await onWriteGroup(group, latestPendingWrites.current)
+        else await writeGroup(group, fakeEvent)
+      } else {
+        if (onResetGroup) await onResetGroup(group)
+        else await resetGroup(group, fakeEvent)
+      }
+      setReadingGroup(null)
+      processed++
     }
-    setGroupValues(prev => ({ ...prev, ...results }))
-    setReadingGroup(null)
-    message.success(`Записано ${ok} из ${allParams.length} параметров`)
+    setGroupProgress(null)
+    if (bulkCancelRef.current) {
+      message.info(`Остановлено: обработано ${processed} из ${groupsInScope.length} групп`)
+    }
   }
 
   const query = search.trim().toLowerCase()
@@ -349,7 +379,11 @@ export default function ParamGroups({ device, modbusConnected, deviceRunning, on
           icon={<UploadOutlined />}
           disabled={!modbusConnected || readingGroup !== null}
           loading={readingGroup === group.id}
-          onClick={e => writeGroup(group, e)}
+          onClick={async e => {
+            e.stopPropagation()
+            if (onWriteGroup) { setReadingGroup(group.id); await onWriteGroup(group); setReadingGroup(null) }
+            else writeGroup(group, e)
+          }}
         >
           Записать всё
         </Button>
@@ -427,49 +461,6 @@ export default function ParamGroups({ device, modbusConnected, deviceRunning, on
     message.success(`Сброшено ${ok} из ${toWrite.length} параметров группы ${group.name}`)
   }
 
-  async function readAll() {
-    const allParams = groupsInScope.flatMap(g => g.params)
-    setReadingGroup('__all__')
-    const results = {}
-    for (const param of allParams) {
-      try {
-        const { data } = await api.post('/modbus/read', { deviceId: device.id, paramId: param.id })
-        results[param.id] = data.value
-      } catch { }
-    }
-    setGroupValues(prev => ({ ...prev, ...results }))
-    setReadingGroup(null)
-    message.success(`Прочитано ${Object.keys(results).length} из ${allParams.length} параметров`)
-    if (Object.keys(results).length > 0) {
-      const merged = { ...currentValues, ...results }
-      setCurrentValues(merged)
-      api.patch(`/devices/${device.id}/current-values`, { currentValues: merged }).catch(() => {})
-    }
-  }
-
-  async function resetAll() {
-    const allParams = groupsInScope.flatMap(g => g.params).filter(
-      p => isParamWritable(device, p) && p.default !== undefined && p.default !== null
-    )
-    if (allParams.length === 0) {
-      message.info('Нет параметров с заводскими значениями')
-      return
-    }
-    setReadingGroup('__all__')
-    let ok = 0
-    const results = {}
-    for (const param of allParams) {
-      try {
-        await api.post('/modbus/write', { deviceId: device.id, paramId: param.id, value: param.default })
-        results[param.id] = param.default
-        ok++
-      } catch { }
-    }
-    setGroupValues(prev => ({ ...prev, ...results }))
-    setReadingGroup(null)
-    message.success(`Сброшено ${ok} из ${allParams.length} параметров`)
-  }
-
   return (
     <>
       <Space style={{ marginBottom: 12, width: '100%' }}>
@@ -497,44 +488,50 @@ export default function ParamGroups({ device, modbusConnected, deviceRunning, on
         >
           Текущие параметры
         </Button>
-        {!onWrite && (
-          <Button
-            icon={<DownloadOutlined />}
-            disabled={!modbusConnected || readingGroup !== null}
-            loading={readingGroup === '__all__'}
-            onClick={readAll}
-          >
-            Прочитать все
+        {groupProgress ? (
+          <Button danger onClick={stopGroupedOperation}>
+            Остановить {groupProgress.kind === 'read' ? 'чтение' : groupProgress.kind === 'write' ? 'запись' : 'сброс'}
           </Button>
+        ) : (
+          <>
+            <Button
+              icon={<DownloadOutlined />}
+              disabled={!modbusConnected}
+              onClick={() => processAllGroups('read')}
+            >
+              Прочитать все
+            </Button>
+            <Button
+              icon={<UploadOutlined />}
+              disabled={!modbusConnected}
+              onClick={() => processAllGroups('write')}
+            >
+              Записать все
+            </Button>
+            <Popconfirm
+              title="Сброс всех параметров"
+              description="Записать заводские значения во все отображаемые параметры?"
+              okText="Сбросить всё"
+              cancelText="Отмена"
+              okButtonProps={{ danger: true }}
+              onConfirm={() => processAllGroups('reset')}
+            >
+              <Button icon={<RollbackOutlined />} danger disabled={!modbusConnected}>
+                Сбросить все до заводских
+              </Button>
+            </Popconfirm>
+          </>
         )}
-        {!onWrite && (
-          <Button
-            icon={<UploadOutlined />}
-            disabled={!modbusConnected || readingGroup !== null}
-            loading={readingGroup === '__all__'}
-            onClick={writeAll}
-          >
-            Записать все
-          </Button>
-        )}
-        {!onWrite && <Popconfirm
-          title="Сброс всех параметров"
-          description="Записать заводские значения во ВСЕ параметры устройства?"
-          okText="Сбросить всё"
-          cancelText="Отмена"
-          okButtonProps={{ danger: true }}
-          onConfirm={resetAll}
-        >
-          <Button
-            icon={<RollbackOutlined />}
-            danger
-            disabled={!modbusConnected || readingGroup !== null}
-            loading={readingGroup === '__all__'}
-          >
-            Сбросить все до заводских
-          </Button>
-        </Popconfirm>}
       </Space>
+
+      {groupProgress && (
+        <Progress
+          style={{ marginBottom: 12 }}
+          percent={Math.round(((groupProgress.index) / groupProgress.total) * 100)}
+          status="active"
+          format={() => `Группа ${groupProgress.index + 1} из ${groupProgress.total}: ${groupProgress.groupName}`}
+        />
+      )}
 
       <div style={{ marginBottom: 12, padding: '8px 10px', background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 6 }}>
         <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 6 }}>
