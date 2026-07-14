@@ -1,7 +1,11 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { EventEmitter } from 'events';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import ModbusRTU from 'modbus-serial';
 import { SerialPort } from 'serialport';
+
+const execAsync = promisify(exec);
 
 export interface ConnectOptions {
   portPath: string;
@@ -108,18 +112,70 @@ export class ModbusService implements OnModuleDestroy {
 
   async listPorts(): Promise<PortInfo[]> {
     const ports = await SerialPort.list();
-    const results = await Promise.all(ports.map(async p => {
-      const busy = await this.isPortBusy(p.path);
-      return {
+    const knownPaths = new Set(ports.map(p => p.path.toUpperCase()));
+    const extra = await this.listExtraWindowsPorts(knownPaths);
+
+    const results = await Promise.all([
+      ...ports.map(async p => ({
         path: p.path,
         manufacturer: p.manufacturer,
         serialNumber: p.serialNumber,
         vendorId: p.vendorId,
         productId: p.productId,
-        busy,
-      };
-    }));
+        busy: await this.isPortBusy(p.path),
+      })),
+      ...extra.map(async e => ({
+        path: e.path,
+        manufacturer: e.description,
+        busy: await this.isPortBusy(e.path),
+      })),
+    ]);
     return results;
+  }
+
+  /**
+   * SerialPort.list() на Windows находит устройства только в стандартном классе
+   * "Ports" (GUID_DEVCLASS_PORTS). Виртуальные драйверы вроде com0com регистрируют
+   * свои порты под собственным классом устройств (у com0com это "CNCPorts") — такие
+   * порты полностью рабочие (их видно в реестре SERIALCOMM), но SerialPort.list() их
+   * не находит. Здесь — резервный проход через WMI по ВСЕМ классам PnP-устройств,
+   * который ищет "(COMx)" в имени устройства и добавляет то, что не нашлось выше.
+   */
+  private async listExtraWindowsPorts(
+    knownPaths: Set<string>,
+  ): Promise<{ path: string; description: string }[]> {
+    if (process.platform !== 'win32') return [];
+    try {
+      // -EncodedCommand вместо -Command: exec() на Windows прогоняет строку через
+      // cmd.exe, который портит вложенные кавычки в -Command; Base64 полностью
+      // обходит эту проблему.
+      const script =
+        "Get-CimInstance Win32_PnPEntity | " +
+        "Where-Object { $_.Name -match '\\(COM[0-9]+\\)$' } | " +
+        "Select-Object Name | ConvertTo-Json -Compress";
+      const encoded = Buffer.from(script, 'utf16le').toString('base64');
+      const { stdout } = await execAsync(
+        `powershell -NoProfile -EncodedCommand ${encoded}`,
+        { timeout: 10000 }, // "холодный" Get-CimInstance может идти несколько секунд
+      );
+      const trimmed = stdout.trim();
+      if (!trimmed) return [];
+      const parsed = JSON.parse(trimmed);
+      const items: { Name?: string }[] = Array.isArray(parsed) ? parsed : [parsed];
+
+      const found: { path: string; description: string }[] = [];
+      for (const item of items) {
+        const match = /\((COM\d+)\)$/.exec(item.Name ?? '');
+        if (!match) continue;
+        const path = match[1];
+        if (knownPaths.has(path.toUpperCase())) continue;
+        knownPaths.add(path.toUpperCase());
+        found.push({ path, description: item.Name! });
+      }
+      return found;
+    } catch {
+      return [];
+    }
   }
 
   private isPortBusy(path: string): Promise<boolean> {
