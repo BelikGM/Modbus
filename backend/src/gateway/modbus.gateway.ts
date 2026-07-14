@@ -78,6 +78,14 @@ export class ModbusGateway
     this.projectsService.events.on('projects:changed', () => {
       this.server?.emit('projects:updated', this.projectsService.listProjects());
     });
+    // Срабатывает и на ручное переключение проекта, и на автосоздание проекта
+    // (например, при первом подключении к порту или определении устройств без
+    // выбранного проекта) — так фронт всегда узнаёт, какой проект стал активным,
+    // независимо от того, что именно его создало.
+    this.projectsService.events.on('project:changed', (id: string | null) => {
+      this.server?.emit('active:project:changed', { id });
+      this.server?.emit('projects:updated', this.projectsService.listProjects());
+    });
   }
 
   private async tryAutoConnect(): Promise<void> {
@@ -114,13 +122,16 @@ export class ModbusGateway
     this.stopPortWatch();
     try {
       await this.modbusService.connect(payload);
-      const activeProject = this.projectsService.getActiveProjectId();
-      if (activeProject) {
-        this.settingsService.saveProjectConnection(activeProject, {
-          portPath: payload.portPath,
-          baudRate: payload.baudRate,
-        });
+      let activeProject = this.projectsService.getActiveProjectId();
+      if (!activeProject) {
+        const meta = this.projectsService.createProject(this.projectsService.generateDefaultProjectName());
+        this.projectsService.setActiveProject(meta.id);
+        activeProject = meta.id;
       }
+      this.settingsService.saveProjectConnection(activeProject, {
+        portPath: payload.portPath,
+        baudRate: payload.baudRate,
+      });
       this.server.emit('modbus:status', this.buildStatus());
       return { success: true };
     } catch (e) {

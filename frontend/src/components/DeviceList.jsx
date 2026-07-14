@@ -168,7 +168,8 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
           {visibleDevices.length > 0 && (
             <Button
               size="small"
-              type="link"
+              color={allVisibleSelected ? 'red' : 'green'}
+              variant="link"
               style={{ padding: 0, fontSize: 12, height: 'auto' }}
               onClick={toggleSelectAllVisible}
             >

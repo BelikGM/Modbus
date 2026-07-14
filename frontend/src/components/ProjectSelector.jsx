@@ -33,6 +33,10 @@ export default function ProjectSelector({ onProjectChange, onProjectInit }) {
     load()
     socket.on('project:folder:mismatch', setMismatches)
     socket.on('projects:updated', (list) => setProjects(list))
+    socket.on('active:project:changed', ({ id }) => {
+      setActiveId(id)
+      onProjectChange?.(id)
+    })
     socket.on('port:required', async ({ projectId, lastPort }) => {
       const { data } = await api.get('/modbus/ports')
       setPorts(data)
@@ -42,6 +46,7 @@ export default function ProjectSelector({ onProjectChange, onProjectInit }) {
     return () => {
       socket.off('project:folder:mismatch', setMismatches)
       socket.off('projects:updated')
+      socket.off('active:project:changed')
       socket.off('port:required')
     }
   }, [])

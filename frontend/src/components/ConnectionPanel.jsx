@@ -66,8 +66,9 @@ export default function ConnectionPanel({ connected, reconnecting, reconnectAtte
     }, (res) => {
       setConnecting(false)
       if (res?.success) {
-        addLog('info', `Подключение к порту ${values.portPath}, ${values.baudRate} бод, ${values.dataBits}${values.parity[0].toUpperCase()}${values.stopBits}`)
         setOpen(false)
+        const parityLetter = (values.parity ?? 'none')[0].toUpperCase()
+        addLog('info', `Подключение к порту ${values.portPath}, ${values.baudRate} бод, ${values.dataBits ?? 8}${parityLetter}${values.stopBits ?? 1}`)
       } else {
         const msg = res?.error ?? 'Не удалось подключиться к порту'
         message.error(msg)

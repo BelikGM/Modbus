@@ -417,7 +417,8 @@ export default function BusScanner({ connected }) {
             <>
               <Divider style={{ margin: '4px 0' }} />
               <Button
-                type="primary"
+                color="green"
+                variant="solid"
                 icon={<PlusCircleOutlined />}
                 onClick={handleIdentify}
               >
