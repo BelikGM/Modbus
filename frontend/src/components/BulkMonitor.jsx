@@ -127,6 +127,7 @@ export default function BulkMonitor({ devices, modbusConnected }) {
         pagination={false}
         bordered
         scroll={{ x: 'max-content' }}
+        sticky
         columns={columns}
         dataSource={dataSource}
       />

@@ -228,6 +228,7 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
                         pagination={false}
                         bordered
                         scroll={{ x: 'max-content' }}
+                        sticky
                         columns={readResultsColumns}
                         dataSource={readResultsDataSource}
                       />
