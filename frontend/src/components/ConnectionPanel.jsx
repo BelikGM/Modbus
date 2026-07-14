@@ -170,7 +170,7 @@ export default function ConnectionPanel({ connected, reconnecting, reconnectAtte
               </Space>
             }
             rules={[{ required: true, message: 'Укажите порт' }]}
-            extra="Не видите нужный порт в списке (например, виртуальный com0com)? Впишите его имя вручную, напр. COM6"
+            extra="Не видите нужный порт в списке? Впишите его имя вручную, например COM6"
           >
             <AutoComplete
               options={portOptions}

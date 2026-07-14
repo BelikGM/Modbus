@@ -177,11 +177,13 @@ export default function ParamRow({ device, param, modbusConnected, deviceRunning
 
         {/* Заводское значение */}
         <div style={{ width: C.def, flexShrink: 0, overflow: 'hidden' }}>
-          <Typography.Text
-            style={{ fontSize: 12, color: '#888', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}
-          >
-            {defaultFormatted}
-          </Typography.Text>
+          <Tooltip title={param.default === undefined ? 'Не задано в шаблоне — это регистр команды/статуса или показание, а не хранимая настройка' : undefined}>
+            <Typography.Text
+              style={{ fontSize: 12, color: '#888', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', cursor: param.default === undefined ? 'help' : undefined }}
+            >
+              {defaultFormatted}
+            </Typography.Text>
+          </Tooltip>
         </div>
 
         {/* Значение на устройстве */}

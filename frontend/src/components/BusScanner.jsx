@@ -266,7 +266,7 @@ export default function BusScanner({ connected }) {
           {!connected && (
             <>
               <AutoComplete
-                placeholder="Выберите или впишите COM-порт (напр. COM6 для com0com)"
+                placeholder="Выберите или впишите COM-порт, например COM6"
                 style={{ width: '100%' }}
                 value={selectedPort}
                 onChange={setSelectedPort}
@@ -282,7 +282,7 @@ export default function BusScanner({ connected }) {
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 Порт не подключён — сначала переберём скорость/чётность/стоп-биты (8 скоростей × варианты чётности и стоп-бит),
                 как только что-то ответит на одном из первых адресов диапазона — останемся на этих настройках и просканируем весь диапазон.
-                Виртуальные порты (com0com) не всегда попадают в автообнаруженный список — впишите имя порта вручную.
+                Не видите нужный порт в списке? Впишите имя порта вручную.
               </Typography.Text>
             </>
           )}

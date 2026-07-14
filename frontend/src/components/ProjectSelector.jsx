@@ -375,7 +375,7 @@ export default function ProjectSelector({ onProjectChange, onProjectInit }) {
           )}
           <Typography.Text type="secondary">
             Выберите COM-порт для подключения к устройствам этого проекта. Если нужного порта нет
-            в списке (например, виртуальный com0com) — впишите его имя вручную.
+            в списке — впишите его имя вручную.
           </Typography.Text>
           <AutoComplete
             style={{ width: '100%' }}
