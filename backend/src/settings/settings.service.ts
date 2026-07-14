@@ -22,11 +22,12 @@ export interface ProjectConnection {
 export interface AppSettings {
   activeProject: string | null;
   siderSide: 'left' | 'right';
+  siderWidth?: number;
   deviceSettings?: Record<string, DeviceUISettings>;
   projectConnections?: Record<string, ProjectConnection>;
 }
 
-const DEFAULTS: AppSettings = { activeProject: null, siderSide: 'left', deviceSettings: {}, projectConnections: {} };
+const DEFAULTS: AppSettings = { activeProject: null, siderSide: 'left', siderWidth: 270, deviceSettings: {}, projectConnections: {} };
 
 @Injectable()
 export class SettingsService {

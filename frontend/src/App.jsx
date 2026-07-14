@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Layout, Typography, Empty, Button, Badge, Segmented, Tooltip } from 'antd'
 import { FileTextOutlined, ControlOutlined, BulbOutlined } from '@ant-design/icons'
 import DeviceList from './components/DeviceList'
@@ -22,11 +22,14 @@ export default function App() {
   const [devices, setDevices] = useState([])
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [siderSide, setSiderSide] = useState('left')
+  const [siderWidth, setSiderWidth] = useState(270)
   const [activeProjectId, setActiveProjectId] = useState(null)
+  const resizingRef = useRef(null)
 
   useEffect(() => {
     api.get('/settings').then(({ data }) => {
       if (data.siderSide) setSiderSide(data.siderSide)
+      if (data.siderWidth) setSiderWidth(data.siderWidth)
     }).catch(() => {})
   }, [])
 
@@ -37,6 +40,35 @@ export default function App() {
       return next
     })
   }
+
+  const SIDER_MIN_WIDTH = 56
+  const SIDER_MAX_WIDTH = 520
+
+  const startResize = useCallback((e) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = siderWidth
+    const sign = siderSide === 'right' ? -1 : 1
+    resizingRef.current = { startX, startWidth }
+
+    function onMove(ev) {
+      if (!resizingRef.current) return
+      const delta = (ev.clientX - resizingRef.current.startX) * sign
+      const next = Math.min(SIDER_MAX_WIDTH, Math.max(SIDER_MIN_WIDTH, resizingRef.current.startWidth + delta))
+      setSiderWidth(next)
+    }
+    function onUp() {
+      resizingRef.current = null
+      setSiderWidth(w => {
+        api.patch('/settings', { siderWidth: w }).catch(() => {})
+        return w
+      })
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }, [siderWidth, siderSide])
   const [connected, setConnected] = useState(false)
   const [reconnecting, setReconnecting] = useState(false)
   const [reconnectAttempt, setReconnectAttempt] = useState(0)
@@ -127,7 +159,7 @@ export default function App() {
       {mode === 'modbus' ? (
         <Layout style={{ flex: 1, minHeight: 0, flexDirection: siderSide === 'right' ? 'row-reverse' : 'row' }}>
           <Sider
-            width={270}
+            width={siderWidth}
             style={{
               background: '#fff',
               borderRight: siderSide === 'left' ? '1px solid #f0f0f0' : 'none',
@@ -135,22 +167,37 @@ export default function App() {
               display: 'flex',
               flexDirection: 'column',
               overflow: 'hidden',
+              position: 'relative',
             }}
           >
-            <div style={{ flexShrink: 0, padding: '12px 16px', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Typography.Text strong style={{ fontSize: 13, color: '#666' }}>
-                УСТРОЙСТВА
-              </Typography.Text>
-              <Button
-                type="text"
-                size="small"
-                title={siderSide === 'left' ? 'Переместить вправо' : 'Переместить влево'}
-                onClick={toggleSider}
-                style={{ color: '#999', fontSize: 14, padding: '0 4px' }}
-              >
-                {siderSide === 'left' ? '→' : '←'}
-              </Button>
-            </div>
+            <div
+              onMouseDown={startResize}
+              title="Потяните, чтобы изменить ширину"
+              style={{
+                position: 'absolute',
+                top: 0, bottom: 0,
+                [siderSide === 'right' ? 'left' : 'right']: -3,
+                width: 6,
+                cursor: 'col-resize',
+                zIndex: 10,
+              }}
+            />
+            {siderWidth >= 90 && (
+              <div style={{ flexShrink: 0, padding: '12px 16px', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Typography.Text strong style={{ fontSize: 13, color: '#666' }}>
+                  УСТРОЙСТВА
+                </Typography.Text>
+                <Button
+                  type="text"
+                  size="small"
+                  title={siderSide === 'left' ? 'Переместить вправо' : 'Переместить влево'}
+                  onClick={toggleSider}
+                  style={{ color: '#999', fontSize: 14, padding: '0 4px' }}
+                >
+                  {siderSide === 'left' ? '→' : '←'}
+                </Button>
+              </div>
+            )}
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
               <DeviceList
                 devices={devices}
@@ -158,6 +205,7 @@ export default function App() {
                 onSelectionChange={setSelectedIds}
                 connected={connected}
                 hasProject={!!activeProjectId}
+                sidebarWidth={siderWidth}
               />
             </div>
           </Sider>
