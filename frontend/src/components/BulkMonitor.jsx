@@ -127,7 +127,7 @@ export default function BulkMonitor({ devices, modbusConnected }) {
         pagination={false}
         bordered
         scroll={{ x: 'max-content' }}
-        sticky
+        sticky={{ getContainer: () => document.getElementById('app-scroll-content') || window }}
         columns={columns}
         dataSource={dataSource}
       />

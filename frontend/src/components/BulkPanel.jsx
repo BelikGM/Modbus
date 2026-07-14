@@ -149,6 +149,13 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
     .slice()
     .sort((a, b) => templateParamOrder.indexOf(a) - templateParamOrder.indexOf(b))
 
+  const paramToGroupName = new Map()
+  if (sameType) {
+    for (const g of templateDevice.groups) {
+      for (const p of g.params) paramToGroupName.set(p.id, g.name)
+    }
+  }
+
   const readResultsColumns = [
     {
       title: 'Параметр',
@@ -156,6 +163,10 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
       key: 'name',
       fixed: 'left',
       width: 220,
+      onCell: row => (row.isGroupHeader ? { colSpan: devices.length + 1, style: { background: '#fafafa' } } : {}),
+      render: (name, row) => row.isGroupHeader
+        ? <Typography.Text strong style={{ fontSize: 12 }}>{row.groupName}</Typography.Text>
+        : name,
     },
     ...devices.map(d => ({
       title: (
@@ -167,14 +178,22 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
       dataIndex: d.id,
       key: d.id,
       width: 130,
-      render: (_, row) => formatResult(bulkReadResults[d.id]?.[row.paramId]),
+      onCell: row => (row.isGroupHeader ? { colSpan: 0 } : {}),
+      render: (_, row) => (row.isGroupHeader ? null : formatResult(bulkReadResults[d.id]?.[row.paramId])),
     })),
   ]
 
-  const readResultsDataSource = readResultRows.map(paramId => {
+  const readResultsDataSource = []
+  let lastGroupName = null
+  for (const paramId of readResultRows) {
+    const groupName = paramToGroupName.get(paramId) ?? ''
+    if (groupName !== lastGroupName) {
+      readResultsDataSource.push({ key: `group-header-${groupName || paramId}`, isGroupHeader: true, groupName })
+      lastGroupName = groupName
+    }
     const name = devices.map(d => bulkReadResults[d.id]?.[paramId]?.name).find(Boolean) ?? paramId
-    return { key: paramId, paramId, name }
-  })
+    readResultsDataSource.push({ key: paramId, paramId, name })
+  }
 
   return (
     <div>
@@ -228,7 +247,7 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
                         pagination={false}
                         bordered
                         scroll={{ x: 'max-content' }}
-                        sticky
+                        sticky={{ getContainer: () => document.getElementById('app-scroll-content') || window }}
                         columns={readResultsColumns}
                         dataSource={readResultsDataSource}
                       />

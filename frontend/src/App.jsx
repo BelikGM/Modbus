@@ -210,7 +210,7 @@ export default function App() {
             </div>
           </Sider>
 
-          <Content style={{ padding: 24, background: '#fafafa', overflowY: 'auto', minHeight: 0 }}>
+          <Content id="app-scroll-content" style={{ padding: 24, background: '#fafafa', overflowY: 'auto', minHeight: 0 }}>
             {(() => {
               const selectedDevices = devices.filter(d => selectedIds.has(d.id))
               if (selectedIds.size > 1) {
