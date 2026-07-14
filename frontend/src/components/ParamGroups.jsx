@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Collapse, Button, Input, message, Typography, Popconfirm, Space, Modal, Table } from 'antd'
+import { Collapse, Button, Input, message, Typography, Popconfirm, Space, Modal, Table, Checkbox } from 'antd'
 import { DownloadOutlined, SearchOutlined, RollbackOutlined, HolderOutlined, HistoryOutlined, DatabaseOutlined, UploadOutlined } from '@ant-design/icons'
 import {
   DndContext,
@@ -105,6 +105,7 @@ export default function ParamGroups({ device, modbusConnected, deviceRunning, on
   }, [])
   const [cols, setCols]             = useState(DEFAULT_COLS)
   const [groupOrder, setGroupOrder] = useState(null)
+  const [visibleGroupIds, setVisibleGroupIds] = useState(new Set(device.groups.map(g => g.id)))
   const [pendingWrites, setPendingWrites] = useState({})
   const [fillStamp, setFillStamp] = useState(0)
   const [currentValues, setCurrentValues] = useState({})
@@ -127,7 +128,28 @@ export default function ParamGroups({ device, modbusConnected, deviceRunning, on
       latestCols.current = c
     }
     setGroupOrder(deviceSettings.groupOrder ?? null)
+    setVisibleGroupIds(
+      deviceSettings.visibleGroups
+        ? new Set(deviceSettings.visibleGroups)
+        : new Set(device.groups.map(g => g.id)),
+    )
   }, [deviceSettings])
+
+  function toggleGroupVisible(groupId, checked) {
+    setVisibleGroupIds(prev => {
+      const next = new Set(prev)
+      if (checked) next.add(groupId)
+      else next.delete(groupId)
+      saveDeviceSettings({ visibleGroups: Array.from(next) })
+      return next
+    })
+  }
+
+  function setAllGroupsVisible(checked) {
+    const next = checked ? new Set(device.groups.map(g => g.id)) : new Set()
+    setVisibleGroupIds(next)
+    saveDeviceSettings({ visibleGroups: Array.from(next) })
+  }
 
   useEffect(() => {
     setPendingWrites({})
@@ -186,6 +208,8 @@ export default function ParamGroups({ device, modbusConnected, deviceRunning, on
         return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
       })
     : device.groups
+
+  const groupsInScope = orderedGroups.filter(g => visibleGroupIds.has(g.id))
 
   function handleDragEnd(event) {
     const { active, over } = event
@@ -267,7 +291,7 @@ export default function ParamGroups({ device, modbusConnected, deviceRunning, on
   }
 
   async function writeAll() {
-    const allParams = device.groups.flatMap(g => g.params).filter(
+    const allParams = groupsInScope.flatMap(g => g.params).filter(
       p => isParamWritable(device, p) && latestPendingWrites.current[p.id] != null
     )
     if (allParams.length === 0) {
@@ -290,7 +314,7 @@ export default function ParamGroups({ device, modbusConnected, deviceRunning, on
   }
 
   const query = search.trim().toLowerCase()
-  const filteredGroups = orderedGroups
+  const filteredGroups = groupsInScope
     .map(group => ({
       ...group,
       params: query
@@ -404,7 +428,7 @@ export default function ParamGroups({ device, modbusConnected, deviceRunning, on
   }
 
   async function readAll() {
-    const allParams = device.groups.flatMap(g => g.params)
+    const allParams = groupsInScope.flatMap(g => g.params)
     setReadingGroup('__all__')
     const results = {}
     for (const param of allParams) {
@@ -424,7 +448,7 @@ export default function ParamGroups({ device, modbusConnected, deviceRunning, on
   }
 
   async function resetAll() {
-    const allParams = device.groups.flatMap(g => g.params).filter(
+    const allParams = groupsInScope.flatMap(g => g.params).filter(
       p => isParamWritable(device, p) && p.default !== undefined && p.default !== null
     )
     if (allParams.length === 0) {
@@ -511,6 +535,31 @@ export default function ParamGroups({ device, modbusConnected, deviceRunning, on
           </Button>
         </Popconfirm>}
       </Space>
+
+      <div style={{ marginBottom: 12, padding: '8px 10px', background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 6 }}>
+        <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 6 }}>
+          Отображаемые группы параметров (влияет на «Прочитать/Записать/Сбросить все»)
+        </Typography.Text>
+        <Space wrap size={[10, 4]}>
+          <Checkbox
+            checked={visibleGroupIds.size === device.groups.length}
+            indeterminate={visibleGroupIds.size > 0 && visibleGroupIds.size < device.groups.length}
+            onChange={e => setAllGroupsVisible(e.target.checked)}
+          >
+            <span style={{ fontSize: 12, fontWeight: 600 }}>Все</span>
+          </Checkbox>
+          {device.groups.map(group => (
+            <Checkbox
+              key={group.id}
+              checked={visibleGroupIds.has(group.id)}
+              onChange={e => toggleGroupVisible(group.id, e.target.checked)}
+            >
+              <span style={{ fontSize: 12 }}>{group.name}</span>
+            </Checkbox>
+          ))}
+        </Space>
+      </div>
+
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={filteredGroups.map(g => g.id)} strategy={verticalListSortingStrategy}>
           <div style={{ paddingLeft: 20 }}>

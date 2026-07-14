@@ -6,6 +6,7 @@ export interface DeviceUISettings {
   monitorOrder?: string[];
   monitorVisible?: string[];
   groupOrder?: string[];
+  visibleGroups?: string[];
   paramColWidths?: Record<string, number>;
   pendingWrites?: Record<string, any>;
 }
