@@ -2,6 +2,16 @@
   box-sizing: border-box;
 }
 
+/* antd оборачивает содержимое Layout.Sider в .ant-layout-sider-children
+   (height:100%, но без display:flex) — без этого правила внутренний
+   flex-контейнер (шапка "УСТРОЙСТВА" + прокручиваемый список) не мог
+   получить ограниченную высоту, и список просто обрезался без скролла. */
+.ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
 }

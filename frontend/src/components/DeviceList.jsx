@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { List, Typography, Badge, Avatar, Tag, Button, Modal, Form, Input, InputNumber, Select, Popconfirm, Tooltip, Checkbox, Collapse } from 'antd'
+import { List, Typography, Badge, Avatar, Tag, Button, Modal, Form, Input, InputNumber, Select, Popconfirm, Tooltip, Checkbox, Collapse, Space } from 'antd'
 import { LinkOutlined, DisconnectOutlined, PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons'
 import api from '../api'
 
@@ -11,6 +11,10 @@ const PARITY_OPTIONS = [
 
 const BAUD_OPTIONS = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200].map(v => ({ value: v, label: String(v) }))
 
+function deviceType(device) {
+  return (device.templateId ?? device.id ?? '').toLowerCase().includes('vh') ? 'vh' : 'pump'
+}
+
 export default function DeviceList({ devices, selectedIds, onSelectionChange, connected, hasProject }) {
   const [addOpen, setAddOpen]       = useState(false)
   const [editDevice, setEditDevice] = useState(null)
@@ -18,6 +22,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
   const [submitting, setSubmitting] = useState(false)
   const [addForm]                   = Form.useForm()
   const [editForm]                  = Form.useForm()
+  const [visibleTypes, setVisibleTypes] = useState(new Set(['pump', 'vh']))
 
   async function openAdd() {
     const { data } = await api.get('/devices/templates')
@@ -88,9 +93,21 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
     onSelectionChange(next)
   }
 
+  function toggleType(type, checked) {
+    setVisibleTypes(prev => {
+      const next = new Set(prev)
+      if (checked) next.add(type)
+      else next.delete(type)
+      return next
+    })
+  }
+
   const Icon = connected ? LinkOutlined : DisconnectOutlined
   const iconColor = connected ? '#52c41a' : '#ff4d4f'
-  const visibleDevices = devices.filter(d => !d.template)
+  const allDevices = devices.filter(d => !d.template)
+  const hasPump = allDevices.some(d => deviceType(d) === 'pump')
+  const hasVh   = allDevices.some(d => deviceType(d) === 'vh')
+  const visibleDevices = allDevices.filter(d => visibleTypes.has(deviceType(d)))
 
   return (
     <>
@@ -111,15 +128,47 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
         </Tooltip>
       </div>
 
+      {hasProject && allDevices.length > 0 && (
+        <div style={{ padding: '0 16px 8px', borderBottom: '1px solid #f5f5f5', marginBottom: 4 }}>
+          <Space size={10}>
+            <Checkbox
+              checked={visibleTypes.size === 2}
+              onChange={e => setVisibleTypes(e.target.checked ? new Set(['pump', 'vh']) : new Set())}
+              style={{ fontSize: 12 }}
+            >
+              <span style={{ fontSize: 12 }}>Все</span>
+            </Checkbox>
+            <Checkbox
+              checked={visibleTypes.has('pump')}
+              disabled={!hasPump}
+              onChange={e => toggleType('pump', e.target.checked)}
+            >
+              <span style={{ fontSize: 12 }}>Pump</span>
+            </Checkbox>
+            <Checkbox
+              checked={visibleTypes.has('vh')}
+              disabled={!hasVh}
+              onChange={e => toggleType('vh', e.target.checked)}
+            >
+              <span style={{ fontSize: 12 }}>VH</span>
+            </Checkbox>
+          </Space>
+        </div>
+      )}
+
       {!hasProject ? (
         <div style={{ padding: '24px 16px', textAlign: 'center' }}>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             Выберите проект в шапке приложения или создайте новый — затем можно будет добавлять устройства
           </Typography.Text>
         </div>
-      ) : visibleDevices.length === 0 ? (
+      ) : allDevices.length === 0 ? (
         <Typography.Text type="secondary" style={{ display: 'block', padding: '16px' }}>
           Нет устройств
+        </Typography.Text>
+      ) : visibleDevices.length === 0 ? (
+        <Typography.Text type="secondary" style={{ display: 'block', padding: '16px' }}>
+          Нет устройств выбранного типа
         </Typography.Text>
       ) : (
         <List

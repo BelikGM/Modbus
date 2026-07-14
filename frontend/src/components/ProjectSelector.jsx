@@ -72,9 +72,14 @@ export default function ProjectSelector({ onProjectChange, onProjectInit }) {
   async function handlePortConnect() {
     if (!selectedPort) return
     setConnecting(true)
-    socket.emit('connect:port', { portPath: selectedPort, baudRate })
-    setPortRequired(null)
-    setConnecting(false)
+    socket.emit('connect:port', { portPath: selectedPort, baudRate }, (res) => {
+      setConnecting(false)
+      if (res?.success) {
+        setPortRequired(null)
+      } else {
+        message.error(res?.error ?? 'Не удалось подключиться к порту')
+      }
+    })
   }
 
   async function handleCreate({ name }) {

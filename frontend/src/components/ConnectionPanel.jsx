@@ -11,6 +11,7 @@ export default function ConnectionPanel({ connected, reconnecting, reconnectAtte
   const [ports, setPorts] = useState([])
   const [loadingPorts, setLoadingPorts] = useState(false)
   const [scanning, setScanning] = useState(false)
+  const [connecting, setConnecting] = useState(false)
   const prevReconnecting = useRef(false)
 
   useEffect(() => {
@@ -55,15 +56,24 @@ export default function ConnectionPanel({ connected, reconnecting, reconnectAtte
   }
 
   function handleConnect(values) {
+    setConnecting(true)
     socket.emit('connect:port', {
       portPath: values.portPath,
       baudRate: values.baudRate,
       dataBits: values.dataBits,
       stopBits: values.stopBits,
       parity: values.parity,
+    }, (res) => {
+      setConnecting(false)
+      if (res?.success) {
+        addLog('info', `Подключение к порту ${values.portPath}, ${values.baudRate} бод, ${values.dataBits}${values.parity[0].toUpperCase()}${values.stopBits}`)
+        setOpen(false)
+      } else {
+        const msg = res?.error ?? 'Не удалось подключиться к порту'
+        message.error(msg)
+        addLog('error', `Ошибка подключения: ${msg}`)
+      }
     })
-    addLog('info', `Подключение к порту ${values.portPath}, ${values.baudRate} бод, ${values.dataBits}${values.parity[0].toUpperCase()}${values.stopBits}`)
-    setOpen(false)
   }
 
   function handleDisconnect() {
@@ -140,10 +150,10 @@ export default function ConnectionPanel({ connected, reconnecting, reconnectAtte
               Автопоиск
             </Button>
           </Tooltip>,
-          <Button key="cancel" onClick={() => setOpen(false)}>
+          <Button key="cancel" onClick={() => setOpen(false)} disabled={connecting}>
             Отмена
           </Button>,
-          <Button key="connect" type="primary" onClick={() => form.submit()}>
+          <Button key="connect" type="primary" loading={connecting} onClick={() => form.submit()}>
             Подключить
           </Button>,
         ]}
