@@ -172,7 +172,7 @@ export default function Monitor({ device, modbusConnected }) {
 
   useEffect(() => {
     return () => {
-      socket.emit('monitor:stop')
+      socket.emit('monitor:stop', { deviceId: device.id })
       setRunning(false)
       setData({})
       setHistory({})
@@ -182,7 +182,7 @@ export default function Monitor({ device, modbusConnected }) {
 
   function toggle() {
     if (running) {
-      socket.emit('monitor:stop')
+      socket.emit('monitor:stop', { deviceId: device.id })
       setRunning(false)
       setData({})
       setHistory({})

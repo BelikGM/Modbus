@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Space, Typography, Tag, Alert, message } from 'antd'
+import { Space, Typography, Tag, Alert, message, Tabs } from 'antd'
 import { CloseOutlined } from '@ant-design/icons'
 import api from '../api'
 import ParamGroups from './ParamGroups'
+import BulkMonitor from './BulkMonitor'
 import { isParamWritable } from '../access'
 import { useDeviceSettings } from '../useDeviceSettings'
 
@@ -119,15 +120,31 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
           description={`Выбраны устройства разных шаблонов (${templateIds.join(', ')}) — у них разные карты регистров, групповое чтение/запись для них не имеют смысла и могут записать не те значения не в те регистры. Выберите только однотипные устройства (снимите лишние галочки в списке слева).`}
         />
       ) : (
-        <ParamGroups
-          device={devices[0]}
-          modbusConnected={modbusConnected}
-          onWrite={handleBulkWrite}
-          onReadGroup={handleBulkReadGroup}
-          onWriteGroup={handleBulkWriteGroup}
-          onResetGroup={handleBulkResetGroup}
-          visibleGroupIds={visibleGroupIds}
-          onVisibleGroupIdsChange={handleVisibleGroupIdsChange}
+        <Tabs
+          defaultActiveKey="params"
+          items={[
+            {
+              key: 'params',
+              label: 'Параметры',
+              children: (
+                <ParamGroups
+                  device={devices[0]}
+                  modbusConnected={modbusConnected}
+                  onWrite={handleBulkWrite}
+                  onReadGroup={handleBulkReadGroup}
+                  onWriteGroup={handleBulkWriteGroup}
+                  onResetGroup={handleBulkResetGroup}
+                  visibleGroupIds={visibleGroupIds}
+                  onVisibleGroupIdsChange={handleVisibleGroupIdsChange}
+                />
+              ),
+            },
+            {
+              key: 'monitor',
+              label: 'Монитор',
+              children: <BulkMonitor devices={devices} modbusConnected={modbusConnected} />,
+            },
+          ]}
         />
       )}
     </div>

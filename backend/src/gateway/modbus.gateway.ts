@@ -25,7 +25,7 @@ export class ModbusGateway
   @WebSocketServer()
   server: Server;
 
-  private monitorInterval: NodeJS.Timeout | null = null;
+  private monitorIntervals = new Map<string, NodeJS.Timeout>();
   private scanning = false;
   private scanCancelled = false;
   private autoDetecting = false;
@@ -437,12 +437,15 @@ export class ModbusGateway
   }
 
   @SubscribeMessage('monitor:stop')
-  handleMonitorStop() {
-    this.stopMonitor();
+  handleMonitorStop(
+    @MessageBody() payload?: { deviceId?: string },
+  ) {
+    if (payload?.deviceId) this.stopMonitorFor(payload.deviceId);
+    else this.stopMonitor();
   }
 
   private startMonitor(deviceId: string, paramIds?: string[]) {
-    this.stopMonitor();
+    this.stopMonitorFor(deviceId);
 
     const device = this.devicesService.getById(deviceId);
     if (!device) return;
@@ -456,7 +459,7 @@ export class ModbusGateway
 
     const slaveId = device.connection.slaveId ?? 1;
 
-    this.monitorInterval = setInterval(async () => {
+    const interval = setInterval(async () => {
       if (!this.modbusService.isConnected()) return;
 
       const data: Record<string, any> = {};
@@ -481,12 +484,25 @@ export class ModbusGateway
 
       this.server.emit('monitor:data', { deviceId, data });
     }, 1000);
+
+    this.monitorIntervals.set(deviceId, interval);
   }
 
-  private stopMonitor() {
-    if (this.monitorInterval) {
-      clearInterval(this.monitorInterval);
-      this.monitorInterval = null;
+  // Останавливает мониторинг одного устройства (не трогая остальные — несколько
+  // устройств могут мониториться параллельно, например из BulkMonitor).
+  private stopMonitorFor(deviceId: string) {
+    const interval = this.monitorIntervals.get(deviceId);
+    if (interval) {
+      clearInterval(interval);
+      this.monitorIntervals.delete(deviceId);
     }
+  }
+
+  // Останавливает мониторинг ВСЕХ устройств сразу — используется там, где меняется
+  // само соединение с шиной (скан, отключение, смена проекта и т.п.) и продолжать
+  // читать регистры больше нельзя ни для одного устройства.
+  private stopMonitor() {
+    for (const interval of this.monitorIntervals.values()) clearInterval(interval);
+    this.monitorIntervals.clear();
   }
 }
