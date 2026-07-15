@@ -391,6 +391,11 @@ export default function ParamGroups({
     label: group.name,
     extra: (
       <div style={{ display: 'flex', gap: 6 }} onClick={e => e.stopPropagation()}>
+        {readingGroup === group.id && (
+          <Button size="small" danger onClick={stopGroupedOperation}>
+            Остановить
+          </Button>
+        )}
         <Button
           size="small"
           icon={<DownloadOutlined />}
