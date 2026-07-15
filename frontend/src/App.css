@@ -12,6 +12,14 @@
   overflow: hidden;
 }
 
+/* Строка-разделитель группы в таблице результатов группового чтения —
+   без colSpan (он ломает fixed:'left' колонку при горизонтальном скролле,
+   строка-заголовок группы "пропадала" при прокрутке вправо). */
+.group-header-row td {
+  background: #fafafa !important;
+  font-weight: 600;
+}
+
 body {
   margin: 0;
 }

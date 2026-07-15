@@ -98,18 +98,23 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
     message.success(`Записано на ${ok} из ${devices.length} устройств`)
   }
 
+  const paramToGroup = new Map() // paramId -> { id, name }
+  if (sameType) {
+    for (const g of templateDevice.groups) {
+      for (const p of g.params) paramToGroup.set(p.id, { id: g.id, name: g.name })
+    }
+  }
+
+  // Показываем только параметры групп, которые СЕЙЧАС отмечены галочками —
+  // если группу сняли с отображения (или она уже не в выборке), её старые
+  // результаты чтения пропадают из таблицы сами, без явной очистки состояния
+  // (что удобно: если галочку вернуть обратно, кэш уже тут).
   const readResultParamIds = [...new Set(devices.flatMap(d => Object.keys(bulkReadResults[d.id] ?? {})))]
+    .filter(paramId => visibleGroupIds.has(paramToGroup.get(paramId)?.id))
   const templateParamOrder = sameType ? templateDevice.groups.flatMap(g => g.params.map(p => p.id)) : []
   const readResultRows = readResultParamIds
     .slice()
     .sort((a, b) => templateParamOrder.indexOf(a) - templateParamOrder.indexOf(b))
-
-  const paramToGroupName = new Map()
-  if (sameType) {
-    for (const g of templateDevice.groups) {
-      for (const p of g.params) paramToGroupName.set(p.id, g.name)
-    }
-  }
 
   const readResultsColumns = [
     {
@@ -118,7 +123,6 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
       key: 'name',
       fixed: 'left',
       width: 220,
-      onCell: row => (row.isGroupHeader ? { colSpan: devices.length + 1, style: { background: '#fafafa' } } : {}),
       render: (name, row) => row.isGroupHeader
         ? <Typography.Text strong style={{ fontSize: 12 }}>{row.groupName}</Typography.Text>
         : name,
@@ -133,7 +137,6 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
       dataIndex: d.id,
       key: d.id,
       width: 130,
-      onCell: row => (row.isGroupHeader ? { colSpan: 0 } : {}),
       render: (_, row) => (row.isGroupHeader ? null : formatResult(bulkReadResults[d.id]?.[row.paramId])),
     })),
   ]
@@ -141,7 +144,7 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
   const readResultsDataSource = []
   let lastGroupName = null
   for (const paramId of readResultRows) {
-    const groupName = paramToGroupName.get(paramId) ?? ''
+    const groupName = paramToGroup.get(paramId)?.name ?? ''
     if (groupName !== lastGroupName) {
       readResultsDataSource.push({ key: `group-header-${groupName || paramId}`, isGroupHeader: true, groupName })
       lastGroupName = groupName
@@ -201,8 +204,8 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
                         size="small"
                         pagination={false}
                         bordered
-                        scroll={{ x: 'max-content' }}
-                        sticky={{ getContainer: () => document.getElementById('app-scroll-content') || window }}
+                        scroll={{ x: 'max-content', y: 480 }}
+                        rowClassName={row => (row.isGroupHeader ? 'group-header-row' : '')}
                         columns={readResultsColumns}
                         dataSource={readResultsDataSource}
                       />

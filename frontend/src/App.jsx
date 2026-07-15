@@ -121,8 +121,13 @@ export default function App() {
           background: '#001529',
         }}
       >
+        <img
+          src="/fbest-logo.png"
+          alt="Fbest"
+          style={{ height: 36, background: '#fff', borderRadius: 4, padding: 4 }}
+        />
         <Typography.Title level={4} style={{ color: '#fff', margin: 0, whiteSpace: 'nowrap' }}>
-          Modbus Controller
+          Fbest Controller
         </Typography.Title>
         <Segmented
           value={mode}

@@ -236,7 +236,13 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     this.projectsService.writeInstance(projectId, updated);
     this.instances.set(newId, updated);
 
-    return this.merge(updated)!;
+    const merged = this.merge(updated)!;
+    // Важно эмитить и когда id НЕ поменялся (правка slaveId/baudRate/dataBits/
+    // stopBits/parity без переименования) — иначе фронт узнавал об изменении
+    // только косвенно, при следующем несвязанном событии (например при
+    // добавлении другого устройства), и правки казались "не сохранившимися".
+    this.events.emit('device:changed', merged);
+    return merged;
   }
 
   getDevicePendingWrites(id: string): Record<string, any> {
