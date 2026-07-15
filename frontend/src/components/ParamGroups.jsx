@@ -454,6 +454,7 @@ export default function ParamGroups({
               currentValue={currentValues[param.id]}
               currentFillStamp={currentFillStamp}
               onReadValue={handleReadValue}
+              hideDeviceValue={effectiveDeviceIds.length > 1}
             />
           ))}
         </div>

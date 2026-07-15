@@ -17,6 +17,8 @@ export default function BulkMonitor({ devices, modbusConnected }) {
   const [dataByDevice, setDataByDevice] = useState({}) // { [deviceId]: { [paramId]: entry } }
   const devicesRef = useRef(devices)
   useEffect(() => { devicesRef.current = devices })
+  const runningRef = useRef(false)
+  useEffect(() => { runningRef.current = running }, [running])
 
   // Параметры мониторинга общие для всех устройств — гарантированно одна и та же
   // карта регистров, т.к. BulkMonitor рендерится только когда все выбранные ПЧ
@@ -29,6 +31,11 @@ export default function BulkMonitor({ devices, modbusConnected }) {
 
   useEffect(() => {
     function onMonitorData({ deviceId, data }) {
+      // Раунд-робин цикл на бэкенде мог начать читать это устройство ДО того,
+      // как обработалась остановка — без этой проверки "хвостовой" ответ
+      // мог прилететь уже после setDataByDevice({}) и вернуть одну колонку
+      // с устаревшим значением.
+      if (!runningRef.current) return
       if (!devicesRef.current.some(d => d.id === deviceId)) return
       setDataByDevice(prev => ({ ...prev, [deviceId]: data }))
     }
@@ -126,7 +133,7 @@ export default function BulkMonitor({ devices, modbusConnected }) {
         size="small"
         pagination={false}
         bordered
-        scroll={{ x: 'max-content', y: 480 }}
+        scroll={{ x: 'max-content', y: 'calc(100vh - 280px)' }}
         columns={columns}
         dataSource={dataSource}
       />

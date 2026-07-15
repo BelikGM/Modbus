@@ -38,7 +38,7 @@ function formatValue(type, val, unit, options) {
 
 const DEFAULT_COLS = { id: 90, desc: 220, def: 120, cur: 150, write: 290 }
 
-export default function ParamRow({ device, param, modbusConnected, deviceRunning, injectedValue, cols, onWrite, onClearGroupValue, pendingWriteValue, onPendingWriteChange, fillStamp, currentValue, currentFillStamp, onReadValue }) {
+export default function ParamRow({ device, param, modbusConnected, deviceRunning, injectedValue, cols, onWrite, onClearGroupValue, pendingWriteValue, onPendingWriteChange, fillStamp, currentValue, currentFillStamp, onReadValue, hideDeviceValue }) {
   const [value, setValue]         = useState(null)
   const [bitState, setBitState]   = useState({})
   const [editValue, setEditValue] = useState(null)
@@ -188,7 +188,11 @@ export default function ParamRow({ device, param, modbusConnected, deviceRunning
 
         {/* Значение на устройстве */}
         <div style={{ width: C.cur, flexShrink: 0 }}>
-          {reading ? <Spin size="small" /> : (
+          {hideDeviceValue ? (
+            <Tooltip title="Выбрано несколько устройств — значения по каждому смотрите в таблице результатов выше">
+              <Typography.Text style={{ fontSize: 12, color: '#bbb', cursor: 'help' }}>—</Typography.Text>
+            </Tooltip>
+          ) : reading ? <Spin size="small" /> : (
             !isBitmask && (
               <Typography.Text style={{
                 fontSize: 12,

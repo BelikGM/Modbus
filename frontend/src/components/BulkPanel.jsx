@@ -85,6 +85,10 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
   function handleVisibleGroupIdsChange(next) {
     setVisibleGroupIds(next)
     saveDeviceSettings({ visibleGroups: Array.from(next) })
+    // При любом изменении набора отображаемых групп таблицу результатов чтения
+    // очищаем целиком — даже если это та же самая единственная группа, что и
+    // была, старые значения не должны "мелькать" до нового чтения.
+    setBulkReadResults({})
   }
 
   async function handleBulkWrite(paramId, value) {
@@ -204,7 +208,7 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
                         size="small"
                         pagination={false}
                         bordered
-                        scroll={{ x: 'max-content', y: 480 }}
+                        scroll={{ x: 'max-content', y: 'calc(100vh - 280px)' }}
                         rowClassName={row => (row.isGroupHeader ? 'group-header-row' : '')}
                         columns={readResultsColumns}
                         dataSource={readResultsDataSource}
