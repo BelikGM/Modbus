@@ -31,6 +31,9 @@ export class ModbusGateway
   private autoDetecting = false;
   private autoDetectCancelled = false;
 
+  private bulkOpRunning = false;
+  private bulkOpCancelled = false;
+
   private reconnectTimer: NodeJS.Timeout | null = null;
   private reconnectAttempt = 0;
 
@@ -515,5 +518,114 @@ export class ModbusGateway
   private stopMonitor() {
     for (const interval of this.monitorIntervals.values()) clearInterval(interval);
     this.monitorIntervals.clear();
+  }
+
+  // ─── Групповое чтение/запись (несколько устройств × несколько параметров) ──
+  //
+  // Раньше это делалось с фронта отдельным HTTP-запросом на каждую пару
+  // (устройство, параметр) — при 8 устройствах × 8 параметрах это 64
+  // последовательных HTTP round-trip'а. Сам цикл теперь выполняется тут, на
+  // бэкенде, одним WebSocket-запросом — так же, как уже работает monitor:start.
+  // Это одновременно и быстрее (нет накладных расходов HTTP на каждый параметр),
+  // и отмена ("Остановить") реагирует мгновенно между соседними регистрами,
+  // а не только между групповыми HTTP-вызовами с фронта.
+
+  @SubscribeMessage('bulk:read:start')
+  async handleBulkReadStart(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { deviceIds: string[]; paramIds: string[] },
+  ) {
+    if (this.bulkOpRunning) {
+      client.emit('bulk:op:error', { message: 'Групповая операция уже выполняется' });
+      return;
+    }
+    this.bulkOpRunning = true;
+    this.bulkOpCancelled = false;
+    const total = payload.deviceIds.length * payload.paramIds.length;
+    let done = 0;
+    let ok = 0;
+
+    outer:
+    for (const deviceId of payload.deviceIds) {
+      const device = this.devicesService.getById(deviceId);
+      if (!device) { done += payload.paramIds.length; continue; }
+      const slaveId = device.connection.slaveId ?? 1;
+      const allParams = device.groups.flatMap(g => g.params);
+
+      for (const paramId of payload.paramIds) {
+        if (this.bulkOpCancelled) break outer;
+        const param = allParams.find(p => p.id === paramId);
+        if (!param) { done++; continue; }
+        try {
+          const rawValue = await this.modbusService.readRegister(param.register, slaveId);
+          client.emit('bulk:op:progress', {
+            kind: 'read', deviceId, paramId,
+            value: rawValue * (param.scale ?? 1), unit: param.unit, name: param.name,
+          });
+          ok++;
+        } catch (e) {
+          client.emit('bulk:op:progress', {
+            kind: 'read', deviceId, paramId, name: param.name, error: (e as Error).message,
+          });
+        }
+        done++;
+      }
+    }
+
+    this.bulkOpRunning = false;
+    client.emit('bulk:op:done', { kind: 'read', done, ok, total, cancelled: this.bulkOpCancelled });
+  }
+
+  @SubscribeMessage('bulk:write:start')
+  async handleBulkWriteStart(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { deviceIds: string[]; values: Record<string, number> },
+  ) {
+    if (this.bulkOpRunning) {
+      client.emit('bulk:op:error', { message: 'Групповая операция уже выполняется' });
+      return;
+    }
+    this.bulkOpRunning = true;
+    this.bulkOpCancelled = false;
+    const paramIds = Object.keys(payload.values);
+    const total = payload.deviceIds.length * paramIds.length;
+    let done = 0;
+    let ok = 0;
+
+    outer:
+    for (const deviceId of payload.deviceIds) {
+      const device = this.devicesService.getById(deviceId);
+      if (!device) { done += paramIds.length; continue; }
+      const slaveId = device.connection.slaveId ?? 1;
+      const allParams = device.groups.flatMap(g => g.params);
+
+      for (const paramId of paramIds) {
+        if (this.bulkOpCancelled) break outer;
+        const param = allParams.find(p => p.id === paramId);
+        if (!param || !this.devicesService.isParamWritable(device, param)) { done++; continue; }
+        const rawValue = Math.round(payload.values[paramId] / (param.scale ?? 1));
+        try {
+          await this.modbusService.writeRegister(param.register, rawValue, slaveId);
+          client.emit('bulk:op:progress', {
+            kind: 'write', deviceId, paramId,
+            value: payload.values[paramId], unit: param.unit, name: param.name,
+          });
+          ok++;
+        } catch (e) {
+          client.emit('bulk:op:progress', {
+            kind: 'write', deviceId, paramId, name: param.name, error: (e as Error).message,
+          });
+        }
+        done++;
+      }
+    }
+
+    this.bulkOpRunning = false;
+    client.emit('bulk:op:done', { kind: 'write', done, ok, total, cancelled: this.bulkOpCancelled });
+  }
+
+  @SubscribeMessage('bulk:op:cancel')
+  handleBulkOpCancel() {
+    this.bulkOpCancelled = true;
   }
 }

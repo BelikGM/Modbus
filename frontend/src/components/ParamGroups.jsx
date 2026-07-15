@@ -17,6 +17,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import ParamRow from './ParamRow'
 import api from '../api'
+import socket from '../socket'
 import { useDeviceSettings } from '../useDeviceSettings'
 import { isParamWritable } from '../access'
 
@@ -92,14 +93,17 @@ function ParamTableHeader({ cols, onResizeStart }) {
 }
 
 export default function ParamGroups({
-  device, modbusConnected, deviceRunning, onWrite, onReadGroup, onResetGroup, onWriteGroup,
+  device, deviceIds, modbusConnected, deviceRunning, onWrite,
   visibleGroupIds: controlledVisibleGroupIds, onVisibleGroupIdsChange,
 }) {
+  const effectiveDeviceIds = deviceIds ?? [device.id]
   const [readingGroup, setReadingGroup] = useState(null)
   const [groupValues, setGroupValues]   = useState({})
   const [search, setSearch]             = useState('')
   const [groupProgress, setGroupProgress] = useState(null) // { index, total, groupName, kind }
+  const [opProgress, setOpProgress] = useState(null) // { done, total } — живой прогресс текущего runBulkOp
   const [openGroupIds, setOpenGroupIds] = useState(() => new Set(device.groups[0] ? [device.groups[0].id] : []))
+  const latestGroupValues = useRef({})
 
   const expandGroup = useCallback((groupId) => {
     setOpenGroupIds(prev => (prev.has(groupId) ? prev : new Set(prev).add(groupId)))
@@ -264,23 +268,62 @@ export default function ParamGroups({
     document.addEventListener('mouseup', onUp)
   }, [cols])
 
+  const bulkCancelRef = useRef(false)
+
+  function stopGroupedOperation() {
+    bulkCancelRef.current = true
+    socket.emit('bulk:op:cancel')
+  }
+
+  // Единый механизм группового чтения/записи: один WebSocket-запрос, сервер сам
+  // проходит по всем (устройство × параметр) и шлёт прогресс по каждому — вместо
+  // отдельного HTTP-запроса на каждую пару с фронта (было в разы медленнее и
+  // "Остановить" реагировало только между уже запущенными HTTP-вызовами).
+  function runBulkOp(kind, ids, payload) {
+    const total = kind === 'read' ? ids.length * payload.length : ids.length * Object.keys(payload).length
+    setOpProgress({ done: 0, total })
+    return new Promise(resolve => {
+      let done = 0
+      function onProgress(p) {
+        if (p.kind !== kind || !ids.includes(p.deviceId)) return
+        done++
+        setOpProgress({ done, total })
+        if (!p.error) {
+          setGroupValues(prev => {
+            const next = { ...prev, [p.paramId]: p.value }
+            latestGroupValues.current = next
+            return next
+          })
+        }
+      }
+      function onDone(d) {
+        if (d.kind !== kind) return
+        socket.off('bulk:op:progress', onProgress)
+        socket.off('bulk:op:done', onDone)
+        setOpProgress(null)
+        resolve(d)
+      }
+      socket.on('bulk:op:progress', onProgress)
+      socket.on('bulk:op:done', onDone)
+      if (kind === 'read') socket.emit('bulk:read:start', { deviceIds: ids, paramIds: payload })
+      else socket.emit('bulk:write:start', { deviceIds: ids, values: payload })
+    })
+  }
+
   async function readGroup(group, e) {
-    e.stopPropagation()
+    e?.stopPropagation()
     expandGroup(group.id)
     setReadingGroup(group.id)
-    const results = {}
-    for (const param of group.params) {
-      if (bulkCancelRef.current) break
-      try {
-        const { data } = await api.post('/modbus/read', { deviceId: device.id, paramId: param.id })
-        results[param.id] = data.value
-      } catch { }
-    }
-    setGroupValues(prev => ({ ...prev, ...results }))
+    const paramIds = group.params.map(p => p.id)
+    const result = await runBulkOp('read', effectiveDeviceIds, paramIds)
     setReadingGroup(null)
-    message.success(`Группа ${group.id} прочитана`)
-    if (Object.keys(results).length > 0) {
-      const merged = { ...latestCurrentValues.current, ...results }
+    if (result.cancelled) message.info(`Остановлено: группа «${group.name}» прочитана частично (${result.ok}/${result.total})`)
+    else message.success(`Группа «${group.name}» прочитана (${result.ok}/${result.total})`)
+    if (effectiveDeviceIds.length === 1) {
+      const merged = { ...latestCurrentValues.current }
+      for (const paramId of paramIds) {
+        if (latestGroupValues.current[paramId] !== undefined) merged[paramId] = latestGroupValues.current[paramId]
+      }
       setCurrentValues(merged)
       latestCurrentValues.current = merged
       api.patch(`/devices/${device.id}/current-values`, { currentValues: merged }).catch(() => {})
@@ -288,35 +331,22 @@ export default function ParamGroups({
   }
 
   async function writeGroup(group, e) {
-    e.stopPropagation()
+    e?.stopPropagation()
     const toWrite = group.params.filter(
       p => isParamWritable(device, p) && latestPendingWrites.current[p.id] != null
     )
     if (toWrite.length === 0) {
-      message.info(`В группе ${group.id} нет значений для записи`)
+      message.info(`В группе «${group.name}» нет значений для записи`)
       return
     }
     expandGroup(group.id)
     setReadingGroup(group.id)
-    let ok = 0
-    const results = {}
-    for (const param of toWrite) {
-      if (bulkCancelRef.current) break
-      try {
-        await api.post('/modbus/write', { deviceId: device.id, paramId: param.id, value: latestPendingWrites.current[param.id] })
-        results[param.id] = latestPendingWrites.current[param.id]
-        ok++
-      } catch { }
-    }
-    setGroupValues(prev => ({ ...prev, ...results }))
+    const values = {}
+    for (const p of toWrite) values[p.id] = latestPendingWrites.current[p.id]
+    const result = await runBulkOp('write', effectiveDeviceIds, values)
     setReadingGroup(null)
-    message.success(`Записано ${ok} из ${toWrite.length} параметров группы ${group.id}`)
-  }
-
-  const bulkCancelRef = useRef(false)
-
-  function stopGroupedOperation() {
-    bulkCancelRef.current = true
+    if (result.cancelled) message.info(`Остановлено: группа «${group.name}» записана частично (${result.ok}/${result.total})`)
+    else message.success(`Записано ${result.ok} из ${result.total} (группа «${group.name}»)`)
   }
 
   async function processAllGroups(kind) {
@@ -325,27 +355,15 @@ export default function ParamGroups({
       return
     }
     bulkCancelRef.current = false
-    setGroupProgress({ index: 0, total: groupsInScope.length, groupName: groupsInScope[0].name, kind })
     let processed = 0
     for (let i = 0; i < groupsInScope.length; i++) {
       if (bulkCancelRef.current) break
       const group = groupsInScope[i]
       setGroupProgress({ index: i, total: groupsInScope.length, groupName: group.name, kind })
-      expandGroup(group.id)
-      setReadingGroup(group.id)
       const fakeEvent = { stopPropagation: () => {} }
-      const isCancelled = () => bulkCancelRef.current
-      if (kind === 'read') {
-        if (onReadGroup) await onReadGroup(group, isCancelled)
-        else await readGroup(group, fakeEvent)
-      } else if (kind === 'write') {
-        if (onWriteGroup) await onWriteGroup(group, latestPendingWrites.current, isCancelled)
-        else await writeGroup(group, fakeEvent)
-      } else {
-        if (onResetGroup) await onResetGroup(group, isCancelled)
-        else await resetGroup(group, fakeEvent)
-      }
-      setReadingGroup(null)
+      if (kind === 'read') await readGroup(group, fakeEvent)
+      else if (kind === 'write') await writeGroup(group, fakeEvent)
+      else await resetGroup(group, fakeEvent)
       processed++
     }
     setGroupProgress(null)
@@ -378,11 +396,7 @@ export default function ParamGroups({
           icon={<DownloadOutlined />}
           loading={readingGroup === group.id}
           disabled={!modbusConnected || (readingGroup !== null && readingGroup !== group.id)}
-          onClick={async e => {
-            expandGroup(group.id)
-            if (onReadGroup) { setReadingGroup(group.id); await onReadGroup(group, () => false); setReadingGroup(null) }
-            else readGroup(group, e)
-          }}
+          onClick={e => readGroup(group, e)}
         >
           Прочитать группу
         </Button>
@@ -391,12 +405,7 @@ export default function ParamGroups({
           icon={<UploadOutlined />}
           disabled={!modbusConnected || readingGroup !== null}
           loading={readingGroup === group.id}
-          onClick={async e => {
-            e.stopPropagation()
-            expandGroup(group.id)
-            if (onWriteGroup) { setReadingGroup(group.id); await onWriteGroup(group, latestPendingWrites.current, () => false); setReadingGroup(null) }
-            else writeGroup(group, e)
-          }}
+          onClick={e => writeGroup(group, e)}
         >
           Записать группу
         </Button>
@@ -406,11 +415,7 @@ export default function ParamGroups({
           okText="Сбросить"
           cancelText="Отмена"
           okButtonProps={{ danger: true }}
-          onConfirm={async e => {
-            expandGroup(group.id)
-            if (onResetGroup) { setReadingGroup(group.id); await onResetGroup(group, () => false); setReadingGroup(null) }
-            else resetGroup(group, e ?? { stopPropagation: () => {} })
-          }}
+          onConfirm={e => resetGroup(group, e ?? { stopPropagation: () => {} })}
         >
           <Button
             size="small"
@@ -452,7 +457,7 @@ export default function ParamGroups({
   }))
 
   async function resetGroup(group, e) {
-    e.stopPropagation()
+    e?.stopPropagation()
     const toWrite = group.params.filter(
       p => isParamWritable(device, p) && p.default !== undefined && p.default !== null
     )
@@ -462,19 +467,12 @@ export default function ParamGroups({
     }
     expandGroup(group.id)
     setReadingGroup(group.id)
-    let ok = 0
-    const results = {}
-    for (const param of toWrite) {
-      if (bulkCancelRef.current) break
-      try {
-        await api.post('/modbus/write', { deviceId: device.id, paramId: param.id, value: param.default })
-        results[param.id] = param.default
-        ok++
-      } catch { }
-    }
-    setGroupValues(prev => ({ ...prev, ...results }))
+    const values = {}
+    for (const p of toWrite) values[p.id] = p.default
+    const result = await runBulkOp('write', effectiveDeviceIds, values)
     setReadingGroup(null)
-    message.success(`Сброшено ${ok} из ${toWrite.length} параметров группы ${group.name}`)
+    if (result.cancelled) message.info(`Остановлено: группа «${group.name}» сброшена частично (${result.ok}/${result.total})`)
+    else message.success(`Сброшено ${result.ok} из ${result.total} параметров группы ${group.name}`)
   }
 
   return (
@@ -542,10 +540,19 @@ export default function ParamGroups({
 
       {groupProgress && (
         <Progress
-          style={{ marginBottom: 12 }}
+          style={{ marginBottom: 4 }}
           percent={Math.round(((groupProgress.index) / groupProgress.total) * 100)}
           status="active"
           format={() => `Группа ${groupProgress.index + 1} из ${groupProgress.total}: ${groupProgress.groupName}`}
+        />
+      )}
+      {opProgress && (
+        <Progress
+          style={{ marginBottom: 12 }}
+          size="small"
+          percent={opProgress.total > 0 ? Math.round((opProgress.done / opProgress.total) * 100) : 0}
+          status="active"
+          format={() => `${opProgress.done} из ${opProgress.total} параметров`}
         />
       )}
 

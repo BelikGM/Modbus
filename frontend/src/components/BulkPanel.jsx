@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Space, Typography, Tag, Alert, message, Tabs, Table, Button } from 'antd'
+import { Space, Typography, Tag, Alert, message, Tabs, Table, Button, Tooltip } from 'antd'
 import { CloseOutlined, ClearOutlined } from '@ant-design/icons'
 import api from '../api'
+import socket from '../socket'
 import ParamGroups from './ParamGroups'
 import BulkMonitor from './BulkMonitor'
-import { isParamWritable } from '../access'
 import { useDeviceSettings } from '../useDeviceSettings'
 
 // Pump-Full и Pump-OWN — один и тот же физический ПЧ, у OWN просто урезанный
@@ -18,7 +18,13 @@ function deviceFamily(templateId) {
 
 function formatResult(entry) {
   if (!entry) return <span style={{ color: '#bbb' }}>—</span>
-  if (entry.error) return <span style={{ color: '#ff4d4f', fontSize: 12 }}>ошибка</span>
+  if (entry.error) {
+    return (
+      <Tooltip title={entry.error}>
+        <span style={{ color: '#ff4d4f', fontSize: 12, cursor: 'help', textDecoration: 'underline dotted' }}>ошибка</span>
+      </Tooltip>
+    )
+  }
   const v = entry.value
   const formatted = typeof v === 'number' ? (Number.isInteger(v) ? v : v.toFixed(2)) : v
   return <span>{formatted}{entry.unit ? ` ${entry.unit}` : ''}</span>
@@ -50,10 +56,31 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
     )
   }, [deviceSettings, sameType])
 
+  const deviceIds = devices.map(d => d.id)
+
   // Сбрасываем накопленные результаты чтения при смене состава выбранных устройств
   useEffect(() => {
     setBulkReadResults({})
-  }, [devices.map(d => d.id).join(',')])
+  }, [deviceIds.join(',')])
+
+  // Групповое чтение/запись теперь целиком выполняется внутри ParamGroups через
+  // WebSocket (bulk:read:start/bulk:write:start) — сюда прилетают те же самые
+  // прогресс-события просто чтобы построить таблицу "по устройствам", отдельно
+  // от собственного (одноколоночного) отображения ParamGroups.
+  useEffect(() => {
+    function onProgress(p) {
+      if (p.kind !== 'read' || !deviceIds.includes(p.deviceId)) return
+      setBulkReadResults(prev => ({
+        ...prev,
+        [p.deviceId]: {
+          ...prev[p.deviceId],
+          [p.paramId]: p.error ? { error: p.error, name: p.name } : { value: p.value, unit: p.unit, name: p.name },
+        },
+      }))
+    }
+    socket.on('bulk:op:progress', onProgress)
+    return () => socket.off('bulk:op:progress', onProgress)
+  }, [deviceIds.join(',')])
 
   function handleVisibleGroupIdsChange(next) {
     setVisibleGroupIds(next)
@@ -69,78 +96,6 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
       } catch {}
     }
     message.success(`Записано на ${ok} из ${devices.length} устройств`)
-  }
-
-  async function handleBulkReadGroup(group, isCancelled = () => false) {
-    let ok = 0
-    const total = devices.length * group.params.length
-    outer:
-    for (const device of devices) {
-      for (const param of group.params) {
-        if (isCancelled()) break outer
-        try {
-          const { data } = await api.post('/modbus/read', { deviceId: device.id, paramId: param.id })
-          ok++
-          setBulkReadResults(prev => ({
-            ...prev,
-            [device.id]: { ...prev[device.id], [param.id]: { value: data.value, unit: param.unit, name: param.name } },
-          }))
-        } catch (e) {
-          setBulkReadResults(prev => ({
-            ...prev,
-            [device.id]: { ...prev[device.id], [param.id]: { error: e?.response?.data?.message ?? 'ошибка', name: param.name } },
-          }))
-        }
-      }
-    }
-    if (isCancelled()) message.info(`Остановлено: группа «${group.name}» прочитана частично`)
-    else message.success(`Группа «${group.name}» прочитана: ${ok} из ${total} (${devices.length} устройств)`)
-  }
-
-  async function handleBulkWriteGroup(group, pendingWrites, isCancelled = () => false) {
-    const toWrite = group.params.filter(
-      p => isParamWritable(templateDevice, p) && pendingWrites[p.id] != null,
-    )
-    if (toWrite.length === 0) {
-      message.info(`В группе «${group.name}» нет значений для записи`)
-      return
-    }
-    let ok = 0
-    outer:
-    for (const device of devices) {
-      for (const param of toWrite) {
-        if (isCancelled()) break outer
-        try {
-          await api.post('/modbus/write', { deviceId: device.id, paramId: param.id, value: pendingWrites[param.id] })
-          ok++
-        } catch {}
-      }
-    }
-    if (isCancelled()) message.info(`Остановлено: группа «${group.name}» записана частично (${ok})`)
-    else message.success(`Группа «${group.name}» записана: ${ok} из ${toWrite.length * devices.length} (${devices.length} устройств)`)
-  }
-
-  async function handleBulkResetGroup(group, isCancelled = () => false) {
-    const toWrite = group.params.filter(
-      p => isParamWritable(templateDevice, p) && p.default !== undefined && p.default !== null,
-    )
-    if (toWrite.length === 0) {
-      message.info(`В группе «${group.name}» нет параметров с заводскими значениями`)
-      return
-    }
-    let ok = 0
-    outer:
-    for (const device of devices) {
-      for (const param of toWrite) {
-        if (isCancelled()) break outer
-        try {
-          await api.post('/modbus/write', { deviceId: device.id, paramId: param.id, value: param.default })
-          ok++
-        } catch {}
-      }
-    }
-    if (isCancelled()) message.info(`Остановлено: группа «${group.name}» сброшена частично (${ok})`)
-    else message.success(`Группа «${group.name}» сброшена: ${ok} из ${toWrite.length * devices.length} (${devices.length} устройств)`)
   }
 
   const readResultParamIds = [...new Set(devices.flatMap(d => Object.keys(bulkReadResults[d.id] ?? {})))]
@@ -255,11 +210,9 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
                   )}
                   <ParamGroups
                     device={templateDevice}
+                    deviceIds={deviceIds}
                     modbusConnected={modbusConnected}
                     onWrite={handleBulkWrite}
-                    onReadGroup={handleBulkReadGroup}
-                    onWriteGroup={handleBulkWriteGroup}
-                    onResetGroup={handleBulkResetGroup}
                     visibleGroupIds={visibleGroupIds}
                     onVisibleGroupIdsChange={handleVisibleGroupIdsChange}
                   />
