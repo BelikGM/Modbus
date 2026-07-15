@@ -11,6 +11,7 @@ import {
 import { OnModuleInit } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { DevicesService } from '../devices/devices.service';
+import { DeviceParam } from '../devices/device.types';
 import { ModbusService, ConnectOptions } from '../modbus/modbus.service';
 import { ProjectsService } from '../projects/projects.service';
 import { SettingsService } from '../settings/settings.service';
@@ -25,7 +26,8 @@ export class ModbusGateway
   @WebSocketServer()
   server: Server;
 
-  private monitorIntervals = new Map<string, NodeJS.Timeout>();
+  private monitoredDevices = new Map<string, { slaveId: number; params: DeviceParam[] }>();
+  private monitorLoopRunning = false;
   private scanning = false;
   private scanCancelled = false;
   private autoDetecting = false;
@@ -459,8 +461,6 @@ export class ModbusGateway
   }
 
   private startMonitor(deviceId: string, paramIds?: string[]) {
-    this.stopMonitorFor(deviceId);
-
     const device = this.devicesService.getById(deviceId);
     if (!device) return;
 
@@ -471,44 +471,60 @@ export class ModbusGateway
       params = allParams.filter(p => paramIds.includes(p.id));
     }
 
-    const slaveId = device.connection.slaveId ?? 1;
-
-    const interval = setInterval(async () => {
-      if (!this.modbusService.isConnected()) return;
-
-      const data: Record<string, any> = {};
-      for (const param of params) {
-        try {
-          const rawValue = await this.modbusService.readRegister(param.register, slaveId);
-          data[param.id] = {
-            id: param.id,
-            name: param.name,
-            value: rawValue * (param.scale ?? 1),
-            rawValue,
-            unit: param.unit ?? '',
-          };
-        } catch (e) {
-          data[param.id] = {
-            id: param.id,
-            name: param.name,
-            error: (e as Error).message,
-          };
-        }
-      }
-
-      this.server.emit('monitor:data', { deviceId, data });
-    }, 1000);
-
-    this.monitorIntervals.set(deviceId, interval);
+    this.monitoredDevices.set(deviceId, { slaveId: device.connection.slaveId ?? 1, params });
+    this.ensureMonitorLoopRunning();
   }
 
   // Останавливает мониторинг одного устройства (не трогая остальные — несколько
   // устройств могут мониториться параллельно, например из BulkMonitor).
   private stopMonitorFor(deviceId: string) {
-    const interval = this.monitorIntervals.get(deviceId);
-    if (interval) {
-      clearInterval(interval);
-      this.monitorIntervals.delete(deviceId);
+    this.monitoredDevices.delete(deviceId);
+  }
+
+  // Раньше у каждого мониторимого устройства был свой независимый setInterval(1000мс) —
+  // если реально мониторится несколько устройств, их запросы всё равно серилизуются
+  // через один и тот же мьютекс (одна физическая шина RS-485), а независимые таймеры
+  // по 1с каждый могли накладываться друг на друга и отставать от реального темпа шины.
+  // Теперь один непрерывный round-robin цикл: устройство за устройством, без ожидания
+  // между кругами — обновление идёт настолько часто, насколько позволяет сама шина,
+  // а не искусственно раз в секунду.
+  private async ensureMonitorLoopRunning() {
+    if (this.monitorLoopRunning) return;
+    this.monitorLoopRunning = true;
+    try {
+      while (this.monitoredDevices.size > 0) {
+        for (const [deviceId, entry] of [...this.monitoredDevices.entries()]) {
+          if (!this.monitoredDevices.has(deviceId)) continue; // сняли с мониторинга во время круга
+          if (!this.modbusService.isConnected()) break;
+
+          const data: Record<string, any> = {};
+          for (const param of entry.params) {
+            try {
+              const rawValue = await this.modbusService.readRegister(param.register, entry.slaveId);
+              data[param.id] = {
+                id: param.id,
+                name: param.name,
+                value: rawValue * (param.scale ?? 1),
+                rawValue,
+                unit: param.unit ?? '',
+              };
+            } catch (e) {
+              data[param.id] = {
+                id: param.id,
+                name: param.name,
+                error: (e as Error).message,
+              };
+            }
+          }
+          this.server?.emit('monitor:data', { deviceId, data });
+        }
+        // Отдаём управление event loop'у между кругами: если шина не подключена —
+        // не молотим впустую, ждём немного; если подключена — идём на следующий
+        // круг сразу же (максимальная частота, ограниченная только самой шиной).
+        await new Promise<void>(resolve => setTimeout(resolve, this.modbusService.isConnected() ? 0 : 500));
+      }
+    } finally {
+      this.monitorLoopRunning = false;
     }
   }
 
@@ -516,8 +532,7 @@ export class ModbusGateway
   // само соединение с шиной (скан, отключение, смена проекта и т.п.) и продолжать
   // читать регистры больше нельзя ни для одного устройства.
   private stopMonitor() {
-    for (const interval of this.monitorIntervals.values()) clearInterval(interval);
-    this.monitorIntervals.clear();
+    this.monitoredDevices.clear();
   }
 
   // ─── Групповое чтение/запись (несколько устройств × несколько параметров) ──
