@@ -23,7 +23,6 @@
 - `antd` — UI компоненты
 - `recharts` — графики в мониторе
 - `@dnd-kit/*` — drag-n-drop карточек в мониторе
-- `three` + `@react-three/fiber` + `@react-three/drei` — 3D-визуализация (модуль OLA/фонтан)
 - НЕ используем RTK Query — только useState/useEffect + socket.io
 
 ## Структура проекта
@@ -36,11 +35,9 @@ Modbus/
       gateway/        ← единственный WebSocket-гейтвей — вся runtime-логика здесь
       projects/       ← «проекты»: папки с *.project.json, список устройств на шине
       settings/        ← settings.json: активный проект, сохранённые COM-порты, UI-настройки
-      ola/             ← отдельный модуль DMX/RDM (Open Lighting Architecture), не связан с Modbus
   frontend/            ← React + Vite
     src/
       components/      ← UI компоненты
-      components/ola/  ← компоненты DMX/3D-фонтана
   devices/
     templates/         ← JSON-шаблоны моделей ПЧ (карта регистров)
     images/            ← фото устройств и схемы подключения
@@ -304,12 +301,6 @@ client.writeRegister(108, 150)
 
 ---
 
-### `ola/` — DMX/RDM через Open Lighting Architecture (отдельная фича, не Modbus)
-
-**`ola.service.ts`** — HTTP-клиент к внешнему демону OLA (`OLA_HOST`/`OLA_PORT`, по умолчанию `localhost:9090`). Не имеет отношения к ПЧ — используется для управления освещением/фонтаном по протоколу DMX512 + RDM (обнаружение устройств, чтение/запись параметров по PID, fade-переходы). Работает только если рядом запущен демон OLA; при его отсутствии `isAvailable()` просто возвращает `false`.
-
----
-
 ## Детальная структура Frontend (`frontend/src/`)
 
 ### Точки входа
@@ -344,7 +335,6 @@ client.writeRegister(108, 150)
 - **`BackupRestore.jsx`** — экспорт/импорт проекта в файл
 - **`DeviceInfo.jsx`** / **`DeviceNotes.jsx`** — карточка устройства (фото/схема подключения) и текстовые заметки, привязанные к инстансу
 - **`LogDrawer.jsx`** — панель истории событий (`log.js`)
-- **`components/ola/*`** — отдельный раздел DMX/RDM/3D-визуализации фонтана (`OlaPage`, `OlaDmxMixer`, `OlaFixtureList`/`OlaFixtureDetail`, `OlaFountain3D`/`OlaFountainView`, `OlaSettings`) — не связан с Modbus-частью
 
 ---
 

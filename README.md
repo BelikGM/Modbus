@@ -144,7 +144,6 @@ Modbus/
       gateway/        — WebSocket-гейтвей (вся runtime-логика)
       projects/       — проекты (наборы устройств на шине)
       settings/       — settings.json (активный проект, сохранённые порты)
-      ola/            — DMX/RDM (отдельная фича, не Modbus)
     tools/
       modbus-simulator.js — симулятор устройств для тестов без железа
   frontend/           — React + Vite (порт 5173)

@@ -5,7 +5,6 @@ import { existsSync } from 'fs';
 import { DevicesModule } from './devices/devices.module';
 import { ModbusModule } from './modbus/modbus.module';
 import { GatewayModule } from './gateway/gateway.module';
-import { OlaModule } from './ola/ola.module';
 import { ProjectsModule } from './projects/projects.module';
 import { SettingsModule } from './settings/settings.module';
 
@@ -15,6 +14,6 @@ const staticImports = existsSync(staticPath)
   : [];
 
 @Module({
-  imports: [...staticImports, SettingsModule, ProjectsModule, DevicesModule, ModbusModule, GatewayModule, OlaModule],
+  imports: [...staticImports, SettingsModule, ProjectsModule, DevicesModule, ModbusModule, GatewayModule],
 })
 export class AppModule {}
