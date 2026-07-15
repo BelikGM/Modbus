@@ -187,7 +187,7 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     return merged;
   }
 
-  updateDevice(id: string, patch: { name?: string; slaveId?: number; baudRate?: number; dataBits?: number; stopBits?: number; parity?: string }): DeviceConfig {
+  updateDevice(id: string, patch: { name?: string; slaveId?: number }): DeviceConfig {
     const instance = this.instances.get(id);
     if (!instance) {
       if (this.templates.has(id)) throw new BadRequestException('Нельзя редактировать шаблон');
@@ -220,11 +220,7 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
       ...(patch.name !== undefined && { name: patch.name }),
       connection: {
         ...instance.connection,
-        ...(patch.slaveId  !== undefined && { slaveId:  patch.slaveId }),
-        ...(patch.baudRate !== undefined && { baudRate: patch.baudRate }),
-        ...(patch.dataBits !== undefined && { dataBits: patch.dataBits }),
-        ...(patch.stopBits !== undefined && { stopBits: patch.stopBits }),
-        ...(patch.parity   !== undefined && { parity:   patch.parity }),
+        ...(patch.slaveId !== undefined && { slaveId: patch.slaveId }),
       },
     };
 
@@ -237,10 +233,10 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     this.instances.set(newId, updated);
 
     const merged = this.merge(updated)!;
-    // Важно эмитить и когда id НЕ поменялся (правка slaveId/baudRate/dataBits/
-    // stopBits/parity без переименования) — иначе фронт узнавал об изменении
-    // только косвенно, при следующем несвязанном событии (например при
-    // добавлении другого устройства), и правки казались "не сохранившимися".
+    // Важно эмитить и когда id НЕ поменялся (правка slaveId без переименования) —
+    // иначе фронт узнавал об изменении только косвенно, при следующем несвязанном
+    // событии (например при добавлении другого устройства), и правки казались
+    // "не сохранившимися".
     this.events.emit('device:changed', merged);
     return merged;
   }

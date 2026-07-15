@@ -3,13 +3,12 @@ import { Button, Table, Typography, Space } from 'antd'
 import { PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons'
 import socket from '../socket'
 import { addLog } from '../log'
+import { formatParamValue } from '../paramFormat'
 
 function formatCell(entry) {
   if (!entry) return <span style={{ color: '#bbb' }}>—</span>
   if (entry.error) return <span style={{ color: '#ff4d4f', fontSize: 12 }}>ошибка</span>
-  const v = entry.value
-  const formatted = typeof v === 'number' ? (Number.isInteger(v) ? v : v.toFixed(2)) : v
-  return <span>{formatted}{entry.unit ? ` ${entry.unit}` : ''}</span>
+  return <span>{formatParamValue(entry.type, entry.value, entry.unit, entry.options)}</span>
 }
 
 export default function BulkMonitor({ devices, modbusConnected }) {

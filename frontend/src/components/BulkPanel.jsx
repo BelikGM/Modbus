@@ -6,6 +6,7 @@ import socket from '../socket'
 import ParamGroups from './ParamGroups'
 import BulkMonitor from './BulkMonitor'
 import { useDeviceSettings } from '../useDeviceSettings'
+import { formatParamValue } from '../paramFormat'
 
 // Pump-Full и Pump-OWN — один и тот же физический ПЧ, у OWN просто урезанный
 // (но регистрово идентичный) набор параметров — сверено вручную: все параметры
@@ -25,9 +26,7 @@ function formatResult(entry) {
       </Tooltip>
     )
   }
-  const v = entry.value
-  const formatted = typeof v === 'number' ? (Number.isInteger(v) ? v : v.toFixed(2)) : v
-  return <span>{formatted}{entry.unit ? ` ${entry.unit}` : ''}</span>
+  return <span>{formatParamValue(entry.type, entry.value, entry.unit, entry.options)}</span>
 }
 
 export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
@@ -74,7 +73,9 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
         ...prev,
         [p.deviceId]: {
           ...prev[p.deviceId],
-          [p.paramId]: p.error ? { error: p.error, name: p.name } : { value: p.value, unit: p.unit, name: p.name },
+          [p.paramId]: p.error
+            ? { error: p.error, name: p.name }
+            : { value: p.value, unit: p.unit, name: p.name, type: p.type, options: p.options },
         },
       }))
     }

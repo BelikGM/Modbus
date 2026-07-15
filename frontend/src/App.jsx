@@ -135,7 +135,7 @@ export default function App() {
         <img
           src="/fbest-logo.png"
           alt="Fbest"
-          style={{ height: 36, background: '#fff', borderRadius: 4, padding: 4 }}
+          style={{ height: '90%', background: '#fff', borderRadius: 4, padding: '2px 6px' }}
         />
         <Typography.Title level={4} style={{ color: '#fff', margin: 0, whiteSpace: 'nowrap' }}>
           Fbest Controller

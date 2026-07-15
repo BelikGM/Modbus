@@ -3,6 +3,7 @@ import { Button, InputNumber, Select, Typography, Spin, message, Space, Tag, Too
 import api from '../api'
 import { addLog } from '../log'
 import { isParamWritable, isStopOnly } from '../access'
+import { formatParamValue, normalizeOptions } from '../paramFormat'
 
 function bitsToInt(bits, bitState) {
   return bits.reduce((acc, b) => acc | ((bitState[b.bit] ?? 0) << b.bit), 0)
@@ -17,23 +18,6 @@ function intToBitState(bits, raw) {
 function getAccessTooltip(device, param) {
   if (device?.access_legend) return device.access_legend[param.access] ?? param.access
   return null
-}
-
-function normalizeOptions(options) {
-  if (!options) return []
-  if (Array.isArray(options)) return options
-  return Object.entries(options).map(([k, v]) => ({ value: Number(k), label: v }))
-}
-
-function formatValue(type, val, unit, options) {
-  if (val === null || val === undefined) return '—'
-  if (type === 'enum') {
-    const opts = normalizeOptions(options)
-    const opt = opts.find(o => o.value === Math.round(val))
-    return opt ? opt.label : String(val)
-  }
-  if (type === 'float') return `${Number(val).toFixed(2)}${unit ? ' ' + unit : ''}`
-  return `${val}${unit ? ' ' + unit : ''}`
 }
 
 const DEFAULT_COLS = { id: 90, desc: 220, def: 120, cur: 150, write: 290 }
@@ -141,10 +125,10 @@ export default function ParamRow({ device, param, modbusConnected, deviceRunning
     })
   }
 
-  const defaultFormatted = formatValue(param.type, param.default, param.unit, param.options)
+  const defaultFormatted = formatParamValue(param.type, param.default, param.unit, param.options)
   // injectedValue (from group read) takes priority; cleared on individual read/write so value wins
   const displayValue = injectedValue !== undefined ? injectedValue : value
-  const currentFormatted = formatValue(param.type, displayValue, param.unit, param.options)
+  const currentFormatted = formatParamValue(param.type, displayValue, param.unit, param.options)
 
   /* ── ширина ввода в колонке "Записать" ───────────────────────── */
   const inputW = Math.max(60, C.write - 130)   // место за вычетом кнопок Читать + Записать

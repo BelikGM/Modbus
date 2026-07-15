@@ -61,7 +61,7 @@ export class DevicesController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() body: { name?: string; slaveId?: number; baudRate?: number; dataBits?: number; stopBits?: number; parity?: string }) {
+  update(@Param('id') id: string, @Body() body: { name?: string; slaveId?: number }) {
     return this.devicesService.updateDevice(id, body);
   }
 

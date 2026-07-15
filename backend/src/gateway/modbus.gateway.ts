@@ -512,6 +512,8 @@ export class ModbusGateway
                 value: rawValue * (param.scale ?? 1),
                 rawValue,
                 unit: param.unit ?? '',
+                type: param.type,
+                options: param.options,
               };
             } catch (e) {
               data[param.id] = {
@@ -581,6 +583,7 @@ export class ModbusGateway
           client.emit('bulk:op:progress', {
             kind: 'read', deviceId, paramId,
             value: rawValue * (param.scale ?? 1), unit: param.unit, name: param.name,
+            type: param.type, options: param.options,
           });
           ok++;
         } catch (e) {
@@ -629,6 +632,7 @@ export class ModbusGateway
           client.emit('bulk:op:progress', {
             kind: 'write', deviceId, paramId,
             value: payload.values[paramId], unit: param.unit, name: param.name,
+            type: param.type, options: param.options,
           });
           ok++;
         } catch (e) {

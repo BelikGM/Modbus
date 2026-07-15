@@ -1,15 +1,7 @@
 import { useState } from 'react'
-import { List, Typography, Badge, Avatar, Tag, Button, Modal, Form, Input, InputNumber, Select, Popconfirm, Tooltip, Checkbox, Collapse, Space } from 'antd'
+import { List, Typography, Badge, Avatar, Tag, Button, Modal, Form, Input, InputNumber, Select, Popconfirm, Tooltip, Checkbox, Space } from 'antd'
 import { LinkOutlined, DisconnectOutlined, PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons'
 import api from '../api'
-
-const PARITY_OPTIONS = [
-  { value: 'none', label: 'none' },
-  { value: 'even', label: 'even' },
-  { value: 'odd',  label: 'odd' },
-]
-
-const BAUD_OPTIONS = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200].map(v => ({ value: v, label: String(v) }))
 
 function deviceType(device) {
   return (device.templateId ?? device.id ?? '').toLowerCase().includes('vh') ? 'vh' : 'pump'
@@ -48,12 +40,8 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
     e.stopPropagation()
     setEditDevice(device)
     editForm.setFieldsValue({
-      name:     device.name,
-      slaveId:  device.connection.slaveId,
-      baudRate: device.connection.baudRate,
-      dataBits: device.connection.dataBits,
-      stopBits: device.connection.stopBits,
-      parity:   device.connection.parity,
+      name:    device.name,
+      slaveId: device.connection.slaveId,
     })
   }
 
@@ -352,30 +340,10 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
           <Form.Item name="slaveId" label="Slave ID (адрес на шине)" rules={[{ required: true, message: 'Введите Slave ID' }]}>
             <InputNumber min={1} max={247} style={{ width: '100%' }} />
           </Form.Item>
-          <Collapse
-            size="small"
-            style={{ marginTop: 8 }}
-            items={[{
-              key: 'conn',
-              label: 'Параметры подключения',
-              children: (
-                <>
-                  <Form.Item name="baudRate" label="Скорость (baud rate)">
-                    <Select options={BAUD_OPTIONS} popupMatchSelectWidth={false} />
-                  </Form.Item>
-                  <Form.Item name="dataBits" label="Биты данных">
-                    <Select options={[7, 8].map(v => ({ value: v, label: String(v) }))} popupMatchSelectWidth={false} />
-                  </Form.Item>
-                  <Form.Item name="stopBits" label="Стоп-биты">
-                    <Select options={[1, 2].map(v => ({ value: v, label: String(v) }))} popupMatchSelectWidth={false} />
-                  </Form.Item>
-                  <Form.Item name="parity" label="Чётность (parity)" style={{ marginBottom: 0 }}>
-                    <Select options={PARITY_OPTIONS} popupMatchSelectWidth={false} />
-                  </Form.Item>
-                </>
-              ),
-            }]}
-          />
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            Скорость, чётность, биты данных и стоп-биты — общие настройки порта для всей шины
+            (не у каждого устройства свои), их можно изменить в панели «Подключение» в шапке приложения.
+          </Typography.Text>
         </Form>
       </Modal>
     </>
