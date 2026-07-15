@@ -69,6 +69,7 @@ export default function App() {
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
   }, [siderWidth, siderSide])
+  const [liveness, setLiveness] = useState({}) // { [deviceId]: boolean }
   const [connected, setConnected] = useState(false)
   const [reconnecting, setReconnecting] = useState(false)
   const [reconnectAttempt, setReconnectAttempt] = useState(0)
@@ -100,6 +101,14 @@ export default function App() {
       setReconnectAttempt(status.attempt ?? 0)
       setConnectedPort(status.connected && status.options ? status.options : null)
       setWaitingPort(status.waitingPort ?? null)
+      // Общий статус порта не относится ни к одному устройству лично — при
+      // отключении/потере связи с портом сбрасываем весь per-device индикатор,
+      // не дожидаясь следующего фонового цикла проверки на бэкенде.
+      if (!status.connected) setLiveness({})
+    })
+    socket.on('devices:liveness:snapshot', snapshot => setLiveness(snapshot ?? {}))
+    socket.on('device:liveness', ({ deviceId, online }) => {
+      setLiveness(prev => ({ ...prev, [deviceId]: online }))
     })
 
     return () => {
@@ -107,6 +116,8 @@ export default function App() {
       socket.off('devices:updated')
       socket.off('device:id:changed')
       socket.off('modbus:status')
+      socket.off('devices:liveness:snapshot')
+      socket.off('device:liveness')
     }
   }, [])
 
@@ -209,6 +220,7 @@ export default function App() {
                 selectedIds={selectedIds}
                 onSelectionChange={setSelectedIds}
                 connected={connected}
+                liveness={liveness}
                 hasProject={!!activeProjectId}
                 sidebarWidth={siderWidth}
               />

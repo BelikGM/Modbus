@@ -36,6 +36,9 @@ export class ModbusGateway
   private bulkOpRunning = false;
   private bulkOpCancelled = false;
 
+  private deviceLiveness = new Map<string, boolean>();
+  private livenessLoopRunning = false;
+
   private reconnectTimer: NodeJS.Timeout | null = null;
   private reconnectAttempt = 0;
 
@@ -52,6 +55,7 @@ export class ModbusGateway
 
   async onModuleInit() {
     await this.tryAutoConnect();
+    this.ensureLivenessLoopRunning();
 
     this.devicesService.events.on('device:added', () =>
       this.server?.emit('devices:updated', this.devicesService.getAll()),
@@ -110,6 +114,7 @@ export class ModbusGateway
   handleConnection(client: Socket) {
     client.emit('devices:list', this.devicesService.getAll());
     client.emit('modbus:status', this.buildStatus());
+    client.emit('devices:liveness:snapshot', Object.fromEntries(this.deviceLiveness));
     const mismatches = this.projectsService.checkMismatches();
     if (mismatches.length) client.emit('project:folder:mismatch', mismatches);
   }
@@ -642,5 +647,55 @@ export class ModbusGateway
   @SubscribeMessage('bulk:op:cancel')
   handleBulkOpCancel() {
     this.bulkOpCancelled = true;
+  }
+
+  // ─── Индикатор связи по каждому устройству ─────────────────────────────────
+  //
+  // Общий статус "порт подключён/нет" (modbus:status) не говорит, отвечает ли
+  // КОНКРЕТНОЕ устройство на своём Slave ID/с текущими настройками подключения —
+  // на реальном железе устройство может быть выключено, отключено от шины или
+  // настроено на другой адрес, а порт при этом будет открыт нормально. Этот
+  // цикл в фоне постоянно и по чуть-чуть (короткий таймаут на попытку, пауза
+  // между кругами) пробует каждое устройство активного проекта и шлёт
+  // device:liveness только когда статус реально меняется.
+  private async ensureLivenessLoopRunning() {
+    if (this.livenessLoopRunning) return;
+    this.livenessLoopRunning = true;
+    try {
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        if (!this.modbusService.isConnected()) {
+          if (this.deviceLiveness.size > 0) {
+            for (const deviceId of this.deviceLiveness.keys()) {
+              this.server?.emit('device:liveness', { deviceId, online: false });
+            }
+            this.deviceLiveness.clear();
+          }
+          await new Promise<void>(resolve => setTimeout(resolve, 2000));
+          continue;
+        }
+
+        const devices = this.devicesService.getAll().filter(d => !d.template);
+        if (devices.length === 0) {
+          await new Promise<void>(resolve => setTimeout(resolve, 2000));
+          continue;
+        }
+
+        for (const device of devices) {
+          if (!this.modbusService.isConnected()) break;
+          const slaveId = device.connection.slaveId ?? 1;
+          const online = await this.modbusService.probeAddress(slaveId, 200);
+          if (this.deviceLiveness.get(device.id) !== online) {
+            this.deviceLiveness.set(device.id, online);
+            this.server?.emit('device:liveness', { deviceId: device.id, online });
+          }
+        }
+        // Пауза между полными кругами — это фоновая низкоприоритетная проверка,
+        // ей не нужно молотить мьютекс так же агрессивно, как чтению/мониторингу.
+        await new Promise<void>(resolve => setTimeout(resolve, 1500));
+      }
+    } finally {
+      this.livenessLoopRunning = false;
+    }
   }
 }

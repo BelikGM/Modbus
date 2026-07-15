@@ -262,7 +262,9 @@ export class ModbusService implements OnModuleDestroy {
     });
   }
 
-  private async probeAddress(addr: number, timeoutMs = 150): Promise<boolean> {
+  // Публичный — переиспользуется и scanBus'ом, и постоянным фоновым опросом
+  // "на связи ли устройство" в гейтвее (device:liveness).
+  async probeAddress(addr: number, timeoutMs = 150): Promise<boolean> {
     return this.withLock(async () => {
       this.client.setTimeout(timeoutMs);
       try {

@@ -15,7 +15,7 @@ function deviceType(device) {
   return (device.templateId ?? device.id ?? '').toLowerCase().includes('vh') ? 'vh' : 'pump'
 }
 
-export default function DeviceList({ devices, selectedIds, onSelectionChange, connected, hasProject, sidebarWidth = 270 }) {
+export default function DeviceList({ devices, selectedIds, onSelectionChange, connected, liveness = {}, hasProject, sidebarWidth = 270 }) {
   const [addOpen, setAddOpen]       = useState(false)
   const [editDevice, setEditDevice] = useState(null)
   const [templates, setTemplates]   = useState([])
@@ -100,6 +100,19 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
 
   const Icon = connected ? LinkOutlined : DisconnectOutlined
   const iconColor = connected ? '#52c41a' : '#ff4d4f'
+
+  // Статус порта (connected) — это только "адаптер открыт", не "это устройство
+  // реально отвечает". Реальную связь по каждому устройству бэкенд отдельно
+  // проверяет фоновым циклом (device:liveness) — пока порт не подключён, статус
+  // всегда красный; после подключения, пока для устройства ещё не пришёл ни один
+  // результат проверки, показываем "проверяется" (синий), а не ложный зелёный.
+  function deviceLiveStatus(device) {
+    if (!connected) return { status: 'error', title: 'Порт не подключён' }
+    const online = liveness[device.id]
+    if (online === true) return { status: 'success', title: 'Устройство отвечает на шине' }
+    if (online === false) return { status: 'error', title: 'Устройство не отвечает (нет связи по Slave ID)' }
+    return { status: 'processing', title: 'Проверка связи с устройством…' }
+  }
   const allDevices = devices.filter(d => !d.template)
   const hasPump = allDevices.some(d => deviceType(d) === 'pump')
   const hasVh   = allDevices.some(d => deviceType(d) === 'vh')
@@ -199,21 +212,26 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
           renderItem={device => {
             const isSelected = selectedIds.has(device.id)
             const modelLabel = deviceType(device) === 'vh' ? 'VH' : 'Pump'
+            const liveStatus = deviceLiveStatus(device)
             const avatar = device.images?.device
               ? (
-                <Badge dot status={connected ? 'success' : 'error'} offset={compact ? [-2, 2] : [-4, 4]}>
-                  <Avatar
-                    src={`/api/devices/images/${device.images.device}`}
-                    size={avatarSize}
-                    shape="square"
-                    style={{ borderRadius: 6 }}
-                  />
-                </Badge>
+                <Tooltip title={liveStatus.title}>
+                  <Badge dot status={liveStatus.status} offset={compact ? [-2, 2] : [-4, 4]}>
+                    <Avatar
+                      src={`/api/devices/images/${device.images.device}`}
+                      size={avatarSize}
+                      shape="square"
+                      style={{ borderRadius: 6 }}
+                    />
+                  </Badge>
+                </Tooltip>
               )
               : (
-                <Badge dot status={connected ? 'success' : 'error'} offset={[-2, 2]}>
-                  <Icon style={{ fontSize: Math.min(avatarSize, 28), color: iconColor, marginTop: 2 }} />
-                </Badge>
+                <Tooltip title={liveStatus.title}>
+                  <Badge dot status={liveStatus.status} offset={[-2, 2]}>
+                    <Icon style={{ fontSize: Math.min(avatarSize, 28), color: iconColor, marginTop: 2 }} />
+                  </Badge>
+                </Tooltip>
               )
 
             return (
