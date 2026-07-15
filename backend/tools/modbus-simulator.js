@@ -13,6 +13,8 @@
 //   node tools/modbus-simulator.js COM8 9600
 //   node tools/modbus-simulator.js COM8 9600 1:pump,2:vh,5:pump
 
+const fs = require('fs');
+const nodePath = require('path');
 const ModbusRTU = require('modbus-serial');
 
 const path = process.argv[2] || 'COM8';
@@ -27,8 +29,39 @@ for (const pair of deviceArg.split(',')) {
 
 const regs = {};
 
-function defaultsFor(kind) {
+// Заводские значения регистров, которых нет в ручной таблице ниже (все F1-F9 —
+// параметры настройки, а не датчики), берём прямо из шаблона устройства
+// (param.default), а не оставляем 0 — иначе, например, "Скорость передачи
+// данных" читалась бы как 0 (4800 бит/сек) вместо реального заводского
+// значения 1 (9600 бит/сек, см. default в devices/templates/*.json).
+function loadTemplateDefaults(templateFile) {
   const map = new Map();
+  try {
+    const raw = fs.readFileSync(nodePath.join(__dirname, '..', '..', 'devices', 'templates', templateFile), 'utf8');
+    const tpl = JSON.parse(raw);
+    for (const group of tpl.groups ?? []) {
+      for (const param of group.params ?? []) {
+        if (typeof param.register === 'number' && param.default !== undefined) {
+          map.set(param.register, param.default);
+        }
+      }
+    }
+  } catch (e) {
+    console.error(`Не удалось прочитать заводские значения из ${templateFile}:`, e.message);
+  }
+  return map;
+}
+
+const TEMPLATE_DEFAULTS = {
+  pump: loadTemplateDefaults('Elhart-Emd-Pump-Full.json'),
+  vh: loadTemplateDefaults('Elhart-Emd-VH-Full.json'),
+};
+
+function defaultsFor(kind) {
+  const map = new Map(TEMPLATE_DEFAULTS[kind]);
+  // Поверх заводских настроек — свои "живые" показания датчиков с разбросом,
+  // этим регистрам родное значение "default" в шаблоне не задано (это показания,
+  // а не хранимые настройки).
   if (kind === 'pump') {
     map.set(0, 0);      // F0.00 — параметр на дисплее
     map.set(1, 5000);   // F0.01 заданная частота, scale 0.01 → 50.00 Гц
