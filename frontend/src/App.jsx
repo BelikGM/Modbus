@@ -129,11 +129,11 @@ export default function App() {
           background: '#001529',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0, height: '100%' }}>
           <img
             src="/fbest-logo.png"
             alt="Fbest"
-            style={{ height: 56, width: 'auto', background: '#fff', borderRadius: 4, padding: '2px 6px' }}
+            style={{ height: '90%', width: 'auto', background: '#fff', borderRadius: 4, padding: '2px 6px' }}
           />
           <Typography.Title level={4} style={{ color: '#fff', margin: 0, whiteSpace: 'nowrap' }}>
             Modbus Controller
