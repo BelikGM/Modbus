@@ -133,7 +133,7 @@ export default function App() {
           <img
             src="/fbest-logo.png"
             alt="Fbest"
-            style={{ height: '90%', background: '#fff', borderRadius: 4, padding: '2px 6px' }}
+            style={{ height: 56, width: 'auto', background: '#fff', borderRadius: 4, padding: '2px 6px' }}
           />
           <Typography.Title level={4} style={{ color: '#fff', margin: 0, whiteSpace: 'nowrap' }}>
             Modbus Controller
