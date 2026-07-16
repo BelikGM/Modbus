@@ -129,7 +129,7 @@ export default function App() {
           background: '#001529',
         }}
       >
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 16, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
           <img
             src="/fbest-logo.png"
             alt="Fbest"
@@ -140,6 +140,8 @@ export default function App() {
           </Typography.Title>
         </div>
 
+        <div style={{ flex: 1 }} />
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexShrink: 0 }}>
           <ProjectSelector
             onProjectInit={id => setActiveProjectId(id)}
@@ -149,7 +151,9 @@ export default function App() {
           <BusScanner connected={connected} />
         </div>
 
-        <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
+        <div style={{ flex: 1 }} />
+
+        <div style={{ flexShrink: 0 }}>
           <Badge count={errorCount} size="small">
             <Button
               icon={<FileTextOutlined />}

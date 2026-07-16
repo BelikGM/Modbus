@@ -97,7 +97,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
   function deviceLiveStatus(device) {
     if (!connected) return { status: 'error', title: 'Порт не подключён' }
     const online = liveness[device.id]
-    if (online === true) return { status: 'success', title: 'Устройство отвечает на шине' }
+    if (online === true) return { status: 'success', title: 'Устройство на связи' }
     if (online === false) return { status: 'error', title: 'Устройство не отвечает (нет связи по Slave ID)' }
     return { status: 'processing', title: 'Проверка связи с устройством…' }
   }
@@ -121,6 +121,10 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
   const compact = sidebarWidth < 100
   const narrow  = sidebarWidth < 180
   const avatarSize = compact ? Math.max(28, sidebarWidth - 20) : (narrow ? 32 : 44)
+  // Полный текст "Добавить устройство" не помещается рядом с иконкой на
+  // промежуточных ширинах — короткий вариант между compact и narrow, полный
+  // только когда панель уже достаточно широкая.
+  const addButtonLabel = sidebarWidth < 170 ? 'Добавить' : 'Добавить устройство'
 
   return (
     <>
@@ -136,7 +140,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
             onClick={openAdd}
             disabled={!hasProject}
           >
-            {!compact && 'Добавить устройство'}
+            {!compact && addButtonLabel}
           </Button>
         </Tooltip>
       </div>
