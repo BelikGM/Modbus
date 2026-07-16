@@ -125,26 +125,31 @@ export default function App() {
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 24,
           padding: '0 24px',
           background: '#001529',
         }}
       >
-        <img
-          src="/fbest-logo.png"
-          alt="Fbest"
-          style={{ height: '90%', background: '#fff', borderRadius: 4, padding: '2px 6px' }}
-        />
-        <Typography.Title level={4} style={{ color: '#fff', margin: 0, whiteSpace: 'nowrap' }}>
-          Modbus Controller
-        </Typography.Title>
-        <ProjectSelector
-          onProjectInit={id => setActiveProjectId(id)}
-          onProjectChange={id => { setSelectedIds(new Set()); setActiveProjectId(id ?? null) }}
-        />
-        <ConnectionPanel connected={connected} reconnecting={reconnecting} reconnectAttempt={reconnectAttempt} connectedPort={connectedPort} waitingPort={waitingPort} />
-        <BusScanner connected={connected} />
-        <div style={{ marginLeft: 'auto' }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 16, minWidth: 0 }}>
+          <img
+            src="/fbest-logo.png"
+            alt="Fbest"
+            style={{ height: '90%', background: '#fff', borderRadius: 4, padding: '2px 6px' }}
+          />
+          <Typography.Title level={4} style={{ color: '#fff', margin: 0, whiteSpace: 'nowrap' }}>
+            Modbus Controller
+          </Typography.Title>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexShrink: 0 }}>
+          <ProjectSelector
+            onProjectInit={id => setActiveProjectId(id)}
+            onProjectChange={id => { setSelectedIds(new Set()); setActiveProjectId(id ?? null) }}
+          />
+          <ConnectionPanel connected={connected} reconnecting={reconnecting} reconnectAttempt={reconnectAttempt} connectedPort={connectedPort} waitingPort={waitingPort} />
+          <BusScanner connected={connected} />
+        </div>
+
+        <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
           <Badge count={errorCount} size="small">
             <Button
               icon={<FileTextOutlined />}

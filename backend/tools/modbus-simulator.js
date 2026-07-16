@@ -34,6 +34,16 @@ const regs = {};
 // (param.default), а не оставляем 0 — иначе, например, "Скорость передачи
 // данных" читалась бы как 0 (4800 бит/сек) вместо реального заводского
 // значения 1 (9600 бит/сек, см. default в devices/templates/*.json).
+//
+// ВАЖНО: param.default в шаблоне — это уже "человеческое" инженерное значение
+// (например 50.0 Гц, 380.0 В), а не сырое число регистра. Модбас-регистр же
+// всегда хранит целое, из которого приложение получает человеческое значение
+// умножением на scale (см. CLAUDE.md, "Полная цепочка записи"). Поэтому здесь
+// нужно обратное преобразование: raw = default / scale — иначе симулятор
+// вернёт как "сырое" то, что уже отмасштабировано, и после повторного
+// умножения на scale при чтении итоговое число окажется в 10-100 раз меньше настоящего.
+// Нечисловые default (например "Зависит от модели ПЧ") пропускаем — взять
+// из них осмысленное сырое значение невозможно, регистр останется на 0.
 function loadTemplateDefaults(templateFile) {
   const map = new Map();
   try {
@@ -41,8 +51,9 @@ function loadTemplateDefaults(templateFile) {
     const tpl = JSON.parse(raw);
     for (const group of tpl.groups ?? []) {
       for (const param of group.params ?? []) {
-        if (typeof param.register === 'number' && param.default !== undefined) {
-          map.set(param.register, param.default);
+        if (typeof param.register === 'number' && typeof param.default === 'number') {
+          const rawValue = Math.round(param.default / (param.scale ?? 1));
+          map.set(param.register, rawValue);
         }
       }
     }

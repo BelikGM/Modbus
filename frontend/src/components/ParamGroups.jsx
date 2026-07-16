@@ -386,7 +386,7 @@ export default function ParamGroups({
 
   const totalWidth = cols.id + cols.desc + cols.def + cols.cur + cols.write
 
-  const items = filteredGroups.map(group => ({
+  const items = filteredGroups.map((group, groupIndex) => ({
     key: group.id,
     label: group.name,
     extra: (
@@ -434,7 +434,7 @@ export default function ParamGroups({
       </div>
     ),
     children: (
-      <div style={{ overflowX: 'auto' }}>
+      <div style={{ overflowX: 'auto', background: groupIndex % 2 === 0 ? '#fff' : '#fafafa' }}>
         <div style={{ minWidth: totalWidth }}>
           <ParamTableHeader cols={cols} onResizeStart={startResize} />
           {group.params.map(param => (
@@ -593,6 +593,7 @@ export default function ParamGroups({
               const item = items.find(it => it.key === group.id)
               if (!item) return null
               const isOpen = query ? true : openGroupIds.has(group.id)
+              const groupIndex = filteredGroups.indexOf(group)
               return (
                 <SortableCollapseItem key={group.id} id={group.id}>
                   <Collapse
@@ -606,7 +607,10 @@ export default function ParamGroups({
                         return next
                       })
                     }}
-                    style={{ marginBottom: 4 }}
+                    style={{
+                      marginBottom: 8,
+                      borderLeft: `3px solid ${groupIndex % 2 === 0 ? '#d9e8ff' : '#e8e8e8'}`,
+                    }}
                   />
                 </SortableCollapseItem>
               )
