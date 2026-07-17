@@ -57,10 +57,17 @@ function SortableCollapseItem({ id, children }) {
   )
 }
 
-function HeaderCell({ label, width, onResizeStart, marginLeft }) {
+function HeaderCell({ label, width, onResizeStart, marginLeft, divider = true }) {
   return (
-    <div style={{ position: 'relative', width, flexShrink: 0, paddingRight: 10, boxSizing: 'border-box', marginLeft }}>
-      <Typography.Text style={{ fontSize: 11, color: '#888', fontWeight: 600, userSelect: 'none' }}>
+    <div style={{
+      position: 'relative', width, flexShrink: 0, paddingRight: 10, paddingLeft: 4,
+      boxSizing: 'border-box', marginLeft,
+      borderRight: divider ? '1px solid rgba(120,120,120,0.25)' : 'none',
+    }}>
+      <Typography.Text style={{
+        fontSize: 11, color: '#888', fontWeight: 600, userSelect: 'none',
+        display: 'block', textAlign: 'center', lineHeight: 1.3,
+      }}>
         {label}
       </Typography.Text>
       <div
@@ -81,7 +88,8 @@ function ParamTableHeader({ cols, onResizeStart }) {
   return (
     <div className="param-table-header" style={{
       display: 'flex', alignItems: 'center',
-      padding: '5px 4px',
+      padding: '6px 4px',
+      minHeight: 40,
       background: '#fafafa',
       borderBottom: '2px solid #e8e8e8',
       borderTop: '1px solid #e8e8e8',
@@ -91,7 +99,7 @@ function ParamTableHeader({ cols, onResizeStart }) {
       <HeaderCell label="Описание параметра"     width={cols.desc}  onResizeStart={onResizeStart('desc')} />
       <HeaderCell label="Заводское значение"     width={cols.def}   onResizeStart={onResizeStart('def')} />
       <HeaderCell label="Значение на устройстве" width={cols.cur}   onResizeStart={onResizeStart('cur')} marginLeft={20} />
-      <HeaderCell label="Значение для записи"    width={cols.write} onResizeStart={onResizeStart('write')} marginLeft={20} />
+      <HeaderCell label="Значение для записи"    width={cols.write} onResizeStart={onResizeStart('write')} marginLeft={20} divider={false} />
     </div>
   )
 }
@@ -120,8 +128,17 @@ export default function ParamGroups({
   const [searchFocused, setSearchFocused] = useState(false)
   const [groupProgress, setGroupProgress] = useState(null) // { index, total, groupName, kind }
   const [opProgress, setOpProgress] = useState(null) // { done, total } — живой прогресс текущего runBulkOp
-  const [openGroupIds, setOpenGroupIds] = useState(() => new Set(device.groups[0] ? [device.groups[0].id] : []))
+  const [openGroupIds, setOpenGroupIds] = useState(() => new Set())
   const latestGroupValues = useRef({})
+
+  // Переключение на другое устройство (одиночный вид — сменили выбор в
+  // списке слева; групповой — сменили в переключателе "текущее устройство
+  // для правки") должно сворачивать все раскрытые группы, а не тянуть за
+  // собой раскрытые группы предыдущего устройства и не открывать первую
+  // группу автоматически.
+  useEffect(() => {
+    setOpenGroupIds(new Set())
+  }, [activeDeviceId])
 
   const expandGroup = useCallback((groupId) => {
     setOpenGroupIds(prev => (prev.has(groupId) ? prev : new Set(prev).add(groupId)))
