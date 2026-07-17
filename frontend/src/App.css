@@ -20,6 +20,28 @@
   font-weight: 600;
 }
 
+/* ─── Тёмная тема ──────────────────────────────────────────────────────────
+   Переключается тумблером в шапке (солнце/луна). antd сам перекрашивает свои
+   компоненты через ConfigProvider(theme.darkAlgorithm) — здесь только то, что
+   в приложении задано напрямую инлайн-стилями (белые/светло-серые фоны
+   Sider/Content и т.п.) и поэтому не подхватывается алгоритмом antd само
+   собой; !important оправдан — это осознанный слой темы поверх инлайна. */
+[data-theme='dark'] {
+  color-scheme: dark;
+}
+[data-theme='dark'] .ant-layout-sider,
+[data-theme='dark'] .ant-layout-content {
+  background: #0b1220 !important;
+  color: #e6e6e6;
+}
+[data-theme='dark'] .ant-layout-sider {
+  border-color: #1f2c3d !important;
+}
+[data-theme='dark'] .group-header-row td {
+  background: #16233a !important;
+}
+
+
 body {
   margin: 0;
 }

@@ -11,7 +11,7 @@ export class SettingsController {
   }
 
   @Patch()
-  update(@Body() body: Partial<{ siderSide: 'left' | 'right'; siderWidth: number }>) {
+  update(@Body() body: Partial<{ siderSide: 'left' | 'right'; siderWidth: number; theme: 'light' | 'dark' }>) {
     return this.settingsService.update(body);
   }
 

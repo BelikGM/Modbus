@@ -23,11 +23,12 @@ export interface AppSettings {
   activeProject: string | null;
   siderSide: 'left' | 'right';
   siderWidth?: number;
+  theme?: 'light' | 'dark';
   deviceSettings?: Record<string, DeviceUISettings>;
   projectConnections?: Record<string, ProjectConnection>;
 }
 
-const DEFAULTS: AppSettings = { activeProject: null, siderSide: 'left', siderWidth: 270, deviceSettings: {}, projectConnections: {} };
+const DEFAULTS: AppSettings = { activeProject: null, siderSide: 'left', siderWidth: 270, theme: 'light', deviceSettings: {}, projectConnections: {} };
 
 @Injectable()
 export class SettingsService {

@@ -19,6 +19,7 @@ import { CSS } from '@dnd-kit/utilities'
 import socket from '../socket'
 import { addLog } from '../log'
 import { useDeviceSettings } from '../useDeviceSettings'
+import { getMonitorParams } from '../monitorParams'
 
 const MAX_POINTS = 60
 const COLORS = ['#1677ff', '#52c41a', '#fa8c16', '#eb2f96', '#722ed1', '#13c2c2', '#faad14', '#f5222d']
@@ -235,12 +236,7 @@ export default function Monitor({ device, modbusConnected }) {
     saveDeviceSettings({ monitorOrder: newOrder })
   }
 
-  // Prefer F0 group; fall back to first group with readable numeric params
-  const f0Group = device.groups.find(g => g.id === 'F0')
-    ?? device.groups.find(g => g.params?.some(p => p.access === 'read' && (p.type === 'float' || p.type === 'integer')))
-  const monitorParams = (f0Group?.params ?? []).filter(
-    p => p.access === 'read' && (p.type === 'float' || p.type === 'integer') && p.id !== 'F0.00'
-  )
+  const monitorParams = getMonitorParams(device)
 
   const orderedParams = cardOrder
     ? [...monitorParams].sort((a, b) => {
@@ -392,6 +388,20 @@ export default function Monitor({ device, modbusConnected }) {
                       <Typography.Text type="danger" style={{ fontSize: 12 }}>
                         {entry.error}
                       </Typography.Text>
+                    ) : param.type === 'bitmask' ? (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                        {entry?.value == null ? (
+                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>—</Typography.Text>
+                        ) : param.bits.map(b => {
+                          const bitVal = (Math.round(entry.value) >> b.bit) & 1
+                          const label = b.options?.[String(bitVal)] ?? String(bitVal)
+                          return (
+                            <Tag key={b.bit} color={bitVal ? 'success' : 'default'} style={{ margin: 0, fontSize: 11 }}>
+                              {b.name}: {label}
+                            </Tag>
+                          )
+                        })}
+                      </div>
                     ) : (
                       <>
                         <Statistic

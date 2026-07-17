@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Layout, Typography, Empty, Button, Badge } from 'antd'
-import { FileTextOutlined } from '@ant-design/icons'
+import { Layout, Typography, Empty, Button, Badge, ConfigProvider, Switch, theme as antdTheme } from 'antd'
+import { FileTextOutlined, SunOutlined, MoonOutlined } from '@ant-design/icons'
 import DeviceList from './components/DeviceList'
 import DeviceDetail from './components/DeviceDetail'
 import BulkPanel from './components/BulkPanel'
@@ -22,14 +22,26 @@ export default function App() {
   const [siderSide, setSiderSide] = useState('left')
   const [siderWidth, setSiderWidth] = useState(270)
   const [activeProjectId, setActiveProjectId] = useState(null)
+  const [theme, setTheme] = useState('light')
+  // Активная вкладка карточки устройства (Параметры/Мониторинг/Шаблоны) — общая
+  // для одиночного и группового просмотра, чтобы при переключении состава
+  // выделенных устройств (1 <-> несколько) вкладка не сбрасывалась сама.
+  const [activeDeviceTab, setActiveDeviceTab] = useState('params')
   const resizingRef = useRef(null)
 
   useEffect(() => {
     api.get('/settings').then(({ data }) => {
       if (data.siderSide) setSiderSide(data.siderSide)
       if (data.siderWidth) setSiderWidth(data.siderWidth)
+      if (data.theme) setTheme(data.theme)
     }).catch(() => {})
   }, [])
+
+  function toggleTheme(checked) {
+    const next = checked ? 'dark' : 'light'
+    setTheme(next)
+    api.patch('/settings', { theme: next }).catch(() => {})
+  }
 
   function toggleSider() {
     setSiderSide(s => {
@@ -120,7 +132,8 @@ export default function App() {
   }, [])
 
   return (
-    <Layout style={{ height: '100vh', overflow: 'hidden' }}>
+    <ConfigProvider theme={{ algorithm: theme === 'dark' ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm }}>
+    <Layout data-theme={theme} style={{ height: '100vh', overflow: 'hidden' }}>
       <Header
         style={{
           display: 'flex',
@@ -133,11 +146,18 @@ export default function App() {
           <img
             src="/fbest-logo.png"
             alt="Fbest"
-            style={{ height: '90%', width: 'auto', background: '#fff', borderRadius: 4, padding: '2px 6px' }}
+            style={{ height: '95%', width: 'auto', background: '#fff', borderRadius: 4, padding: '2px 6px' }}
           />
           <Typography.Title level={4} style={{ color: '#fff', margin: 0, whiteSpace: 'nowrap' }}>
             Modbus Controller
           </Typography.Title>
+          <Switch
+            checked={theme === 'dark'}
+            onChange={toggleTheme}
+            checkedChildren={<MoonOutlined />}
+            unCheckedChildren={<SunOutlined />}
+            title="Тёмная тема"
+          />
         </div>
 
         <div style={{ flex: 1 }} />
@@ -229,11 +249,20 @@ export default function App() {
                   devices={selectedDevices}
                   modbusConnected={connected}
                   onDeselect={id => setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n })}
+                  activeTab={activeDeviceTab}
+                  onActiveTabChange={setActiveDeviceTab}
                 />
               )
             }
             if (selectedIds.size === 1 && selectedDevices[0]) {
-              return <DeviceDetail device={selectedDevices[0]} modbusConnected={connected} />
+              return (
+                <DeviceDetail
+                  device={selectedDevices[0]}
+                  modbusConnected={connected}
+                  activeTab={activeDeviceTab}
+                  onActiveTabChange={setActiveDeviceTab}
+                />
+              )
             }
             return <Empty description="Выберите устройство из списка слева" style={{ marginTop: 80 }} />
           })()}
@@ -242,5 +271,6 @@ export default function App() {
 
       <LogDrawer open={logOpen} onClose={() => setLogOpen(false)} />
     </Layout>
+    </ConfigProvider>
   )
 }
