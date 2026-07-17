@@ -174,30 +174,40 @@ export default function ParamRow({ device, param, modbusConnected, deviceRunning
           </Tooltip>
         </div>
 
-        {/* Значение на устройстве — читать сюда же, отдельным отступом от заводского */}
-        <div style={{ width: C.cur, flexShrink: 0, marginLeft: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
-          {hideDeviceValue ? (
-            <Tooltip title="Выбрано несколько устройств — значения по каждому смотрите в таблице результатов выше">
-              <Typography.Text style={{ fontSize: 12, color: '#bbb', cursor: 'help' }}>—</Typography.Text>
-            </Tooltip>
-          ) : reading ? <Spin size="small" /> : (
-            !isBitmask && (
+        {/* Значение на устройстве — читать сюда же, отдельным отступом от заводского.
+            Текстовая часть фиксированной ширины, чтобы кнопка "Читать" всегда
+            была в одном и том же месте независимо от длины значения в этой
+            строке и в соседних (иначе кнопки "гуляют" по горизонтали). */}
+        <div style={{ width: C.cur, flexShrink: 0, marginLeft: 20, display: 'flex', alignItems: 'center' }}>
+          <div style={{ width: Math.max(40, C.cur - 74), flexShrink: 0, overflow: 'hidden' }}>
+            {hideDeviceValue ? (
+              <Tooltip title="Выбрано несколько устройств — значения по каждому смотрите в таблице результатов выше">
+                <Typography.Text style={{ fontSize: 12, color: '#bbb', cursor: 'help' }}>—</Typography.Text>
+              </Tooltip>
+            ) : reading ? <Spin size="small" /> : (
               <Typography.Text style={{
                 fontSize: 12,
                 color: displayValue !== null ? '#1677ff' : '#bbb',
                 fontWeight: displayValue !== null ? 500 : 400,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                display: 'block',
               }}>
-                {currentFormatted}
+                {isBitmask ? (displayValue !== null ? 'см. ниже' : '—') : currentFormatted}
               </Typography.Text>
-            )
-          )}
+            )}
+          </div>
           <Button size="small" onClick={handleRead} disabled={!modbusConnected || !!onWrite} loading={reading}>
             Читать
           </Button>
         </div>
 
-        {/* Значение для записи */}
-        <div style={{ width: C.write, flexShrink: 0, marginLeft: 20, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        {/* Значение для записи — та же логика: поле ввода фиксированной ширины
+            (inputW), кнопка "Записать" всегда сразу после него на одном месте.
+            Для нередактируемых/битовых параметров место остаётся пустым, но
+            зарезервированным — колонка не "прыгает". */}
+        <div style={{ width: C.write, flexShrink: 0, marginLeft: 20, display: 'flex', alignItems: 'center' }}>
           {canWrite && !isBitmask && (
             <>
               {param.type === 'enum' ? (
@@ -229,6 +239,7 @@ export default function ParamRow({ device, param, modbusConnected, deviceRunning
                   onClick={handleWrite}
                   disabled={!modbusConnected || editValue === null || editValue === undefined || blockedByRunning}
                   loading={writing}
+                  style={{ marginLeft: 8 }}
                 >
                   Записать
                 </Button>

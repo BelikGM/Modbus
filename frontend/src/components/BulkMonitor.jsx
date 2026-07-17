@@ -13,7 +13,9 @@ function deviceFamily(templateId) {
 function formatCell(entry) {
   if (!entry) return <span style={{ color: '#bbb' }}>—</span>
   if (entry.error) return <span style={{ color: '#ff4d4f', fontSize: 12 }}>ошибка</span>
-  return <span>{formatParamValue(entry.type, entry.value, entry.unit, entry.options, entry.bits)}</span>
+  // bitmask форматируется как "имя: значение" по одной на строку (\n) —
+  // pre-line сохраняет переносы внутри обычной ячейки таблицы.
+  return <span style={{ whiteSpace: 'pre-line' }}>{formatParamValue(entry.type, entry.value, entry.unit, entry.options, entry.bits)}</span>
 }
 
 // Одна секция-таблица на семейство ПЧ (Pump/VL) — при смешанном выборе у
@@ -108,6 +110,23 @@ export default function BulkMonitor({ devices, modbusConnected, sameType }) {
       for (const d of devicesRef.current) socket.emit('monitor:stop', { deviceId: d.id })
     }
   }, [])
+
+  // Сменился состав выбранных ПЧ (другая комбинация, не просто перерендер) —
+  // старый мониторинг никогда не должен продолжать тихо крутиться поверх уже
+  // не актуального выбора: останавливаем именно ПРЕЖНИЙ набор устройств и
+  // сбрасываем показания, а не просто ждём, пока пользователь сам заметит.
+  const deviceIdsKey = devices.map(d => d.id).join(',')
+  const prevIdsKeyRef = useRef(deviceIdsKey)
+  useEffect(() => {
+    if (prevIdsKeyRef.current === deviceIdsKey) return
+    const prevIds = prevIdsKeyRef.current.split(',').filter(Boolean)
+    prevIdsKeyRef.current = deviceIdsKey
+    if (!runningRef.current) return
+    for (const id of prevIds) socket.emit('monitor:stop', { deviceId: id })
+    setRunning(false)
+    setDataByDevice({})
+    addLog('info', 'Групповой мониторинг остановлен: изменился состав выбранных устройств')
+  }, [deviceIdsKey])
 
   function toggle() {
     if (running) {

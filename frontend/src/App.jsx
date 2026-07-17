@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Layout, Typography, Empty, Button, Badge, ConfigProvider, Switch, theme as antdTheme } from 'antd'
+import { Layout, Typography, Empty, Button, Badge, ConfigProvider, theme as antdTheme } from 'antd'
 import { FileTextOutlined, SunOutlined, MoonOutlined } from '@ant-design/icons'
 import DeviceList from './components/DeviceList'
 import DeviceDetail from './components/DeviceDetail'
@@ -15,6 +15,53 @@ import 'antd/dist/reset.css'
 import './App.css'
 
 const { Header, Sider, Content } = Layout
+
+// Обычный antd Switch рисует checkedChildren/unCheckedChildren РЯДОМ с
+// кружком-бегунком, а не внутри него — иконка солнца/луны в таком варианте
+// "висит в воздухе". Здесь кружок сам содержит иконку и просто едет
+// влево/вправо по треку.
+function ThemeToggle({ dark, onChange }) {
+  return (
+    <div
+      role="switch"
+      aria-checked={dark}
+      onClick={() => onChange(!dark)}
+      title="Тёмная тема"
+      style={{
+        width: 50,
+        height: 26,
+        borderRadius: 13,
+        cursor: 'pointer',
+        flexShrink: 0,
+        background: dark ? '#1f2c3d' : '#bae0ff',
+        position: 'relative',
+        transition: 'background 0.2s',
+        border: '1px solid rgba(255,255,255,0.25)',
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          top: 2,
+          left: dark ? 26 : 2,
+          width: 20,
+          height: 20,
+          borderRadius: '50%',
+          background: dark ? '#0b1220' : '#fff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          transition: 'left 0.2s',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.35)',
+        }}
+      >
+        {dark
+          ? <MoonOutlined style={{ color: '#fff', fontSize: 12 }} />
+          : <SunOutlined style={{ color: '#faad14', fontSize: 12 }} />}
+      </div>
+    </div>
+  )
+}
 
 export default function App() {
   const [devices, setDevices] = useState([])
@@ -151,13 +198,7 @@ export default function App() {
           <Typography.Title level={4} style={{ color: '#fff', margin: 0, whiteSpace: 'nowrap' }}>
             Modbus Controller
           </Typography.Title>
-          <Switch
-            checked={theme === 'dark'}
-            onChange={toggleTheme}
-            checkedChildren={<MoonOutlined />}
-            unCheckedChildren={<SunOutlined />}
-            title="Тёмная тема"
-          />
+          <ThemeToggle dark={theme === 'dark'} onChange={checked => toggleTheme(checked)} />
         </div>
 
         <div style={{ flex: 1 }} />

@@ -214,7 +214,7 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
     {
       key: 'templates',
       label: <span style={{ opacity: sameType ? 1 : 0.4 }}>{TAB_LABELS.templates}</span>,
-      children: !sameType ? null : <ValuePresets device={templateDevice} />,
+      children: !sameType ? null : <ValuePresets device={templateDevice} devices={devices} />,
     },
   ]
 
@@ -237,13 +237,13 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
         </Space>
       </div>
 
-      {!sameType && (
+      {!sameType && tabKey !== 'monitor' && (
         <Alert
           style={{ marginBottom: 16 }}
           type="warning"
           showIcon
           message="Выбраны ПЧ разных типов — доступен только мониторинг"
-          description={`Выбраны устройства разных семейств (${templateIds.join(', ')}) — у них разные карты регистров, групповое чтение/запись параметров и шаблоны для них не имеют смысла и могут записать не те значения не в те регистры. Мониторинг при этом доступен — ниже показания каждого семейства выводятся отдельным блоком по своей карте параметров. Pump-Full и Pump-OWN между собой совместимы — это один и тот же ПЧ с урезанным набором параметров.`}
+          description={`Выбраны устройства разных семейств (${templateIds.join(', ')}) — у них разные карты регистров, групповое чтение/запись параметров и шаблоны для них не имеют смысла и могут записать не те значения не в те регистры. Мониторинг при этом доступен — на вкладке «Мониторинг» показания каждого семейства выводятся отдельным блоком по своей карте параметров. Pump-Full и Pump-OWN между собой совместимы — это один и тот же ПЧ с урезанным набором параметров.`}
         />
       )}
 

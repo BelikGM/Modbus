@@ -389,16 +389,16 @@ export default function Monitor({ device, modbusConnected }) {
                         {entry.error}
                       </Typography.Text>
                     ) : param.type === 'bitmask' ? (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                        {entry?.value == null ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                        {entry?.value == null || !Array.isArray(param.bits) || !param.bits.length ? (
                           <Typography.Text type="secondary" style={{ fontSize: 12 }}>—</Typography.Text>
                         ) : param.bits.map(b => {
                           const bitVal = (Math.round(entry.value) >> b.bit) & 1
                           const label = b.options?.[String(bitVal)] ?? String(bitVal)
                           return (
-                            <Tag key={b.bit} color={bitVal ? 'success' : 'default'} style={{ margin: 0, fontSize: 11 }}>
-                              {b.name}: {label}
-                            </Tag>
+                            <Typography.Text key={b.bit} style={{ fontSize: 12 }}>
+                              {b.name}: <span style={{ fontWeight: 500 }}>{label}</span>
+                            </Typography.Text>
                           )
                         })}
                       </div>

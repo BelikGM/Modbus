@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { List, Button, Input, Checkbox, InputNumber, Select, Typography, Space, Popconfirm, message, Empty, Collapse, Tag } from 'antd'
-import { PlusOutlined, DeleteOutlined, EditOutlined, SaveOutlined } from '@ant-design/icons'
+import { PlusOutlined, DeleteOutlined, EditOutlined, SaveOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import api from '../api'
 import { formatParamValue, normalizeOptions } from '../paramFormat'
 
@@ -12,16 +12,20 @@ function deviceFamily(templateId) {
 // одного семейства ПЧ. Изначально шаблон пуст (0 групп, 0 регистров); галочка
 // на группе разом добавляет в шаблон все её регистры с заводскими значениями,
 // дальше каждое значение можно поправить или убрать конкретный регистр из
-// шаблона отдельно. Применяются такие шаблоны к выбранным устройствам через
-// кнопку "Подготовить из шаблона" на вкладке "Параметры".
-export default function ValuePresets({ device }) {
+// шаблона отдельно. Применяются такие шаблоны к выбранным устройствам либо
+// кнопкой "Подготовить из шаблона" на вкладке "Параметры", либо прямо отсюда
+// кнопкой у конкретного шаблона в списке (только если открыто в контексте
+// уже выбранных ПЧ этого семейства — `devices`).
+export default function ValuePresets({ device, devices }) {
   const family = deviceFamily(device.templateId ?? device.id)
+  const targetDevices = devices ?? [device]
   const [presets, setPresets] = useState([])
   const [loading, setLoading] = useState(false)
   const [editing, setEditing] = useState(null) // preset object being edited, or { id: null, name: '', family, values: {} } для нового
   const [nameInput, setNameInput] = useState('')
   const [values, setValues] = useState({}) // paramId -> value, черновик редактора
   const [saving, setSaving] = useState(false)
+  const [applyingId, setApplyingId] = useState(null)
 
   function load() {
     setLoading(true)
@@ -52,6 +56,24 @@ export default function ValuePresets({ device }) {
       load()
     } catch (e) {
       message.error(e?.response?.data?.message ?? 'Ошибка удаления')
+    }
+  }
+
+  // То же самое, что кнопка "Подготовить из шаблона" на вкладке "Параметры",
+  // только напрямую отсюда — удобно, когда шаблонов много и хочется применить
+  // конкретный, не переключаясь на вкладку. Подтверждение (Popconfirm) — не
+  // прямое применение по одному клику, случайное нажатие на реальном
+  // оборудовании иначе может тихо испортить черновики сразу нескольким ПЧ.
+  async function applyPreset(preset) {
+    if (targetDevices.length === 0) return
+    setApplyingId(preset.id)
+    try {
+      await Promise.all(targetDevices.map(d =>
+        api.patch(`/devices/${d.id}/pending-writes`, { merge: true, pendingWrites: preset.values }).catch(() => {})
+      ))
+      message.success(`Шаблон «${preset.name}» применён к ${targetDevices.length} устр. — значения подготовлены к записи на вкладке «Параметры»`)
+    } finally {
+      setApplyingId(null)
     }
   }
 
@@ -213,6 +235,27 @@ export default function ValuePresets({ device }) {
           renderItem={preset => (
             <List.Item
               actions={[
+                <Popconfirm
+                  key="apply"
+                  title={`Применить шаблон «${preset.name}»?`}
+                  description={`Подготовленные значения обновятся у ${targetDevices.length} выбранных устройств (${targetDevices.map(d => d.name).join(', ')}). Сама запись в ПЧ не произойдёт — только подготовка черновика.`}
+                  okText="Применить"
+                  cancelText="Отмена"
+                  disabled={targetDevices.length === 0 || Object.keys(preset.values).length === 0}
+                  onConfirm={() => applyPreset(preset)}
+                >
+                  <Button
+                    key="apply-btn"
+                    size="small"
+                    type="primary"
+                    icon={<ThunderboltOutlined />}
+                    loading={applyingId === preset.id}
+                    disabled={targetDevices.length === 0 || Object.keys(preset.values).length === 0}
+                    title={targetDevices.length === 0 ? 'Нет выбранных устройств этого типа' : undefined}
+                  >
+                    Применить для выбранных ({targetDevices.length})
+                  </Button>
+                </Popconfirm>,
                 <Button key="edit" size="small" icon={<EditOutlined />} onClick={() => startEdit(preset)}>Изменить</Button>,
                 <Popconfirm key="delete" title="Удалить шаблон?" okText="Удалить" cancelText="Отмена" okButtonProps={{ danger: true }} onConfirm={() => remove(preset)}>
                   <Button size="small" danger icon={<DeleteOutlined />}>Удалить</Button>

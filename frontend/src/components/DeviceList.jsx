@@ -84,21 +84,23 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
   }
 
   function toggleType(type, checked) {
-    setVisibleTypes(prev => {
-      const next = new Set(prev)
-      if (checked) next.add(type)
-      else next.delete(type)
-      // Если тип скрывается из фильтра — снимаем выделение с его устройств,
-      // иначе они остаются "выбранными", но невидимыми, и потом путают, откуда
-      // взялось сообщение о несовместимости pump/VL в групповых операциях.
-      if (!checked) {
-        const hiddenIds = new Set(allDevices.filter(d => deviceType(d) === type).map(d => d.id))
-        if ([...selectedIds].some(id => hiddenIds.has(id))) {
-          onSelectionChange(new Set([...selectedIds].filter(id => !hiddenIds.has(id))))
-        }
+    // Важно: onSelectionChange (setState родителя App) вызывается ЗДЕСЬ, в теле
+    // обработчика, а не внутри апдейтера setVisibleTypes — вызов чужого setState
+    // из апдейтера нарушает правила React ("Cannot update a component while
+    // rendering a different component") и реально ронял приложение.
+    const next = new Set(visibleTypes)
+    if (checked) next.add(type)
+    else next.delete(type)
+    setVisibleTypes(next)
+    // Если тип скрывается из фильтра — снимаем выделение с его устройств,
+    // иначе они остаются "выбранными", но невидимыми, и потом путают, откуда
+    // взялось сообщение о несовместимости pump/VL в групповых операциях.
+    if (!checked) {
+      const hiddenIds = new Set(allDevices.filter(d => deviceType(d) === type).map(d => d.id))
+      if ([...selectedIds].some(id => hiddenIds.has(id))) {
+        onSelectionChange(new Set([...selectedIds].filter(id => !hiddenIds.has(id))))
       }
-      return next
-    })
+    }
   }
 
   const Icon = connected ? LinkOutlined : DisconnectOutlined
@@ -162,8 +164,8 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
 
       {hasProject && allDevices.length > 0 && !compact && (
         <div style={{ padding: '0 16px 8px', borderBottom: '1px solid #f5f5f5', marginBottom: 4 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-            <Space size={10} wrap>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <Space direction="vertical" size={4}>
               <Checkbox
                 checked={visibleTypes.size === 2}
                 onChange={e => setVisibleTypes(e.target.checked ? new Set(['pump', 'vl']) : new Set())}
@@ -189,10 +191,10 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
             {visibleDevices.length > 0 && (
               <Button
                 size="small"
-                type="primary"
-                danger={allVisibleSelected}
+                color={allVisibleSelected ? 'red' : 'green'}
+                variant="solid"
                 onClick={toggleSelectAllVisible}
-                style={{ marginLeft: 'auto' }}
+                style={{ marginLeft: 'auto', alignSelf: 'center' }}
               >
                 {allVisibleSelected ? 'Снять выделение' : `Выбрать все (${visibleDevices.length})`}
               </Button>
@@ -248,6 +250,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
                 <div
                   onClick={() => toggleSelection(device)}
                   onDoubleClick={() => selectOnly(device)}
+                  className={isSelected ? 'device-row device-row-selected' : 'device-row'}
                   style={{
                     position: 'relative',
                     cursor: 'pointer',
@@ -290,6 +293,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
                   {!compact && !narrow && (
                     <div
                       onClick={e => e.stopPropagation()}
+                      className="device-row-actions"
                       style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 2, background: isSelected ? '#e6f4ff' : '#fff' }}
                     >
                       <Tooltip title="Редактировать">

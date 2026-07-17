@@ -79,7 +79,7 @@ function HeaderCell({ label, width, onResizeStart, marginLeft }) {
 
 function ParamTableHeader({ cols, onResizeStart }) {
   return (
-    <div style={{
+    <div className="param-table-header" style={{
       display: 'flex', alignItems: 'center',
       padding: '5px 4px',
       background: '#fafafa',
@@ -117,6 +117,7 @@ export default function ParamGroups({
   const [readingGroup, setReadingGroup] = useState(null)
   const [groupValues, setGroupValues]   = useState({})
   const [search, setSearch]             = useState('')
+  const [searchFocused, setSearchFocused] = useState(false)
   const [groupProgress, setGroupProgress] = useState(null) // { index, total, groupName, kind }
   const [opProgress, setOpProgress] = useState(null) // { done, total } — живой прогресс текущего runBulkOp
   const [openGroupIds, setOpenGroupIds] = useState(() => new Set(device.groups[0] ? [device.groups[0].id] : []))
@@ -522,7 +523,7 @@ export default function ParamGroups({
       </div>
     ),
     children: (
-      <div style={{ overflowX: 'auto', background: groupIndex % 2 === 0 ? '#fff' : '#fafafa' }}>
+      <div className={groupIndex % 2 === 0 ? 'param-group-body-even' : 'param-group-body-odd'} style={{ overflowX: 'auto', background: groupIndex % 2 === 0 ? '#fff' : '#fafafa' }}>
         <div style={{ minWidth: totalWidth }}>
           <ParamTableHeader cols={cols} onResizeStart={startResize} />
           {group.params.map(param => (
@@ -559,11 +560,13 @@ export default function ParamGroups({
       <Space style={{ marginBottom: 12, width: '100%' }} wrap>
         <Input
           prefix={<SearchOutlined style={{ color: '#bbb' }} />}
-          placeholder="Поиск параметра по коду или названию"
+          placeholder={searchFocused || search ? 'Поиск параметра по коду или названию' : 'Поиск'}
           value={search}
           onChange={e => setSearch(e.target.value)}
+          onFocus={() => setSearchFocused(true)}
+          onBlur={() => setSearchFocused(false)}
           allowClear
-          style={{ width: 320 }}
+          style={{ width: searchFocused || search ? 320 : 110, transition: 'width 0.15s' }}
         />
         {isBulk && (
           <Select
@@ -645,7 +648,7 @@ export default function ParamGroups({
         />
       )}
 
-      <div style={{ marginBottom: 12, padding: '8px 10px', background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 6 }}>
+      <div className="param-toolbar-box" style={{ marginBottom: 12, padding: '8px 10px', background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 6 }}>
         <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 6 }}>
           Отображаемые группы параметров (влияет на «Прочитать/Записать/Сбросить все»)
         </Typography.Text>

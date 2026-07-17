@@ -18,13 +18,16 @@ export function formatParamValue(type, val, unit, options, bits) {
   if (type === 'bitmask') {
     if (Array.isArray(bits) && bits.length) {
       const raw = Math.round(val)
+      // Перенос строки на каждый бит — читатель этой строки обычно рендерит
+      // с white-space:'pre-line', чтобы получился список "имя: значение" по
+      // одной строке на бит, а не одна нечитаемая простыня через пробел.
       return bits
         .map(b => {
           const bitVal = (raw >> b.bit) & 1
           const label = b.options?.[String(bitVal)] ?? String(bitVal)
-          return `${b.name}:${label}`
+          return `${b.name}: ${label}`
         })
-        .join(' ')
+        .join('\n')
     }
     return `0b${Math.round(val).toString(2).padStart(4, '0')}`
   }

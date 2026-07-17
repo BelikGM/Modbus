@@ -41,6 +41,41 @@
   background: #16233a !important;
 }
 
+/* Выделенное устройство в списке слева — светло-голубой фон #e6f4ff нечитаем
+   на тёмном фоне сайдбара, меняем на контрастную тёмно-синюю подсветку. */
+[data-theme='dark'] .device-row-selected {
+  background: #14304d !important;
+}
+[data-theme='dark'] .device-row:hover {
+  background: #101c2c;
+}
+[data-theme='dark'] .device-row-actions {
+  background: #0b1220 !important;
+}
+
+/* Чередующийся фон групп параметров и панель "отображаемые группы" — были
+   белый/светло-серый, в тёмной теме почти не отличались от фона страницы. */
+[data-theme='dark'] .param-group-body-even {
+  background: #101a2b !important;
+}
+[data-theme='dark'] .param-group-body-odd {
+  background: #16233a !important;
+}
+[data-theme='dark'] .param-table-header {
+  background: #16233a !important;
+  border-color: #2a3b52 !important;
+}
+[data-theme='dark'] .param-toolbar-box {
+  background: #16233a !important;
+  border-color: #2a3b52 !important;
+}
+
+/* Таблицы (результаты группового чтения, мониторинг) — контрастная граница
+   в тёмной теме вместо еле заметной светло-серой antd по умолчанию. */
+[data-theme='dark'] .ant-table-bordered .ant-table-cell {
+  border-color: #2a3b52 !important;
+}
+
 
 body {
   margin: 0;
