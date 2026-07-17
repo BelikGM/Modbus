@@ -25,4 +25,5 @@ npm-debug.log*
 .env.local
 
 /settings.json
+/value-presets.json
 /projects
