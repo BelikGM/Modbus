@@ -4,7 +4,7 @@ import { LinkOutlined, DisconnectOutlined, PlusOutlined, DeleteOutlined, EditOut
 import api from '../api'
 
 function deviceType(device) {
-  return (device.templateId ?? device.id ?? '').toLowerCase().includes('vh') ? 'vh' : 'pump'
+  return (device.templateId ?? device.id ?? '').toLowerCase().includes('vl') ? 'vl' : 'pump'
 }
 
 export default function DeviceList({ devices, selectedIds, onSelectionChange, connected, liveness = {}, hasProject, sidebarWidth = 270 }) {
@@ -14,7 +14,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
   const [submitting, setSubmitting] = useState(false)
   const [addForm]                   = Form.useForm()
   const [editForm]                  = Form.useForm()
-  const [visibleTypes, setVisibleTypes] = useState(new Set(['pump', 'vh']))
+  const [visibleTypes, setVisibleTypes] = useState(new Set(['pump', 'vl']))
 
   async function openAdd() {
     const { data } = await api.get('/devices/templates')
@@ -77,11 +77,26 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
     onSelectionChange(next)
   }
 
+  // Двойной клик — выбрать ТОЛЬКО это устройство, независимо от того, что было
+  // отмечено раньше (не нужно сперва "Выбрать все", потом "Снять выделение").
+  function selectOnly(device) {
+    onSelectionChange(new Set([device.id]))
+  }
+
   function toggleType(type, checked) {
     setVisibleTypes(prev => {
       const next = new Set(prev)
       if (checked) next.add(type)
       else next.delete(type)
+      // Если тип скрывается из фильтра — снимаем выделение с его устройств,
+      // иначе они остаются "выбранными", но невидимыми, и потом путают, откуда
+      // взялось сообщение о несовместимости pump/VL в групповых операциях.
+      if (!checked) {
+        const hiddenIds = new Set(allDevices.filter(d => deviceType(d) === type).map(d => d.id))
+        if ([...selectedIds].some(id => hiddenIds.has(id))) {
+          onSelectionChange(new Set([...selectedIds].filter(id => !hiddenIds.has(id))))
+        }
+      }
       return next
     })
   }
@@ -103,7 +118,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
   }
   const allDevices = devices.filter(d => !d.template)
   const hasPump = allDevices.some(d => deviceType(d) === 'pump')
-  const hasVh   = allDevices.some(d => deviceType(d) === 'vh')
+  const hasVl   = allDevices.some(d => deviceType(d) === 'vl')
   const visibleDevices = allDevices.filter(d => visibleTypes.has(deviceType(d)))
 
   const allVisibleSelected = visibleDevices.length > 0 && visibleDevices.every(d => selectedIds.has(d.id))
@@ -147,40 +162,42 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
 
       {hasProject && allDevices.length > 0 && !compact && (
         <div style={{ padding: '0 16px 8px', borderBottom: '1px solid #f5f5f5', marginBottom: 4 }}>
-          <Space size={10} wrap>
-            <Checkbox
-              checked={visibleTypes.size === 2}
-              onChange={e => setVisibleTypes(e.target.checked ? new Set(['pump', 'vh']) : new Set())}
-              style={{ fontSize: 12 }}
-            >
-              <span style={{ fontSize: 12 }}>Все</span>
-            </Checkbox>
-            <Checkbox
-              checked={visibleTypes.has('pump')}
-              disabled={!hasPump}
-              onChange={e => toggleType('pump', e.target.checked)}
-            >
-              <span style={{ fontSize: 12 }}>Pump</span>
-            </Checkbox>
-            <Checkbox
-              checked={visibleTypes.has('vh')}
-              disabled={!hasVh}
-              onChange={e => toggleType('vh', e.target.checked)}
-            >
-              <span style={{ fontSize: 12 }}>VH</span>
-            </Checkbox>
-          </Space>
-          {visibleDevices.length > 0 && (
-            <Button
-              size="small"
-              color={allVisibleSelected ? 'red' : 'green'}
-              variant="link"
-              style={{ padding: 0, fontSize: 12, height: 'auto' }}
-              onClick={toggleSelectAllVisible}
-            >
-              {allVisibleSelected ? 'Снять выделение' : `Выбрать все (${visibleDevices.length})`}
-            </Button>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+            <Space size={10} wrap>
+              <Checkbox
+                checked={visibleTypes.size === 2}
+                onChange={e => setVisibleTypes(e.target.checked ? new Set(['pump', 'vl']) : new Set())}
+                style={{ fontSize: 12 }}
+              >
+                <span style={{ fontSize: 12 }}>Все</span>
+              </Checkbox>
+              <Checkbox
+                checked={visibleTypes.has('pump')}
+                disabled={!hasPump}
+                onChange={e => toggleType('pump', e.target.checked)}
+              >
+                <span style={{ fontSize: 12 }}>Pump</span>
+              </Checkbox>
+              <Checkbox
+                checked={visibleTypes.has('vl')}
+                disabled={!hasVl}
+                onChange={e => toggleType('vl', e.target.checked)}
+              >
+                <span style={{ fontSize: 12 }}>VL</span>
+              </Checkbox>
+            </Space>
+            {visibleDevices.length > 0 && (
+              <Button
+                size="small"
+                type="primary"
+                danger={allVisibleSelected}
+                onClick={toggleSelectAllVisible}
+                style={{ marginLeft: 'auto' }}
+              >
+                {allVisibleSelected ? 'Снять выделение' : `Выбрать все (${visibleDevices.length})`}
+              </Button>
+            )}
+          </div>
         </div>
       )}
 
@@ -203,7 +220,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
           dataSource={visibleDevices}
           renderItem={device => {
             const isSelected = selectedIds.has(device.id)
-            const modelLabel = deviceType(device) === 'vh' ? 'VH' : 'Pump'
+            const modelLabel = deviceType(device) === 'vl' ? 'VL' : 'Pump'
             const liveStatus = deviceLiveStatus(device)
             const avatar = device.images?.device
               ? (
@@ -227,9 +244,10 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
               )
 
             return (
-              <Tooltip key={device.id} title={compact ? `${device.name} · ${modelLabel} · ID ${device.connection.slaveId ?? 1}` : ''} placement="right">
+              <Tooltip key={device.id} title={compact ? `${device.name} · ${modelLabel} · Адрес ${device.connection.slaveId ?? 1}` : ''} placement="right">
                 <div
                   onClick={() => toggleSelection(device)}
+                  onDoubleClick={() => selectOnly(device)}
                   style={{
                     position: 'relative',
                     cursor: 'pointer',
@@ -261,7 +279,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
                       {!narrow && (
                         <span style={{ fontSize: 12 }}>
                           <Tag style={{ fontSize: 11, padding: '0 4px', marginRight: 4 }}>
-                            ID {device.connection.slaveId ?? 1}
+                            Адрес {device.connection.slaveId ?? 1}
                           </Tag>
                           <Typography.Text type="secondary" style={{ fontSize: 11 }}>{modelLabel}</Typography.Text>
                         </span>
@@ -321,7 +339,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
           <Form.Item name="name" label="Название" rules={[{ required: true, message: 'Введите название' }]}>
             <Input placeholder="Например: Насос 1" />
           </Form.Item>
-          <Form.Item name="slaveId" label="Slave ID (адрес на шине)" rules={[{ required: true, message: 'Введите Slave ID' }]}>
+          <Form.Item name="slaveId" label="Адрес ПЧ (Slave ID на шине)" rules={[{ required: true, message: 'Введите адрес ПЧ' }]}>
             <InputNumber min={1} max={247} style={{ width: '100%' }} placeholder="1–247" />
           </Form.Item>
         </Form>
@@ -341,7 +359,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
           <Form.Item name="name" label="Название" rules={[{ required: true, message: 'Введите название' }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="slaveId" label="Slave ID (адрес на шине)" rules={[{ required: true, message: 'Введите Slave ID' }]}>
+          <Form.Item name="slaveId" label="Адрес ПЧ (Slave ID на шине)" rules={[{ required: true, message: 'Введите адрес ПЧ' }]}>
             <InputNumber min={1} max={247} style={{ width: '100%' }} />
           </Form.Item>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>

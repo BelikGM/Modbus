@@ -408,7 +408,7 @@ export class ModbusGateway
   // ─── Device identification ─────────────────────────────────────────────────
 
   private static readonly TEMPLATE_MAP: Record<string, string> = {
-    vh:   'Elhart-Emd-VH-Full',
+    vl:   'Elhart-Emd-VL-Full',
     pump: 'Elhart-Emd-Pump-Full',
   };
 
@@ -514,6 +514,7 @@ export class ModbusGateway
                 unit: param.unit ?? '',
                 type: param.type,
                 options: param.options,
+                bits: param.bits,
               };
             } catch (e) {
               data[param.id] = {
@@ -583,7 +584,7 @@ export class ModbusGateway
           client.emit('bulk:op:progress', {
             kind: 'read', deviceId, paramId,
             value: rawValue * (param.scale ?? 1), unit: param.unit, name: param.name,
-            type: param.type, options: param.options,
+            type: param.type, options: param.options, bits: param.bits,
           });
           ok++;
         } catch (e) {
@@ -602,7 +603,17 @@ export class ModbusGateway
   @SubscribeMessage('bulk:write:start')
   async handleBulkWriteStart(
     @ConnectedSocket() client: Socket,
-    @MessageBody() payload: { deviceIds: string[]; values: Record<string, number> },
+    @MessageBody() payload: {
+      deviceIds: string[];
+      // Два режима:
+      //  - values: общие значения для всех устройств (сброс до заводских и т.п.)
+      //  - usePending: у КАЖДОГО устройства пишутся его собственные подготовленные
+      //    значения (pendingWrites), опционально ограниченные paramIds (группой);
+      //    успешно записанные значения очищаются из pendingWrites устройства.
+      values?: Record<string, number>;
+      usePending?: boolean;
+      paramIds?: string[];
+    },
   ) {
     if (this.bulkOpRunning) {
       client.emit('bulk:op:error', { message: 'Групповая операция уже выполняется' });
@@ -610,38 +621,69 @@ export class ModbusGateway
     }
     this.bulkOpRunning = true;
     this.bulkOpCancelled = false;
-    const paramIds = Object.keys(payload.values);
-    const total = payload.deviceIds.length * paramIds.length;
+
+    // Планируем задания заранее — в режиме usePending у каждого устройства свой
+    // набор параметров, и total известен только после сбора всех pendingWrites.
+    const jobs: { deviceId: string; values: Record<string, number> }[] = [];
+    for (const deviceId of payload.deviceIds) {
+      if (payload.usePending) {
+        const pending = this.devicesService.getDevicePendingWrites(deviceId) ?? {};
+        const values: Record<string, number> = {};
+        for (const [paramId, value] of Object.entries(pending)) {
+          if (payload.paramIds && !payload.paramIds.includes(paramId)) continue;
+          if (typeof value !== 'number') continue;
+          values[paramId] = value;
+        }
+        jobs.push({ deviceId, values });
+      } else {
+        jobs.push({ deviceId, values: payload.values ?? {} });
+      }
+    }
+    const total = jobs.reduce((sum, j) => sum + Object.keys(j.values).length, 0);
+    client.emit('bulk:op:total', { kind: 'write', total });
     let done = 0;
     let ok = 0;
 
     outer:
-    for (const deviceId of payload.deviceIds) {
-      const device = this.devicesService.getById(deviceId);
+    for (const job of jobs) {
+      const device = this.devicesService.getById(job.deviceId);
+      const paramIds = Object.keys(job.values);
       if (!device) { done += paramIds.length; continue; }
       const slaveId = device.connection.slaveId ?? 1;
       const allParams = device.groups.flatMap(g => g.params);
+      const writtenParamIds: string[] = [];
 
       for (const paramId of paramIds) {
-        if (this.bulkOpCancelled) break outer;
+        if (this.bulkOpCancelled) break;
         const param = allParams.find(p => p.id === paramId);
         if (!param || !this.devicesService.isParamWritable(device, param)) { done++; continue; }
-        const rawValue = Math.round(payload.values[paramId] / (param.scale ?? 1));
+        const rawValue = Math.round(job.values[paramId] / (param.scale ?? 1));
         try {
           await this.modbusService.writeRegister(param.register, rawValue, slaveId);
           client.emit('bulk:op:progress', {
-            kind: 'write', deviceId, paramId,
-            value: payload.values[paramId], unit: param.unit, name: param.name,
-            type: param.type, options: param.options,
+            kind: 'write', deviceId: job.deviceId, paramId,
+            value: job.values[paramId], unit: param.unit, name: param.name,
+            type: param.type, options: param.options, bits: param.bits,
           });
           ok++;
+          writtenParamIds.push(paramId);
         } catch (e) {
           client.emit('bulk:op:progress', {
-            kind: 'write', deviceId, paramId, name: param.name, error: (e as Error).message,
+            kind: 'write', deviceId: job.deviceId, paramId, name: param.name, error: (e as Error).message,
           });
         }
         done++;
       }
+
+      // Подготовленные значения выполнили свою задачу — очищаем записанное,
+      // неудавшиеся/недописанные остаются на повторную попытку.
+      if (payload.usePending && writtenParamIds.length > 0) {
+        const cleared: Record<string, null> = {};
+        for (const paramId of writtenParamIds) cleared[paramId] = null;
+        this.devicesService.mergeDevicePendingWrites(job.deviceId, cleared);
+      }
+
+      if (this.bulkOpCancelled) break outer;
     }
 
     this.bulkOpRunning = false;

@@ -24,7 +24,9 @@ const deviceArg = process.argv[4] || '1:pump,2:vh';
 const DEVICES = {};
 for (const pair of deviceArg.split(',')) {
   const [slaveId, kind] = pair.split(':');
-  DEVICES[Number(slaveId)] = kind.trim();
+  // 'vh' — старое имя серии, оставлено как алиас для совместимости скриптов
+  const normalized = kind.trim() === 'vh' ? 'vl' : kind.trim();
+  DEVICES[Number(slaveId)] = normalized;
 }
 
 const regs = {};
@@ -65,7 +67,7 @@ function loadTemplateDefaults(templateFile) {
 
 const TEMPLATE_DEFAULTS = {
   pump: loadTemplateDefaults('Elhart-Emd-Pump-Full.json'),
-  vh: loadTemplateDefaults('Elhart-Emd-VH-Full.json'),
+  vl: loadTemplateDefaults('Elhart-Emd-VL-Full.json'),
 };
 
 function defaultsFor(kind) {
@@ -84,13 +86,30 @@ function defaultsFor(kind) {
     map.set(7, 0);      // F0.07 сигнал ОС ПИД
     map.set(8, 12);     // F0.08 наработка, ч
     map.set(9, 380);    // F0.09 выходное напряжение, В
-    map.set(10, 0);     // F0.10 код аварии — 0 = нет аварии
-  } else if (kind === 'vh') {
+    map.set(10, 0);     // F0.10 последняя запись об аварии — 0 = нет
+    map.set(21, 5);     // F0.21 дискретные входы, битовая маска (входы 1 и 3 активны)
+    map.set(22, 1);     // F0.22 дискретные выходы, битовая маска
+    map.set(23, 650);   // F0.23 сигнал FIV, scale 0.01 → 6.50 В
+    map.set(24, 430);   // F0.24 сигнал FIC, scale 0.01 → 4.30 мА
+    map.set(27, 0);     // F0.27 текущий код аварийного состояния — 0 = нет аварии
+  } else if (kind === 'vl') {
     map.set(0xf000, 2);   // P0.00 режим работы (1=тяжёлый, 2=обычный)
     map.set(0xf707, 42);  // P7.07 температура IGBT-модуля, °C
-    map.set(0x7004, 350); // D0.04 выходной ток, scale 0.01 → 3.50 А
     map.set(0x8000, 0);   // FAULT_CODE — 0 = нет аварии
     map.set(0x3000, 3);   // STATUS — 3 = привод остановлен
+    // D0 (7000h+) — параметры мониторинга
+    map.set(0x7000, 5000); // D0.00 выходная частота, scale 0.01 → 50.00 Гц
+    map.set(0x7001, 5000); // D0.01 заданная частота
+    map.set(0x7002, 5400); // D0.02 напряжение ЗПТ, scale 0.1 → 540 В
+    map.set(0x7003, 380);  // D0.03 выходное напряжение, В
+    map.set(0x7004, 350);  // D0.04 выходной ток, scale 0.01 → 3.50 А
+    map.set(0x7005, 22);   // D0.05 выходная мощность, scale 0.1 → 2.2 кВт
+    map.set(0x7007, 5);    // D0.07 дискретные входы, битовая маска
+    map.set(0x7009, 650);  // D0.09 сигнал FIV / потенциометр
+    map.set(0x700a, 430);  // D0.10 сигнал FIC
+    map.set(0x700e, 1450); // D0.14 скорость двигателя, об/мин
+    map.set(0x701a, 120);  // D0.26 время работы ПЧ
+    map.set(0x702d, 0);    // D0.45 информация об ошибке — 0 = нет
   }
   return map;
 }
@@ -100,8 +119,8 @@ function regsFor(unitID) {
   return regs[unitID];
 }
 
-// небольшой "живой" разброс для регистров-датчиков, чтобы монитор не стоял на месте
-const NOISY = new Set([1, 2, 3, 4, 0x7004, 0xf707]);
+// небольшой "живой" разброс для регистров-датчиков, чтобы мониторинг не стоял на месте
+const NOISY = new Set([1, 2, 3, 4, 23, 24, 0x7000, 0x7004, 0x7005, 0x7009, 0x700a, 0x700e, 0xf707]);
 
 const vector = {
   getHoldingRegister: function (addr, unitID, callback) {

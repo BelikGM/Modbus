@@ -440,8 +440,8 @@ export default function BusScanner({ connected }) {
                         ? <ExclamationCircleOutlined style={{ color: '#ff4d4f' }} />
                         : <CheckCircleOutlined style={{ color: '#52c41a' }} />
                       }
-                      <Tag color="blue">Slave ID {r.slaveId}</Tag>
-                      <Tag color={r.model === 'vh' ? 'purple' : r.model === 'pump' ? 'green' : 'orange'}>
+                      <Tag color="blue">Адрес {r.slaveId}</Tag>
+                      <Tag color={r.model === 'vl' ? 'purple' : r.model === 'pump' ? 'green' : 'orange'}>
                         {r.model === 'unknown' ? 'Неизвестно' : `EMD-${r.model?.toUpperCase()}`}
                       </Tag>
                       {r.name && <Typography.Text strong>{r.name}</Typography.Text>}

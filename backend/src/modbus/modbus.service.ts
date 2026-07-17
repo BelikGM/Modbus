@@ -191,23 +191,23 @@ export class ModbusService implements OnModuleDestroy {
     });
   }
 
-  async identifyDevice(slaveId: number): Promise<'vh' | 'pump' | 'unknown'> {
+  async identifyDevice(slaveId: number): Promise<'vl' | 'pump' | 'unknown'> {
     return this.withLock(async () => {
       this.client.setTimeout(500);
       try {
         this.client.setID(slaveId);
 
-        // P0.00 (0xF000) — Режим работы: VH возвращает 1 (тяжёлый) или 2 (нормальный)
+        // P0.00 (0xF000) — Режим работы: VL/VH возвращает 1 (тяжёлый) или 2 (нормальный)
         const modeData = await this.client.readHoldingRegisters(0xF000, 1);
         const mode = modeData.data[0];
         if (mode !== 1 && mode !== 2) throw new Error('unexpected mode value');
 
-        // P7.07 (0xF707) — Температура IGBT: VH возвращает 0–120 °C (scale=1)
+        // P7.07 (0xF707) — Температура IGBT: VL/VH возвращает 0–120 °C (scale=1)
         const tempData = await this.client.readHoldingRegisters(0xF707, 1);
         const temp = tempData.data[0];
         if (temp < 0 || temp > 120) throw new Error('unexpected temp value');
 
-        return 'vh';
+        return 'vl';
       } catch {
         try {
           // Pump отвечает на регистр 0

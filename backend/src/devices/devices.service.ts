@@ -104,15 +104,27 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
 
   // ─── Merge ─────────────────────────────────────────────────────────────────
 
+  // Шаблон Elhart-Emd-VH-Full переименован в Elhart-Emd-VL-Full (серии VL и VH
+  // покрываются одним руководством и картой регистров; фактически используемые
+  // насосы — VL). Старые проекты могли сохранить инстансы со старым templateId —
+  // прозрачно перенаправляем их на новый шаблон, чтобы устройства не пропали.
+  private static readonly TEMPLATE_ALIASES: Record<string, string> = {
+    'Elhart-Emd-VH-Full': 'Elhart-Emd-VL-Full',
+  };
+
   private merge(instance: DeviceInstance): DeviceConfig | null {
-    const template = this.templates.get(instance.templateId);
+    const templateId =
+      this.templates.has(instance.templateId)
+        ? instance.templateId
+        : (DevicesService.TEMPLATE_ALIASES[instance.templateId] ?? instance.templateId);
+    const template = this.templates.get(templateId);
     if (!template) return null;
     return {
       ...template,
       id: instance.id,
       name: instance.name,
       template: false,
-      templateId: instance.templateId,
+      templateId,
       connection: { ...template.connection, ...instance.connection },
     };
   }
@@ -254,6 +266,20 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     const updated = { ...instance, pendingWrites };
     this.instances.set(id, updated);
     this.projectsService.writeInstance(projectId, updated);
+  }
+
+  // Вливает patch в существующие pendingWrites устройства (null/undefined в
+  // значении — удалить ключ). В отличие от updateDevicePendingWrites не трогает
+  // ключи, которых нет в patch.
+  mergeDevicePendingWrites(id: string, patch: Record<string, any>): void {
+    const instance = this.instances.get(id);
+    if (!instance) return;
+    const merged = { ...(instance.pendingWrites ?? {}) };
+    for (const [key, value] of Object.entries(patch ?? {})) {
+      if (value === null || value === undefined) delete merged[key];
+      else merged[key] = value;
+    }
+    this.updateDevicePendingWrites(id, merged);
   }
 
   getDeviceCurrentValues(id: string): Record<string, any> {

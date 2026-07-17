@@ -4,14 +4,73 @@ import { PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons'
 import socket from '../socket'
 import { addLog } from '../log'
 import { formatParamValue } from '../paramFormat'
+import { getMonitorParams } from '../monitorParams'
+
+function deviceFamily(templateId) {
+  return (templateId ?? '').toLowerCase().includes('vl') ? 'vl' : 'pump'
+}
 
 function formatCell(entry) {
   if (!entry) return <span style={{ color: '#bbb' }}>—</span>
   if (entry.error) return <span style={{ color: '#ff4d4f', fontSize: 12 }}>ошибка</span>
-  return <span>{formatParamValue(entry.type, entry.value, entry.unit, entry.options)}</span>
+  return <span>{formatParamValue(entry.type, entry.value, entry.unit, entry.options, entry.bits)}</span>
 }
 
-export default function BulkMonitor({ devices, modbusConnected }) {
+// Одна секция-таблица на семейство ПЧ (Pump/VL) — при смешанном выборе у
+// каждого семейства своя карта регистров мониторинга, общая таблица не имела
+// бы смысла.
+function FamilySection({ title, devices, monitorParams, dataByDevice }) {
+  const columns = [
+    {
+      title: 'Параметр',
+      dataIndex: 'name',
+      key: 'name',
+      fixed: 'left',
+      width: 220,
+      render: (name, row) => (
+        <div>
+          <Typography.Text style={{ fontSize: 13 }}>{name}</Typography.Text>
+          {row.unit && <Typography.Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>({row.unit})</Typography.Text>}
+        </div>
+      ),
+    },
+    ...devices.map(d => ({
+      title: (
+        <div>
+          <div style={{ fontSize: 12 }}>{d.name}</div>
+          <Typography.Text type="secondary" style={{ fontSize: 11 }}>Адрес {d.connection.slaveId}</Typography.Text>
+        </div>
+      ),
+      dataIndex: d.id,
+      key: d.id,
+      width: 130,
+      render: (_, row) => formatCell(dataByDevice[d.id]?.[row.paramId]),
+    })),
+  ]
+
+  const dataSource = monitorParams.map(p => ({
+    key: p.id,
+    paramId: p.id,
+    name: p.name,
+    unit: p.unit,
+  }))
+
+  return (
+    <div>
+      {title && <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>{title} ({devices.length})</Typography.Text>}
+      <Table
+        size="small"
+        pagination={false}
+        bordered
+        scroll={{ x: 'max-content', y: 'calc(100vh - 280px)' }}
+        columns={columns}
+        dataSource={dataSource}
+      />
+    </div>
+  )
+}
+
+export default function BulkMonitor({ devices, modbusConnected, sameType }) {
   const [running, setRunning] = useState(false)
   const [dataByDevice, setDataByDevice] = useState({}) // { [deviceId]: { [paramId]: entry } }
   const devicesRef = useRef(devices)
@@ -19,13 +78,14 @@ export default function BulkMonitor({ devices, modbusConnected }) {
   const runningRef = useRef(false)
   useEffect(() => { runningRef.current = running }, [running])
 
-  // Параметры мониторинга общие для всех устройств — гарантированно одна и та же
-  // карта регистров, т.к. BulkMonitor рендерится только когда все выбранные ПЧ
-  // одного templateId (проверяется в BulkPanel).
-  const f0Group = devices[0].groups.find(g => g.id === 'F0')
-    ?? devices[0].groups.find(g => g.params?.some(p => p.access === 'read' && (p.type === 'float' || p.type === 'integer')))
-  const monitorParams = (f0Group?.params ?? []).filter(
-    p => p.access === 'read' && (p.type === 'float' || p.type === 'integer') && p.id !== 'F0.00'
+  // Группируем по семейству ПЧ — при смешанном выборе у каждого своя карта
+  // регистров мониторинга; при однотипном выборе получится одна группа.
+  const familyGroups = ['pump', 'vl']
+    .map(family => ({ family, devices: devices.filter(d => deviceFamily(d.templateId) === family) }))
+    .filter(g => g.devices.length > 0)
+
+  const paramsByFamily = Object.fromEntries(
+    familyGroups.map(g => [g.family, getMonitorParams(g.devices[0])]),
   )
 
   useEffect(() => {
@@ -56,55 +116,23 @@ export default function BulkMonitor({ devices, modbusConnected }) {
       setDataByDevice({})
       addLog('info', `Групповой мониторинг остановлен: ${devices.length} устройств`)
     } else {
-      const paramIds = monitorParams.map(p => p.id)
-      for (const d of devices) socket.emit('monitor:start', { deviceId: d.id, paramIds })
+      for (const group of familyGroups) {
+        const paramIds = paramsByFamily[group.family].map(p => p.id)
+        for (const d of group.devices) socket.emit('monitor:start', { deviceId: d.id, paramIds })
+      }
       setRunning(true)
       addLog('info', `Групповой мониторинг запущен: ${devices.length} устройств`)
     }
   }
 
-  if (!monitorParams.length) {
+  const hasAnyParams = familyGroups.some(g => paramsByFamily[g.family].length > 0)
+  if (!hasAnyParams) {
     return (
       <Typography.Text type="secondary">
-        Нет параметров для мониторинга (нужны параметры с access: "read" и type: "float" или "integer")
+        Нет параметров для мониторинга (нужны параметры с access: "read" и type: "float"/"integer"/"bitmask")
       </Typography.Text>
     )
   }
-
-  const columns = [
-    {
-      title: 'Параметр',
-      dataIndex: 'name',
-      key: 'name',
-      fixed: 'left',
-      width: 220,
-      render: (name, row) => (
-        <div>
-          <Typography.Text style={{ fontSize: 13 }}>{name}</Typography.Text>
-          {row.unit && <Typography.Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>({row.unit})</Typography.Text>}
-        </div>
-      ),
-    },
-    ...devices.map(d => ({
-      title: (
-        <div>
-          <div style={{ fontSize: 12 }}>{d.name}</div>
-          <Typography.Text type="secondary" style={{ fontSize: 11 }}>ID {d.connection.slaveId}</Typography.Text>
-        </div>
-      ),
-      dataIndex: d.id,
-      key: d.id,
-      width: 130,
-      render: (_, row) => formatCell(dataByDevice[d.id]?.[row.paramId]),
-    })),
-  ]
-
-  const dataSource = monitorParams.map(p => ({
-    key: p.id,
-    paramId: p.id,
-    name: p.name,
-    unit: p.unit,
-  }))
 
   return (
     <Space direction="vertical" style={{ width: '100%' }} size="middle">
@@ -128,14 +156,15 @@ export default function BulkMonitor({ devices, modbusConnected }) {
         )}
       </Space>
 
-      <Table
-        size="small"
-        pagination={false}
-        bordered
-        scroll={{ x: 'max-content', y: 'calc(100vh - 280px)' }}
-        columns={columns}
-        dataSource={dataSource}
-      />
+      {familyGroups.map(group => (
+        <FamilySection
+          key={group.family}
+          title={sameType ? null : (group.family === 'vl' ? 'VL' : 'Pump')}
+          devices={group.devices}
+          monitorParams={paramsByFamily[group.family]}
+          dataByDevice={dataByDevice}
+        />
+      ))}
     </Space>
   )
 }

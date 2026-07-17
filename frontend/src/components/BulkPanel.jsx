@@ -1,20 +1,20 @@
 import { useState, useEffect } from 'react'
 import { Space, Typography, Tag, Alert, message, Tabs, Table, Button, Tooltip } from 'antd'
 import { CloseOutlined, ClearOutlined } from '@ant-design/icons'
-import api from '../api'
 import socket from '../socket'
 import ParamGroups from './ParamGroups'
 import BulkMonitor from './BulkMonitor'
+import ValuePresets from './ValuePresets'
 import { useDeviceSettings } from '../useDeviceSettings'
 import { formatParamValue } from '../paramFormat'
 
 // Pump-Full и Pump-OWN — один и тот же физический ПЧ, у OWN просто урезанный
 // (но регистрово идентичный) набор параметров — сверено вручную: все параметры
 // OWN присутствуют в Full с теми же номерами регистров. Групповые операции между
-// ними безопасны, поэтому они считаются одним "семейством". VH — другая карта
+// ними безопасны, поэтому они считаются одним "семейством". VL — другая карта
 // регистров, отдельное семейство.
 function deviceFamily(templateId) {
-  return (templateId ?? '').toLowerCase().includes('vh') ? 'vh' : 'pump'
+  return (templateId ?? '').toLowerCase().includes('vl') ? 'vl' : 'pump'
 }
 
 function formatResult(entry) {
@@ -26,21 +26,21 @@ function formatResult(entry) {
       </Tooltip>
     )
   }
-  return <span>{formatParamValue(entry.type, entry.value, entry.unit, entry.options)}</span>
+  return <span>{formatParamValue(entry.type, entry.value, entry.unit, entry.options, entry.bits)}</span>
 }
 
-export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
+const TAB_LABELS = { params: 'Параметры', templates: 'Шаблоны' }
+
+export default function BulkPanel({ devices, modbusConnected, onDeselect, activeTab, onActiveTabChange }) {
   const templateIds = [...new Set(devices.map(d => d.templateId))]
   const families = [...new Set(devices.map(d => deviceFamily(d.templateId)))]
   const sameType = families.length === 1
   // Устройство с наибольшим числом параметров в выборке (напр. Full среди Full+OWN) —
   // используется как эталон для отображения групп, чтобы не потерять группы,
   // которых нет у "урезанного" варианта.
-  const templateDevice = sameType
-    ? devices.reduce((best, d) => (
-        d.groups.flatMap(g => g.params).length > best.groups.flatMap(g => g.params).length ? d : best
-      ), devices[0])
-    : devices[0]
+  const templateDevice = devices.reduce((best, d) => (
+    d.groups.flatMap(g => g.params).length > best.groups.flatMap(g => g.params).length ? d : best
+  ), devices[0])
 
   const [deviceSettings, saveDeviceSettings] = useDeviceSettings(sameType ? templateDevice.templateId : '__mixed__')
   const [visibleGroupIds, setVisibleGroupIds] = useState(new Set())
@@ -57,15 +57,30 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
 
   const deviceIds = devices.map(d => d.id)
 
+  // Разные типы ПЧ вперемешку — групповая настройка параметров лишена смысла
+  // (разные карты регистров), но мониторинг каждого по своей карте — вполне
+  // безопасен и полезен, поэтому доступна только вкладка "Мониторинг".
+  useEffect(() => {
+    if (!sameType && activeTab !== 'monitor') onActiveTabChange('monitor')
+  }, [sameType])
+
+  function handleTabChange(key) {
+    if (!sameType && key !== 'monitor') {
+      message.warning('При выборе ПЧ разных типов доступен только мониторинг — параметры и шаблоны требуют устройств одного семейства (Pump или VL)')
+      return
+    }
+    onActiveTabChange(key)
+  }
+
   // Сбрасываем накопленные результаты чтения при смене состава выбранных устройств
   useEffect(() => {
     setBulkReadResults({})
   }, [deviceIds.join(',')])
 
-  // Групповое чтение/запись теперь целиком выполняется внутри ParamGroups через
-  // WebSocket (bulk:read:start/bulk:write:start) — сюда прилетают те же самые
-  // прогресс-события просто чтобы построить таблицу "по устройствам", отдельно
-  // от собственного (одноколоночного) отображения ParamGroups.
+  // Групповое чтение теперь целиком выполняется внутри ParamGroups через
+  // WebSocket (bulk:read:start) — сюда прилетают те же самые прогресс-события
+  // просто чтобы построить таблицу "по устройствам" отдельно от собственного
+  // (одноколоночного) отображения ParamGroups.
   useEffect(() => {
     function onProgress(p) {
       if (p.kind !== 'read' || !deviceIds.includes(p.deviceId)) return
@@ -75,7 +90,7 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
           ...prev[p.deviceId],
           [p.paramId]: p.error
             ? { error: p.error, name: p.name }
-            : { value: p.value, unit: p.unit, name: p.name, type: p.type, options: p.options },
+            : { value: p.value, unit: p.unit, name: p.name, type: p.type, options: p.options, bits: p.bits },
         },
       }))
     }
@@ -90,17 +105,6 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
     // очищаем целиком — даже если это та же самая единственная группа, что и
     // была, старые значения не должны "мелькать" до нового чтения.
     setBulkReadResults({})
-  }
-
-  async function handleBulkWrite(paramId, value) {
-    let ok = 0
-    for (const device of devices) {
-      try {
-        await api.post('/modbus/write', { deviceId: device.id, paramId, value })
-        ok++
-      } catch {}
-    }
-    message.success(`Записано на ${ok} из ${devices.length} устройств`)
   }
 
   const paramToGroup = new Map() // paramId -> { id, name }
@@ -136,7 +140,7 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
       title: (
         <div>
           <div style={{ fontSize: 12 }}>{d.name}</div>
-          <Typography.Text type="secondary" style={{ fontSize: 11 }}>ID {d.connection.slaveId}</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 11 }}>Адрес {d.connection.slaveId}</Typography.Text>
         </div>
       ),
       dataIndex: d.id,
@@ -158,6 +162,62 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
     readResultsDataSource.push({ key: paramId, paramId, name })
   }
 
+  // BulkPanel не имеет вкладок "Устройство"/"Журнал" (это данные конкретного
+  // ПЧ, не группы) — если пришли сюда из одиночного просмотра, откатываемся на
+  // "Параметры".
+  const tabKey = ['params', 'monitor', 'templates'].includes(activeTab) ? activeTab : 'params'
+
+  const items = [
+    {
+      key: 'params',
+      label: <span style={{ opacity: sameType ? 1 : 0.4 }}>{TAB_LABELS.params}</span>,
+      children: !sameType ? null : (
+        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+          {readResultRows.length > 0 && (
+            <div>
+              <Space style={{ marginBottom: 8 }}>
+                <Typography.Text strong style={{ fontSize: 12 }}>Результаты группового чтения</Typography.Text>
+                <Button
+                  size="small"
+                  icon={<ClearOutlined />}
+                  onClick={() => setBulkReadResults({})}
+                >
+                  Очистить
+                </Button>
+              </Space>
+              <Table
+                size="small"
+                pagination={false}
+                bordered
+                scroll={{ x: 'max-content', y: 'calc(100vh - 280px)' }}
+                rowClassName={row => (row.isGroupHeader ? 'group-header-row' : '')}
+                columns={readResultsColumns}
+                dataSource={readResultsDataSource}
+              />
+            </div>
+          )}
+          <ParamGroups
+            device={templateDevice}
+            devices={devices}
+            modbusConnected={modbusConnected}
+            visibleGroupIds={visibleGroupIds}
+            onVisibleGroupIdsChange={handleVisibleGroupIdsChange}
+          />
+        </Space>
+      ),
+    },
+    {
+      key: 'monitor',
+      label: 'Мониторинг',
+      children: <BulkMonitor devices={devices} modbusConnected={modbusConnected} sameType={sameType} />,
+    },
+    {
+      key: 'templates',
+      label: <span style={{ opacity: sameType ? 1 : 0.4 }}>{TAB_LABELS.templates}</span>,
+      children: !sameType ? null : <ValuePresets device={templateDevice} />,
+    },
+  ]
+
   return (
     <div>
       <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -171,70 +231,23 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect }) {
               closeIcon={<CloseOutlined />}
               onClose={() => onDeselect(d.id)}
             >
-              {d.name} · ID {d.connection.slaveId}
+              {d.name} · Адрес {d.connection.slaveId}
             </Tag>
           ))}
         </Space>
       </div>
 
-      {!sameType ? (
+      {!sameType && (
         <Alert
+          style={{ marginBottom: 16 }}
           type="warning"
           showIcon
-          message="Недопустима групповая работа с ПЧ разных типов"
-          description={`Выбраны устройства разных семейств (${templateIds.join(', ')}) — у них разные карты регистров, групповое чтение/запись для них не имеют смысла и могут записать не те значения не в те регистры. Выберите только однотипные устройства (снимите лишние галочки в списке слева). Pump-Full и Pump-OWN между собой совместимы — это один и тот же ПЧ с урезанным набором параметров.`}
-        />
-      ) : (
-        <Tabs
-          defaultActiveKey="params"
-          items={[
-            {
-              key: 'params',
-              label: 'Параметры',
-              children: (
-                <Space direction="vertical" style={{ width: '100%' }} size="middle">
-                  {readResultRows.length > 0 && (
-                    <div>
-                      <Space style={{ marginBottom: 8 }}>
-                        <Typography.Text strong style={{ fontSize: 12 }}>Результаты группового чтения</Typography.Text>
-                        <Button
-                          size="small"
-                          icon={<ClearOutlined />}
-                          onClick={() => setBulkReadResults({})}
-                        >
-                          Очистить
-                        </Button>
-                      </Space>
-                      <Table
-                        size="small"
-                        pagination={false}
-                        bordered
-                        scroll={{ x: 'max-content', y: 'calc(100vh - 280px)' }}
-                        rowClassName={row => (row.isGroupHeader ? 'group-header-row' : '')}
-                        columns={readResultsColumns}
-                        dataSource={readResultsDataSource}
-                      />
-                    </div>
-                  )}
-                  <ParamGroups
-                    device={templateDevice}
-                    deviceIds={deviceIds}
-                    modbusConnected={modbusConnected}
-                    onWrite={handleBulkWrite}
-                    visibleGroupIds={visibleGroupIds}
-                    onVisibleGroupIdsChange={handleVisibleGroupIdsChange}
-                  />
-                </Space>
-              ),
-            },
-            {
-              key: 'monitor',
-              label: 'Монитор',
-              children: <BulkMonitor devices={devices} modbusConnected={modbusConnected} />,
-            },
-          ]}
+          message="Выбраны ПЧ разных типов — доступен только мониторинг"
+          description={`Выбраны устройства разных семейств (${templateIds.join(', ')}) — у них разные карты регистров, групповое чтение/запись параметров и шаблоны для них не имеют смысла и могут записать не те значения не в те регистры. Мониторинг при этом доступен — ниже показания каждого семейства выводятся отдельным блоком по своей карте параметров. Pump-Full и Pump-OWN между собой совместимы — это один и тот же ПЧ с урезанным набором параметров.`}
         />
       )}
+
+      <Tabs activeKey={tabKey} onChange={handleTabChange} items={items} />
     </div>
   )
 }
