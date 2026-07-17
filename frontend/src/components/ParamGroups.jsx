@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Collapse, Button, Input, message, Typography, Popconfirm, Space, Modal, Table, Checkbox, Progress } from 'antd'
-import { DownloadOutlined, SearchOutlined, RollbackOutlined, HolderOutlined, HistoryOutlined, DatabaseOutlined, UploadOutlined } from '@ant-design/icons'
+import { Collapse, Button, Input, message, Typography, Popconfirm, Space, Modal, Table, Checkbox, Progress, Select } from 'antd'
+import { DownloadOutlined, SearchOutlined, RollbackOutlined, HolderOutlined, DatabaseOutlined, UploadOutlined, FileTextOutlined } from '@ant-design/icons'
 import {
   DndContext,
   closestCenter,
@@ -23,6 +23,10 @@ import { isParamWritable } from '../access'
 
 const DEFAULT_COLS = { id: 90, desc: 220, def: 120, cur: 150, write: 290 }
 const MIN_COLS     = { id: 60, desc: 100, def: 80,  cur: 100, write: 200 }
+
+function deviceFamily(templateId) {
+  return (templateId ?? '').toLowerCase().includes('vl') ? 'vl' : 'pump'
+}
 
 function SortableCollapseItem({ id, children }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
@@ -53,9 +57,9 @@ function SortableCollapseItem({ id, children }) {
   )
 }
 
-function HeaderCell({ label, width, onResizeStart }) {
+function HeaderCell({ label, width, onResizeStart, marginLeft }) {
   return (
-    <div style={{ position: 'relative', width, flexShrink: 0, paddingRight: 10, boxSizing: 'border-box' }}>
+    <div style={{ position: 'relative', width, flexShrink: 0, paddingRight: 10, boxSizing: 'border-box', marginLeft }}>
       <Typography.Text style={{ fontSize: 11, color: '#888', fontWeight: 600, userSelect: 'none' }}>
         {label}
       </Typography.Text>
@@ -86,17 +90,30 @@ function ParamTableHeader({ cols, onResizeStart }) {
       <HeaderCell label="Параметр / Адрес"      width={cols.id}    onResizeStart={onResizeStart('id')} />
       <HeaderCell label="Описание параметра"     width={cols.desc}  onResizeStart={onResizeStart('desc')} />
       <HeaderCell label="Заводское значение"     width={cols.def}   onResizeStart={onResizeStart('def')} />
-      <HeaderCell label="Значение на устройстве" width={cols.cur}   onResizeStart={onResizeStart('cur')} />
-      <HeaderCell label="Значение для записи"    width={cols.write} onResizeStart={onResizeStart('write')} />
+      <HeaderCell label="Значение на устройстве" width={cols.cur}   onResizeStart={onResizeStart('cur')} marginLeft={20} />
+      <HeaderCell label="Значение для записи"    width={cols.write} onResizeStart={onResizeStart('write')} marginLeft={20} />
     </div>
   )
 }
 
 export default function ParamGroups({
-  device, deviceIds, modbusConnected, deviceRunning, onWrite,
+  device, devices, modbusConnected, deviceRunning, onWrite,
   visibleGroupIds: controlledVisibleGroupIds, onVisibleGroupIdsChange,
 }) {
-  const effectiveDeviceIds = deviceIds ?? [device.id]
+  // В одиночном режиме (DeviceDetail) `devices` не передаётся — работаем с одним
+  // `device`. В групповом (BulkPanel) `devices` — полный список выбранных ПЧ
+  // одного семейства; `device` при этом — "эталон" с самой полной картой
+  // регистров (для отображения групп/параметров), а подготовленные значения у
+  // каждого устройства свои — редактируются по одному через переключатель ниже.
+  const effectiveDevices = devices ?? [device]
+  const effectiveDeviceIds = effectiveDevices.map(d => d.id)
+  const isBulk = effectiveDevices.length > 1
+  const [activeDeviceId, setActiveDeviceId] = useState(effectiveDeviceIds[0])
+  useEffect(() => {
+    if (!effectiveDeviceIds.includes(activeDeviceId)) setActiveDeviceId(effectiveDeviceIds[0])
+  }, [effectiveDeviceIds.join(',')])
+  const activeDevice = effectiveDevices.find(d => d.id === activeDeviceId) ?? effectiveDevices[0]
+
   const [readingGroup, setReadingGroup] = useState(null)
   const [groupValues, setGroupValues]   = useState({})
   const [search, setSearch]             = useState('')
@@ -122,14 +139,16 @@ export default function ParamGroups({
   const [ownVisibleGroupIds, setOwnVisibleGroupIds] = useState(new Set(device.groups.map(g => g.id)))
   const visibleGroupIds = isGroupVisibilityControlled ? controlledVisibleGroupIds : ownVisibleGroupIds
   const [pendingWrites, setPendingWrites] = useState({})
-  const [fillStamp, setFillStamp] = useState(0)
+  const [pendingVersion, setPendingVersion] = useState(0) // растёт при смене устройства/применении шаблона — форсирует переинициализацию полей записи в ParamRow
   const [currentValues, setCurrentValues] = useState({})
   const [currentFillStamp, setCurrentFillStamp] = useState(0)
   const [currentValuesModalOpen, setCurrentValuesModalOpen] = useState(false)
+  const [presetModalOpen, setPresetModalOpen] = useState(false)
+  const [presets, setPresets] = useState([])
+  const [selectedPresetId, setSelectedPresetId] = useState(null)
+  const [applyingPreset, setApplyingPreset] = useState(false)
   const latestCols = useRef(DEFAULT_COLS)
-  const latestPendingWrites = useRef({})
   const latestCurrentValues = useRef({})
-  const pendingSaveTimer = useRef(null)
   const currentSaveTimer = useRef(null)
   const resizing = useRef(null)
 
@@ -174,20 +193,22 @@ export default function ParamGroups({
     }
   }
 
+  // Подготовленные значения (черновик) и последние прочитанные — хранятся на
+  // бэке ПЕР УСТРОЙСТВО. В групповом режиме показываем/редактируем черновик
+  // ТЕКУЩЕГО выбранного в переключателе устройства; при переключении между
+  // устройствами каждое хранит и подставляет своё собственное значение.
   useEffect(() => {
     setPendingWrites({})
-    latestPendingWrites.current = {}
     setCurrentValues({})
     let cancelled = false
-    api.get(`/devices/${device.id}/pending-writes`)
+    api.get(`/devices/${activeDeviceId}/pending-writes`)
       .then(({ data }) => {
         if (cancelled) return
-        const pw = data ?? {}
-        setPendingWrites(pw)
-        latestPendingWrites.current = pw
+        setPendingWrites(data ?? {})
+        setPendingVersion(v => v + 1)
       })
       .catch(() => {})
-    api.get(`/devices/${device.id}/current-values`)
+    api.get(`/devices/${activeDeviceId}/current-values`)
       .then(({ data }) => {
         if (cancelled) return
         const cv = data ?? {}
@@ -196,19 +217,15 @@ export default function ParamGroups({
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [device.id])
+  }, [activeDeviceId])
 
   const handlePendingWriteChange = useCallback((paramId, val) => {
     setPendingWrites(prev => {
       const next = { ...prev, [paramId]: val }
-      latestPendingWrites.current = next
+      api.patch(`/devices/${activeDeviceId}/pending-writes`, { merge: true, pendingWrites: { [paramId]: val } }).catch(() => {})
       return next
     })
-    if (pendingSaveTimer.current) clearTimeout(pendingSaveTimer.current)
-    pendingSaveTimer.current = setTimeout(() => {
-      api.patch(`/devices/${device.id}/pending-writes`, { pendingWrites: latestPendingWrites.current }).catch(() => {})
-    }, 500)
-  }, [device.id, saveDeviceSettings])
+  }, [activeDeviceId])
 
   const handleReadValue = useCallback((paramId, val) => {
     setCurrentValues(prev => {
@@ -218,9 +235,9 @@ export default function ParamGroups({
     })
     if (currentSaveTimer.current) clearTimeout(currentSaveTimer.current)
     currentSaveTimer.current = setTimeout(() => {
-      api.patch(`/devices/${device.id}/current-values`, { currentValues: latestCurrentValues.current }).catch(() => {})
+      api.patch(`/devices/${activeDeviceId}/current-values`, { currentValues: latestCurrentValues.current }).catch(() => {})
     }, 500)
-  }, [device.id])
+  }, [activeDeviceId])
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
@@ -279,15 +296,28 @@ export default function ParamGroups({
   // проходит по всем (устройство × параметр) и шлёт прогресс по каждому — вместо
   // отдельного HTTP-запроса на каждую пару с фронта (было в разы медленнее и
   // "Остановить" реагировало только между уже запущенными HTTP-вызовами).
+  //
+  // Запись поддерживает два режима payload:
+  //  - массив paramIds (чтение)
+  //  - { usePending: true, paramIds } — запись per-device подготовленных значений
+  //    (сервер сам берёт pendingWrites каждого устройства и очищает записанное)
+  //  - обычный объект { paramId: value } — запись ОДИНАКОВЫХ значений всем
+  //    устройствам (используется только для сброса до заводских)
   function runBulkOp(kind, ids, payload) {
-    const total = kind === 'read' ? ids.length * payload.length : ids.length * Object.keys(payload).length
-    setOpProgress({ done: 0, total })
+    const knownTotal = kind === 'read'
+      ? ids.length * payload.length
+      : (payload?.usePending ? null : ids.length * Object.keys(payload).length)
+    setOpProgress({ done: 0, total: knownTotal ?? 0 })
     return new Promise(resolve => {
       let done = 0
+      function onTotal(t) {
+        if (t.kind !== kind) return
+        setOpProgress({ done, total: t.total })
+      }
       function onProgress(p) {
         if (p.kind !== kind || !ids.includes(p.deviceId)) return
         done++
-        setOpProgress({ done, total })
+        setOpProgress(prev => ({ done, total: prev?.total ?? done }))
         if (!p.error) {
           setGroupValues(prev => {
             const next = { ...prev, [p.paramId]: p.value }
@@ -298,14 +328,17 @@ export default function ParamGroups({
       }
       function onDone(d) {
         if (d.kind !== kind) return
+        socket.off('bulk:op:total', onTotal)
         socket.off('bulk:op:progress', onProgress)
         socket.off('bulk:op:done', onDone)
         setOpProgress(null)
         resolve(d)
       }
+      socket.on('bulk:op:total', onTotal)
       socket.on('bulk:op:progress', onProgress)
       socket.on('bulk:op:done', onDone)
       if (kind === 'read') socket.emit('bulk:read:start', { deviceIds: ids, paramIds: payload })
+      else if (payload?.usePending) socket.emit('bulk:write:start', { deviceIds: ids, usePending: true, paramIds: payload.paramIds })
       else socket.emit('bulk:write:start', { deviceIds: ids, values: payload })
     })
   }
@@ -326,27 +359,24 @@ export default function ParamGroups({
       }
       setCurrentValues(merged)
       latestCurrentValues.current = merged
-      api.patch(`/devices/${device.id}/current-values`, { currentValues: merged }).catch(() => {})
+      api.patch(`/devices/${activeDeviceId}/current-values`, { currentValues: merged }).catch(() => {})
     }
   }
 
+  // Запись группы: каждое устройство пишет СВОИ подготовленные значения этой
+  // группы (не общее значение с экрана) — то, что реально нужно, если часть
+  // выбранных ПЧ отличается от остальных.
   async function writeGroup(group, e) {
     e?.stopPropagation()
-    const toWrite = group.params.filter(
-      p => isParamWritable(device, p) && latestPendingWrites.current[p.id] != null
-    )
-    if (toWrite.length === 0) {
-      message.info(`В группе «${group.name}» нет значений для записи`)
-      return
-    }
     expandGroup(group.id)
     setReadingGroup(group.id)
-    const values = {}
-    for (const p of toWrite) values[p.id] = latestPendingWrites.current[p.id]
-    const result = await runBulkOp('write', effectiveDeviceIds, values)
+    const paramIds = group.params.filter(p => isParamWritable(device, p)).map(p => p.id)
+    const result = await runBulkOp('write', effectiveDeviceIds, { usePending: true, paramIds })
     setReadingGroup(null)
-    if (result.cancelled) message.info(`Остановлено: группа «${group.name}» записана частично (${result.ok}/${result.total})`)
+    if (result.total === 0) message.info(`В группе «${group.name}» ни у одного устройства нет подготовленных значений для записи`)
+    else if (result.cancelled) message.info(`Остановлено: группа «${group.name}» записана частично (${result.ok}/${result.total})`)
     else message.success(`Записано ${result.ok} из ${result.total} (группа «${group.name}»)`)
+    setPendingVersion(v => v + 1)
   }
 
   async function processAllGroups(kind) {
@@ -372,6 +402,64 @@ export default function ParamGroups({
     }
   }
 
+  async function resetGroup(group, e) {
+    e?.stopPropagation()
+    const toWrite = group.params.filter(
+      p => isParamWritable(device, p) && p.default !== undefined && p.default !== null && typeof p.default === 'number'
+    )
+    if (toWrite.length === 0) {
+      message.info('Нет параметров с заводскими значениями')
+      return
+    }
+    expandGroup(group.id)
+    setReadingGroup(group.id)
+    const values = {}
+    for (const p of toWrite) values[p.id] = p.default
+    const result = await runBulkOp('write', effectiveDeviceIds, values)
+    setReadingGroup(null)
+    if (result.cancelled) message.info(`Остановлено: группа «${group.name}» сброшена частично (${result.ok}/${result.total})`)
+    else message.success(`Сброшено ${result.ok} из ${result.total} параметров группы ${group.name}`)
+  }
+
+  // ─── Шаблоны значений (пресеты) ────────────────────────────────────────────
+
+  const family = deviceFamily(device.templateId ?? device.id)
+
+  async function openPresetModal() {
+    setSelectedPresetId(null)
+    setPresetModalOpen(true)
+    try {
+      const { data } = await api.get('/presets', { params: { family } })
+      setPresets(data)
+    } catch {
+      setPresets([])
+    }
+  }
+
+  async function applyPreset() {
+    const preset = presets.find(p => p.id === selectedPresetId)
+    if (!preset) return
+    setApplyingPreset(true)
+    try {
+      await Promise.all(effectiveDeviceIds.map(id =>
+        api.patch(`/devices/${id}/pending-writes`, { merge: true, pendingWrites: preset.values }).catch(() => {})
+      ))
+      message.success(`Шаблон «${preset.name}» применён к ${effectiveDeviceIds.length} устр. — значения подготовлены к записи`)
+      // Обновить видимые поля, если открытое сейчас устройство входит в выборку
+      setPendingWrites(prev => ({ ...prev, ...preset.values }))
+      setPendingVersion(v => v + 1)
+      for (const groupId of new Set(Object.keys(preset.values).map(paramId => {
+        const g = device.groups.find(gr => gr.params.some(p => p.id === paramId))
+        return g?.id
+      }).filter(Boolean))) {
+        expandGroup(groupId)
+      }
+      setPresetModalOpen(false)
+    } finally {
+      setApplyingPreset(false)
+    }
+  }
+
   const query = search.trim().toLowerCase()
   const filteredGroups = groupsInScope
     .map(group => ({
@@ -384,7 +472,7 @@ export default function ParamGroups({
     }))
     .filter(g => g.params.length > 0)
 
-  const totalWidth = cols.id + cols.desc + cols.def + cols.cur + cols.write
+  const totalWidth = cols.id + cols.desc + cols.def + 20 + cols.cur + 20 + cols.write
 
   const items = filteredGroups.map((group, groupIndex) => ({
     key: group.id,
@@ -439,8 +527,8 @@ export default function ParamGroups({
           <ParamTableHeader cols={cols} onResizeStart={startResize} />
           {group.params.map(param => (
             <ParamRow
-              key={param.id}
-              device={device}
+              key={`${activeDeviceId}-${param.id}-v${pendingVersion}`}
+              device={activeDevice}
               param={param}
               modbusConnected={modbusConnected}
               deviceRunning={deviceRunning}
@@ -450,11 +538,10 @@ export default function ParamGroups({
               onClearGroupValue={clearGroupValue}
               pendingWriteValue={pendingWrites[param.id]}
               onPendingWriteChange={handlePendingWriteChange}
-              fillStamp={fillStamp}
               currentValue={currentValues[param.id]}
               currentFillStamp={currentFillStamp}
               onReadValue={handleReadValue}
-              hideDeviceValue={effectiveDeviceIds.length > 1}
+              hideDeviceValue={isBulk}
             />
           ))}
         </div>
@@ -462,28 +549,14 @@ export default function ParamGroups({
     ),
   }))
 
-  async function resetGroup(group, e) {
-    e?.stopPropagation()
-    const toWrite = group.params.filter(
-      p => isParamWritable(device, p) && p.default !== undefined && p.default !== null
-    )
-    if (toWrite.length === 0) {
-      message.info('Нет параметров с заводскими значениями')
-      return
-    }
-    expandGroup(group.id)
-    setReadingGroup(group.id)
-    const values = {}
-    for (const p of toWrite) values[p.id] = p.default
-    const result = await runBulkOp('write', effectiveDeviceIds, values)
-    setReadingGroup(null)
-    if (result.cancelled) message.info(`Остановлено: группа «${group.name}» сброшена частично (${result.ok}/${result.total})`)
-    else message.success(`Сброшено ${result.ok} из ${result.total} параметров группы ${group.name}`)
-  }
+  // По 3 группы в столбец у Pump, по 4 у VL/VH — раскладка сверху вниз, потом
+  // следующий столбец, а не горизонтальный перенос (проще ориентироваться в
+  // длинном списке групп).
+  const checkboxRows = family === 'vl' ? 4 : 3
 
   return (
     <>
-      <Space style={{ marginBottom: 12, width: '100%' }}>
+      <Space style={{ marginBottom: 12, width: '100%' }} wrap>
         <Input
           prefix={<SearchOutlined style={{ color: '#bbb' }} />}
           placeholder="Поиск параметра по коду или названию"
@@ -492,13 +565,23 @@ export default function ParamGroups({
           allowClear
           style={{ width: 320 }}
         />
+        {isBulk && (
+          <Select
+            value={activeDeviceId}
+            onChange={setActiveDeviceId}
+            style={{ width: 220 }}
+            popupMatchSelectWidth={false}
+            options={effectiveDevices.map(d => ({
+              value: d.id,
+              label: `${d.name} · Адрес ${d.connection.slaveId}`,
+            }))}
+          />
+        )}
         <Button
-          icon={<HistoryOutlined />}
-          disabled={Object.keys(pendingWrites).length === 0}
-          onClick={() => setFillStamp(s => s + 1)}
-          title="Заполнить поля записи сохранёнными черновиками"
+          icon={<FileTextOutlined />}
+          onClick={openPresetModal}
         >
-          Черновик
+          Подготовить из шаблона
         </Button>
         <Button
           icon={<DatabaseOutlined />}
@@ -566,14 +649,21 @@ export default function ParamGroups({
         <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 6 }}>
           Отображаемые группы параметров (влияет на «Прочитать/Записать/Сбросить все»)
         </Typography.Text>
-        <Space wrap size={[10, 4]}>
-          <Checkbox
-            checked={visibleGroupIds.size === device.groups.length}
-            indeterminate={visibleGroupIds.size > 0 && visibleGroupIds.size < device.groups.length}
-            onChange={e => setAllGroupsVisible(e.target.checked)}
-          >
-            <span style={{ fontSize: 12, fontWeight: 600 }}>Все</span>
-          </Checkbox>
+        <Checkbox
+          checked={visibleGroupIds.size === device.groups.length}
+          indeterminate={visibleGroupIds.size > 0 && visibleGroupIds.size < device.groups.length}
+          onChange={e => setAllGroupsVisible(e.target.checked)}
+          style={{ marginBottom: 6, display: 'block' }}
+        >
+          <span style={{ fontSize: 12, fontWeight: 600 }}>Все</span>
+        </Checkbox>
+        <div style={{
+          display: 'grid',
+          gridAutoFlow: 'column',
+          gridTemplateRows: `repeat(${checkboxRows}, auto)`,
+          columnGap: 20,
+          rowGap: 4,
+        }}>
           {device.groups.map(group => (
             <Checkbox
               key={group.id}
@@ -583,7 +673,7 @@ export default function ParamGroups({
               <span style={{ fontSize: 12 }}>{group.name}</span>
             </Checkbox>
           ))}
-        </Space>
+        </div>
       </div>
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -645,6 +735,29 @@ export default function ParamGroups({
             { title: 'Значение', dataIndex: 'value', width: 100, render: (v, r) => `${v} ${r.unit}`.trim() },
           ]}
           locale={{ emptyText: 'Нет сохранённых значений' }}
+        />
+      </Modal>
+
+      <Modal
+        title={<Space><FileTextOutlined />Подготовить значения из шаблона</Space>}
+        open={presetModalOpen}
+        onCancel={() => setPresetModalOpen(false)}
+        onOk={applyPreset}
+        okText={`Подготовить для ${effectiveDeviceIds.length} устр.`}
+        okButtonProps={{ disabled: !selectedPresetId, loading: applyingPreset }}
+        cancelText="Отмена"
+      >
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+          Значения из выбранного шаблона будут подготовлены (записаны в черновик, но не в ПЧ) у {effectiveDeviceIds.length === 1 ? 'этого устройства' : `всех выбранных устройств (${effectiveDeviceIds.length})`}.
+          Уже подготовленные вручную значения других параметров не тронутся; фактическая запись — обычной кнопкой «Записать группу»/«Записать все».
+        </Typography.Paragraph>
+        <Select
+          style={{ width: '100%' }}
+          placeholder={presets.length ? 'Выберите шаблон' : `Нет сохранённых шаблонов для ${family === 'vl' ? 'VL' : 'Pump'} — создайте на вкладке «Шаблоны»`}
+          value={selectedPresetId}
+          onChange={setSelectedPresetId}
+          options={presets.map(p => ({ value: p.id, label: `${p.name} (${Object.keys(p.values).length} рег.)` }))}
+          notFoundContent="Нет шаблонов для этого типа ПЧ"
         />
       </Modal>
     </>

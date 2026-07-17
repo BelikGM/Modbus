@@ -16,6 +16,7 @@ export interface DeviceParam {
   max?: number;
   default?: number;
   options?: ParamOption[];
+  bits?: { bit: number; name: string; options?: Record<string, string> }[];
 }
 
 export interface ParamGroup {

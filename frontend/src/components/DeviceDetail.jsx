@@ -6,6 +6,7 @@ import DeviceInfo from './DeviceInfo'
 import ControlPanel from './ControlPanel'
 import BackupRestore from './BackupRestore'
 import DeviceNotes from './DeviceNotes'
+import ValuePresets from './ValuePresets'
 import api from '../api'
 
 function findStatusParam(device) {
@@ -17,7 +18,7 @@ function findStatusParam(device) {
   return null
 }
 
-export default function DeviceDetail({ device, modbusConnected }) {
+export default function DeviceDetail({ device, modbusConnected, activeTab, onActiveTabChange }) {
   const [deviceRunning, setDeviceRunning] = useState(null) // null=неизвестно, true=работает, false=остановлен
   const intervalRef = useRef(null)
 
@@ -48,8 +49,13 @@ export default function DeviceDetail({ device, modbusConnected }) {
     },
     {
       key: 'monitor',
-      label: 'Монитор',
+      label: 'Мониторинг',
       children: <Monitor device={device} modbusConnected={modbusConnected} />,
+    },
+    {
+      key: 'templates',
+      label: 'Шаблоны',
+      children: <ValuePresets device={device} />,
     },
     {
       key: 'info',
@@ -79,7 +85,7 @@ export default function DeviceDetail({ device, modbusConnected }) {
         {/*<BackupRestore device={device} modbusConnected={modbusConnected} />*/}
       </div>
       <ControlPanel device={device} modbusConnected={modbusConnected} />
-      <Tabs items={items} defaultActiveKey="params" />
+      <Tabs items={items} activeKey={activeTab} onChange={onActiveTabChange} />
     </div>
   )
 }

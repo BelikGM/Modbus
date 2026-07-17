@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Button, InputNumber, Select, Typography, Spin, message, Space, Tag, Tooltip } from 'antd'
+import { Button, InputNumber, Select, Typography, Spin, message, Tag, Tooltip } from 'antd'
 import api from '../api'
 import { addLog } from '../log'
 import { isParamWritable, isStopOnly } from '../access'
@@ -22,21 +22,25 @@ function getAccessTooltip(device, param) {
 
 const DEFAULT_COLS = { id: 90, desc: 220, def: 120, cur: 150, write: 290 }
 
-export default function ParamRow({ device, param, modbusConnected, deviceRunning, injectedValue, cols, onWrite, onClearGroupValue, pendingWriteValue, onPendingWriteChange, fillStamp, currentValue, currentFillStamp, onReadValue, hideDeviceValue }) {
+export default function ParamRow({ device, param, modbusConnected, deviceRunning, injectedValue, cols, onWrite, onClearGroupValue, pendingWriteValue, onPendingWriteChange, currentValue, currentFillStamp, onReadValue, hideDeviceValue }) {
   const [value, setValue]         = useState(null)
   const [bitState, setBitState]   = useState({})
   const [editValue, setEditValue] = useState(null)
-  const appliedStamp = useRef(0)
   const appliedCurrentStamp = useRef(0)
+  const appliedPending = useRef(false)
 
+  // Подготовленное (но ещё не записанное) значение подставляется в поле записи
+  // само, как только приходит из хранилища устройства — без отдельной кнопки
+  // "восстановить". Срабатывает один раз при получении, дальше не перетирает
+  // то, что пользователь уже правит руками.
   useEffect(() => {
-    if (!fillStamp || fillStamp === appliedStamp.current || pendingWriteValue == null) return
-    appliedStamp.current = fillStamp
+    if (appliedPending.current || pendingWriteValue == null) return
+    appliedPending.current = true
     setEditValue(pendingWriteValue)
     if (param.type === 'bitmask' && param.bits) {
       setBitState(intToBitState(param.bits, pendingWriteValue))
     }
-  }, [fillStamp])
+  }, [pendingWriteValue])
 
   useEffect(() => {
     if (!currentFillStamp || currentFillStamp === appliedCurrentStamp.current || currentValue == null) return
@@ -112,7 +116,7 @@ export default function ParamRow({ device, param, modbusConnected, deviceRunning
   function renderBitTags(raw) {
     return param.bits.map(b => {
       const bitVal = (Math.round(raw) >> b.bit) & 1
-      const label  = b.values?.[String(bitVal)] ?? String(bitVal)
+      const label  = b.options?.[String(bitVal)] ?? String(bitVal)
       const active = bitVal === 1
       return (
         <Tag key={b.bit} color={active ? 'success' : 'default'} style={{ margin: '2px', fontSize: 11 }}>
@@ -131,7 +135,7 @@ export default function ParamRow({ device, param, modbusConnected, deviceRunning
   const currentFormatted = formatParamValue(param.type, displayValue, param.unit, param.options)
 
   /* ── ширина ввода в колонке "Записать" ───────────────────────── */
-  const inputW = Math.max(60, C.write - 130)   // место за вычетом кнопок Читать + Записать
+  const inputW = Math.max(60, C.write - 90)   // место за вычетом кнопки "Записать"
 
   return (
     <div style={{ borderBottom: '1px solid #f5f5f5' }}>
@@ -142,7 +146,7 @@ export default function ParamRow({ device, param, modbusConnected, deviceRunning
           <Typography.Text code style={{ fontSize: 11, display: 'block' }}>{param.id}</Typography.Text>
           <Tooltip title={accessTooltip} placement="right">
             <Typography.Text style={{ fontSize: 10, color: '#999', cursor: accessTooltip ? 'help' : undefined }}>
-              рег.{param.register}
+              регистр {param.register}
               {accessTooltip && <span style={{ marginLeft: 3, opacity: 0.6 }}>[{param.access}]</span>}
             </Typography.Text>
           </Tooltip>
@@ -170,8 +174,8 @@ export default function ParamRow({ device, param, modbusConnected, deviceRunning
           </Tooltip>
         </div>
 
-        {/* Значение на устройстве */}
-        <div style={{ width: C.cur, flexShrink: 0 }}>
+        {/* Значение на устройстве — читать сюда же, отдельным отступом от заводского */}
+        <div style={{ width: C.cur, flexShrink: 0, marginLeft: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
           {hideDeviceValue ? (
             <Tooltip title="Выбрано несколько устройств — значения по каждому смотрите в таблице результатов выше">
               <Typography.Text style={{ fontSize: 12, color: '#bbb', cursor: 'help' }}>—</Typography.Text>
@@ -187,13 +191,13 @@ export default function ParamRow({ device, param, modbusConnected, deviceRunning
               </Typography.Text>
             )
           )}
-        </div>
-
-        {/* Значение для записи */}
-        <div style={{ width: C.write, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
           <Button size="small" onClick={handleRead} disabled={!modbusConnected || !!onWrite} loading={reading}>
             Читать
           </Button>
+        </div>
+
+        {/* Значение для записи */}
+        <div style={{ width: C.write, flexShrink: 0, marginLeft: 20, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           {canWrite && !isBitmask && (
             <>
               {param.type === 'enum' ? (
@@ -254,7 +258,7 @@ export default function ParamRow({ device, param, modbusConnected, deviceRunning
                       placeholder={b.name}
                       value={bitState[b.bit] ?? null}
                       popupMatchSelectWidth={false}
-                      options={Object.entries(b.values ?? { 0: '0', 1: '1' }).map(([k, v]) => ({
+                      options={Object.entries(b.options ?? { 0: '0', 1: '1' }).map(([k, v]) => ({
                         value: Number(k),
                         label: `${b.name}: ${v}`,
                       }))}

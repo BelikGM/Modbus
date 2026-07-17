@@ -39,8 +39,16 @@ export class DevicesController {
   }
 
   @Patch(':id/pending-writes')
-  updatePendingWrites(@Param('id') id: string, @Body() body: { pendingWrites: Record<string, any> }) {
-    this.devicesService.updateDevicePendingWrites(id, body.pendingWrites);
+  updatePendingWrites(
+    @Param('id') id: string,
+    @Body() body: { pendingWrites: Record<string, any>; merge?: boolean },
+  ) {
+    // merge=true — вливаем присланные ключи в уже сохранённые подготовленные
+    // значения (null удаляет ключ), не затирая остальные. Используется при
+    // групповом наборе значений и применении шаблона значений — у каждого ПЧ
+    // могут быть свои индивидуальные правки, которые нельзя терять.
+    if (body.merge) this.devicesService.mergeDevicePendingWrites(id, body.pendingWrites);
+    else this.devicesService.updateDevicePendingWrites(id, body.pendingWrites);
     return { success: true };
   }
 
