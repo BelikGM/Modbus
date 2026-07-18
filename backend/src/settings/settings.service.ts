@@ -26,6 +26,9 @@ export interface AppSettings {
   theme?: 'light' | 'dark';
   deviceSettings?: Record<string, DeviceUISettings>;
   projectConnections?: Record<string, ProjectConnection>;
+  // Порядок устройств в сайдбаре (drag-n-drop) — per-project, т.к. id
+  // устройств значимы только внутри своего проекта.
+  deviceOrders?: Record<string, string[]>;
 }
 
 const DEFAULTS: AppSettings = { activeProject: null, siderSide: 'left', siderWidth: 270, theme: 'light', deviceSettings: {}, projectConnections: {} };
@@ -74,6 +77,22 @@ export class SettingsService {
 
   getProjectConnection(projectId: string): ProjectConnection | null {
     return this.settings.projectConnections?.[projectId] ?? null;
+  }
+
+  saveDeviceOrder(projectId: string, order: string[]): void {
+    const updated: AppSettings = {
+      ...this.settings,
+      deviceOrders: {
+        ...(this.settings.deviceOrders ?? {}),
+        [projectId]: order,
+      },
+    };
+    this.settings = updated;
+    fs.writeFileSync(this.filePath, JSON.stringify(updated, null, 2), 'utf-8');
+  }
+
+  getDeviceOrder(projectId: string): string[] | null {
+    return this.settings.deviceOrders?.[projectId] ?? null;
   }
 
   updateDeviceSettings(deviceId: string, patch: Partial<DeviceUISettings>): AppSettings {

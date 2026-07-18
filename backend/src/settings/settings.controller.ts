@@ -22,4 +22,10 @@ export class SettingsController {
   ) {
     return this.settingsService.updateDeviceSettings(deviceId, body);
   }
+
+  @Patch('device-order/:projectId')
+  updateDeviceOrder(@Param('projectId') projectId: string, @Body() body: { order: string[] }) {
+    this.settingsService.saveDeviceOrder(projectId, body.order);
+    return { success: true };
+  }
 }

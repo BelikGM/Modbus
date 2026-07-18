@@ -1,13 +1,53 @@
-import { useState } from 'react'
-import { List, Typography, Badge, Avatar, Tag, Button, Modal, Form, Input, InputNumber, Select, Popconfirm, Tooltip, Checkbox, Space } from 'antd'
-import { LinkOutlined, DisconnectOutlined, PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons'
+import { useState, useEffect } from 'react'
+import { Typography, Badge, Avatar, Tag, Button, Modal, Form, Input, InputNumber, Select, Popconfirm, Tooltip, Checkbox, Space } from 'antd'
+import { LinkOutlined, DisconnectOutlined, PlusOutlined, DeleteOutlined, EditOutlined, HolderOutlined } from '@ant-design/icons'
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import api from '../api'
 
 function deviceType(device) {
   return (device.templateId ?? device.id ?? '').toLowerCase().includes('vl') ? 'vl' : 'pump'
 }
 
-export default function DeviceList({ devices, selectedIds, onSelectionChange, connected, liveness = {}, hasProject, sidebarWidth = 270 }) {
+function SortableDeviceRow({ id, compact, children }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, position: 'relative' }}
+    >
+      {!compact && (
+        <div
+          {...attributes}
+          {...listeners}
+          title="Перетащить — изменить порядок"
+          style={{
+            position: 'absolute', left: 2, top: 0, bottom: 0, width: 14,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'grab', zIndex: 2, color: '#bbb',
+          }}
+        >
+          <HolderOutlined style={{ fontSize: 11 }} />
+        </div>
+      )}
+      {children}
+    </div>
+  )
+}
+
+export default function DeviceList({ devices, selectedIds, onSelectionChange, connected, liveness = {}, hasProject, activeProjectId, sidebarWidth = 270 }) {
   const [addOpen, setAddOpen]       = useState(false)
   const [editDevice, setEditDevice] = useState(null)
   const [templates, setTemplates]   = useState([])
@@ -15,6 +55,15 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
   const [addForm]                   = Form.useForm()
   const [editForm]                  = Form.useForm()
   const [visibleTypes, setVisibleTypes] = useState(new Set(['pump', 'vl']))
+  const [deviceOrder, setDeviceOrder] = useState(null) // array id-шников или null (порядок по умолчанию, как пришло с бэка)
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+
+  useEffect(() => {
+    if (!activeProjectId) { setDeviceOrder(null); return }
+    api.get('/settings').then(({ data }) => {
+      setDeviceOrder(data.deviceOrders?.[activeProjectId] ?? null)
+    }).catch(() => setDeviceOrder(null))
+  }, [activeProjectId])
 
   async function openAdd() {
     const { data } = await api.get('/devices/templates')
@@ -83,6 +132,19 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
     onSelectionChange(new Set([device.id]))
   }
 
+  // Снятие галочки "Все" прячет вообще все устройства — ровно как снятие
+  // галочки с отдельного типа прячет его устройства, только сразу оба типа.
+  // Раньше здесь выделение не снималось: слева список показывал "нет
+  // устройств выбранного типа", а справа продолжала висеть панель с давно
+  // невидимыми выбранными ПЧ — путаница, идентичная той, что уже была
+  // исправлена для отдельных чекбоксов Pump/VL.
+  function setAllTypesVisible(checked) {
+    setVisibleTypes(checked ? new Set(['pump', 'vl']) : new Set())
+    if (!checked && selectedIds.size > 0) {
+      onSelectionChange(new Set())
+    }
+  }
+
   function toggleType(type, checked) {
     // Важно: onSelectionChange (setState родителя App) вызывается ЗДЕСЬ, в теле
     // обработчика, а не внутри апдейтера setVisibleTypes — вызов чужого setState
@@ -118,10 +180,35 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
     if (online === false) return { status: 'error', title: 'Устройство не отвечает (нет связи по Slave ID)' }
     return { status: 'processing', title: 'Проверка связи с устройством…' }
   }
-  const allDevices = devices.filter(d => !d.template)
+  const rawDevices = devices.filter(d => !d.template)
+  // Порядок из настроек (drag-n-drop в сайдбаре) — устройства, которых в нём
+  // нет (новые/ещё не переставленные), уходят в конец в исходном порядке.
+  const allDevices = deviceOrder
+    ? [...rawDevices].sort((a, b) => {
+        const ai = deviceOrder.indexOf(a.id)
+        const bi = deviceOrder.indexOf(b.id)
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
+      })
+    : rawDevices
   const hasPump = allDevices.some(d => deviceType(d) === 'pump')
   const hasVl   = allDevices.some(d => deviceType(d) === 'vl')
   const visibleDevices = allDevices.filter(d => visibleTypes.has(deviceType(d)))
+
+  function handleDragEnd(event) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = visibleDevices.findIndex(d => d.id === active.id)
+    const newIndex = visibleDevices.findIndex(d => d.id === over.id)
+    const newVisibleOrder = arrayMove(visibleDevices, oldIndex, newIndex).map(d => d.id)
+    // Устройства, скрытые сейчас фильтром типа, не участвовали в перетаскивании —
+    // сохраняем их в конце в прежнем относительном порядке.
+    const hiddenIds = allDevices.filter(d => !visibleTypes.has(deviceType(d))).map(d => d.id)
+    const newOrder = [...newVisibleOrder, ...hiddenIds]
+    setDeviceOrder(newOrder)
+    if (activeProjectId) {
+      api.patch(`/settings/device-order/${activeProjectId}`, { order: newOrder }).catch(() => {})
+    }
+  }
 
   const allVisibleSelected = visibleDevices.length > 0 && visibleDevices.every(d => selectedIds.has(d.id))
   function toggleSelectAllVisible() {
@@ -168,7 +255,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
             <Space direction="vertical" size={4}>
               <Checkbox
                 checked={visibleTypes.size === 2}
-                onChange={e => setVisibleTypes(e.target.checked ? new Set(['pump', 'vl']) : new Set())}
+                onChange={e => setAllTypesVisible(e.target.checked)}
                 style={{ fontSize: 12 }}
               >
                 <span style={{ fontSize: 12 }}>Все</span>
@@ -218,112 +305,115 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
           Нет устройств выбранного типа
         </Typography.Text>
       ) : (
-        <List
-          dataSource={visibleDevices}
-          renderItem={device => {
-            const isSelected = selectedIds.has(device.id)
-            const modelLabel = deviceType(device) === 'vl' ? 'VL' : 'Pump'
-            const liveStatus = deviceLiveStatus(device)
-            const avatar = device.images?.device
-              ? (
-                <Tooltip title={liveStatus.title}>
-                  <Badge dot status={liveStatus.status} offset={compact ? [-2, 2] : [-4, 4]}>
-                    <Avatar
-                      src={`/api/devices/images/${device.images.device}`}
-                      size={avatarSize}
-                      shape="square"
-                      style={{ borderRadius: 6 }}
-                    />
-                  </Badge>
-                </Tooltip>
-              )
-              : (
-                <Tooltip title={liveStatus.title}>
-                  <Badge dot status={liveStatus.status} offset={[-2, 2]}>
-                    <Icon style={{ fontSize: Math.min(avatarSize, 28), color: iconColor, marginTop: 2 }} />
-                  </Badge>
-                </Tooltip>
-              )
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={visibleDevices.map(d => d.id)} strategy={verticalListSortingStrategy}>
+            {visibleDevices.map(device => {
+              const isSelected = selectedIds.has(device.id)
+              const modelLabel = deviceType(device) === 'vl' ? 'VL' : 'Pump'
+              const liveStatus = deviceLiveStatus(device)
+              const avatar = device.images?.device
+                ? (
+                  <Tooltip title={liveStatus.title}>
+                    <Badge dot status={liveStatus.status} offset={compact ? [-2, 2] : [-4, 4]}>
+                      <Avatar
+                        src={`/api/devices/images/${device.images.device}`}
+                        size={avatarSize}
+                        shape="square"
+                        style={{ borderRadius: 6 }}
+                      />
+                    </Badge>
+                  </Tooltip>
+                )
+                : (
+                  <Tooltip title={liveStatus.title}>
+                    <Badge dot status={liveStatus.status} offset={[-2, 2]}>
+                      <Icon style={{ fontSize: Math.min(avatarSize, 28), color: iconColor, marginTop: 2 }} />
+                    </Badge>
+                  </Tooltip>
+                )
 
-            return (
-              <Tooltip key={device.id} title={compact ? `${device.name} · ${modelLabel} · Адрес ${device.connection.slaveId ?? 1}` : ''} placement="right">
-                <div
-                  onClick={() => toggleSelection(device)}
-                  onDoubleClick={() => selectOnly(device)}
-                  className={isSelected ? 'device-row device-row-selected' : 'device-row'}
-                  style={{
-                    position: 'relative',
-                    cursor: 'pointer',
-                    padding: compact ? '8px 4px' : '8px 12px 8px 8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: compact ? 'center' : 'flex-start',
-                    gap: 8,
-                    background: isSelected ? '#e6f4ff' : 'transparent',
-                    borderLeft: isSelected ? '3px solid #1677ff' : '3px solid transparent',
-                    borderBottom: '1px solid #f5f5f5',
-                  }}
-                >
-                  {!compact && (
-                    <Checkbox
-                      checked={isSelected}
-                      onClick={e => e.stopPropagation()}
-                      onChange={() => toggleSelection(device)}
-                    />
-                  )}
+              return (
+                <SortableDeviceRow key={device.id} id={device.id} compact={compact}>
+                  <Tooltip title={compact ? `${device.name} · ${modelLabel} · Адрес ${device.connection.slaveId ?? 1}` : ''} placement="right">
+                    <div
+                      onClick={() => toggleSelection(device)}
+                      onDoubleClick={() => selectOnly(device)}
+                      className={isSelected ? 'device-row device-row-selected' : 'device-row'}
+                      style={{
+                        position: 'relative',
+                        cursor: 'pointer',
+                        padding: compact ? '8px 4px' : '8px 12px 8px 20px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: compact ? 'center' : 'flex-start',
+                        gap: 8,
+                        background: isSelected ? '#e6f4ff' : 'transparent',
+                        borderLeft: isSelected ? '3px solid #1677ff' : '3px solid transparent',
+                        borderBottom: '1px solid #f5f5f5',
+                      }}
+                    >
+                      {!compact && (
+                        <Checkbox
+                          checked={isSelected}
+                          onClick={e => e.stopPropagation()}
+                          onChange={() => toggleSelection(device)}
+                        />
+                      )}
 
-                  {avatar}
+                      {avatar}
 
-                  {!compact && (
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingRight: narrow ? 0 : 48 }}>
-                        {device.name}
-                      </div>
-                      {!narrow && (
-                        <span style={{ fontSize: 12 }}>
-                          <Tag style={{ fontSize: 11, padding: '0 4px', marginRight: 4 }}>
-                            Адрес {device.connection.slaveId ?? 1}
-                          </Tag>
-                          <Typography.Text type="secondary" style={{ fontSize: 11 }}>{modelLabel}</Typography.Text>
-                        </span>
+                      {!compact && (
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingRight: narrow ? 0 : 48 }}>
+                            {device.name}
+                          </div>
+                          {!narrow && (
+                            <span style={{ fontSize: 12 }}>
+                              <Tag style={{ fontSize: 11, padding: '0 4px', marginRight: 4 }}>
+                                Адрес {device.connection.slaveId ?? 1}
+                              </Tag>
+                              <Typography.Text type="secondary" style={{ fontSize: 11 }}>{modelLabel}</Typography.Text>
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {!compact && !narrow && (
+                        <div
+                          onClick={e => e.stopPropagation()}
+                          className="device-row-actions"
+                          style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 2, background: isSelected ? '#e6f4ff' : '#fff' }}
+                        >
+                          <Tooltip title="Редактировать">
+                            <Button
+                              size="small"
+                              type="text"
+                              icon={<EditOutlined />}
+                              onClick={e => openEdit(device, e)}
+                            />
+                          </Tooltip>
+                          <Popconfirm
+                            title="Удалить устройство?"
+                            description="Файл конфига будет удалён безвозвратно."
+                            okText="Удалить"
+                            cancelText="Отмена"
+                            okButtonProps={{ danger: true }}
+                            onConfirm={e => handleDelete(device, e ?? { stopPropagation: () => {} })}
+                            onPopupClick={e => e.stopPropagation()}
+                          >
+                            <Tooltip title="Удалить устройство">
+                              <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+                            </Tooltip>
+                          </Popconfirm>
+                        </div>
                       )}
                     </div>
-                  )}
-
-                  {!compact && !narrow && (
-                    <div
-                      onClick={e => e.stopPropagation()}
-                      className="device-row-actions"
-                      style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 2, background: isSelected ? '#e6f4ff' : '#fff' }}
-                    >
-                      <Tooltip title="Редактировать">
-                        <Button
-                          size="small"
-                          type="text"
-                          icon={<EditOutlined />}
-                          onClick={e => openEdit(device, e)}
-                        />
-                      </Tooltip>
-                      <Popconfirm
-                        title="Удалить устройство?"
-                        description="Файл конфига будет удалён безвозвратно."
-                        okText="Удалить"
-                        cancelText="Отмена"
-                        okButtonProps={{ danger: true }}
-                        onConfirm={e => handleDelete(device, e ?? { stopPropagation: () => {} })}
-                        onPopupClick={e => e.stopPropagation()}
-                      >
-                        <Tooltip title="Удалить устройство">
-                          <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-                        </Tooltip>
-                      </Popconfirm>
-                    </div>
-                  )}
-                </div>
-              </Tooltip>
-            )
-          }}
-        />
+                  </Tooltip>
+                </SortableDeviceRow>
+              )
+            })}
+          </SortableContext>
+        </DndContext>
       )}
 
       {/* Модалка добавления */}

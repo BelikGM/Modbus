@@ -276,6 +276,7 @@ export default function App() {
               connected={connected}
               liveness={liveness}
               hasProject={!!activeProjectId}
+              activeProjectId={activeProjectId}
               sidebarWidth={siderWidth}
             />
           </div>
