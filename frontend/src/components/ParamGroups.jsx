@@ -713,6 +713,7 @@ export default function ParamGroups({
                   <Collapse
                     items={[item]}
                     activeKey={isOpen ? [group.id] : []}
+                    destroyOnHidden
                     onChange={keys => {
                       setOpenGroupIds(prev => {
                         const next = new Set(prev)

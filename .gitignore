@@ -8,6 +8,7 @@ backend/dist/
 backend/frontend-dist
 frontend/dist/
 frontend/.vite/
+/dist-electron/
 
 # IDE
 .idea/

@@ -53,6 +53,20 @@
   background: #0b1220 !important;
 }
 
+/* Кнопки редактировать/удалить в строке устройства — не висят постоянно,
+   появляются только при наведении на строку и пропадают при уходе курсора.
+   pointer-events отключены в скрытом состоянии, чтобы невидимые кнопки не
+   перехватывали клики по строке. */
+.device-row-actions {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+.device-row:hover .device-row-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 /* Чередующийся фон групп параметров и панель "отображаемые группы" — были
    белый/светло-серый, в тёмной теме почти не отличались от фона страницы. */
 [data-theme='dark'] .param-group-body-even {

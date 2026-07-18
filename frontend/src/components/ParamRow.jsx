@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, memo } from 'react'
 import { Button, InputNumber, Select, Typography, Spin, message, Tag, Tooltip } from 'antd'
 import api from '../api'
 import { addLog } from '../log'
@@ -26,7 +26,7 @@ const DEFAULT_COLS = { id: 90, desc: 220, def: 110, cur: 110, write: 220 }
 // строку параметра, чтобы сетка колонок была видна не только в заголовке.
 const COL_DIVIDER = '1px solid rgba(120,120,120,0.2)'
 
-export default function ParamRow({ device, param, modbusConnected, deviceRunning, injectedValue, cols, onWrite, onClearGroupValue, pendingWriteValue, onPendingWriteChange, currentValue, currentFillStamp, onReadValue, hideDeviceValue }) {
+function ParamRow({ device, param, modbusConnected, deviceRunning, injectedValue, cols, onWrite, onClearGroupValue, pendingWriteValue, onPendingWriteChange, currentValue, currentFillStamp, onReadValue, hideDeviceValue }) {
   const [value, setValue]         = useState(null)
   const [bitState, setBitState]   = useState({})
   const [editValue, setEditValue] = useState(null)
@@ -308,3 +308,5 @@ export default function ParamRow({ device, param, modbusConnected, deviceRunning
     </div>
   )
 }
+
+export default memo(ParamRow)

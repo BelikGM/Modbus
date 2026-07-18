@@ -119,6 +119,17 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
     }
   }
 
+  async function handleBulkDelete() {
+    const ids = [...selectedIds]
+    try {
+      await Promise.all(ids.map(id => api.delete(`/devices/${id}`)))
+    } catch (e) {
+      console.error(e)
+    } finally {
+      onSelectionChange(new Set())
+    }
+  }
+
   function toggleSelection(device) {
     const next = new Set(selectedIds)
     if (next.has(device.id)) next.delete(device.id)
@@ -275,17 +286,32 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
                 <span style={{ fontSize: 12 }}>VL</span>
               </Checkbox>
             </Space>
-            {visibleDevices.length > 0 && (
-              <Button
-                size="small"
-                color={allVisibleSelected ? 'red' : 'green'}
-                variant="solid"
-                onClick={toggleSelectAllVisible}
-                style={{ marginLeft: 'auto', alignSelf: 'center' }}
-              >
-                {allVisibleSelected ? 'Снять выделение' : `Выбрать все (${visibleDevices.length})`}
-              </Button>
-            )}
+            <Space direction="vertical" size={4} style={{ marginLeft: 'auto', alignItems: 'flex-end' }}>
+              {visibleDevices.length > 0 && (
+                <Button
+                  size="small"
+                  color={allVisibleSelected ? 'red' : 'green'}
+                  variant="solid"
+                  onClick={toggleSelectAllVisible}
+                >
+                  {allVisibleSelected ? 'Снять выделение' : `Выбрать все (${visibleDevices.length})`}
+                </Button>
+              )}
+              {selectedIds.size > 0 && (
+                <Popconfirm
+                  title="Удалить выбранные устройства?"
+                  description={`Будет удалено устройств: ${selectedIds.size}. Файлы конфигов удаляются безвозвратно.`}
+                  okText="Удалить"
+                  cancelText="Отмена"
+                  okButtonProps={{ danger: true }}
+                  onConfirm={handleBulkDelete}
+                >
+                  <Button size="small" danger icon={<DeleteOutlined />}>
+                    Удалить ({selectedIds.size})
+                  </Button>
+                </Popconfirm>
+              )}
+            </Space>
           </div>
         </div>
       )}
