@@ -20,7 +20,11 @@ function getAccessTooltip(device, param) {
   return null
 }
 
-const DEFAULT_COLS = { id: 90, desc: 220, def: 120, cur: 150, write: 290 }
+const DEFAULT_COLS = { id: 90, desc: 220, def: 110, cur: 110, write: 220 }
+// Тонкая полупрозрачная разделительная линия между колонками — та же, что и
+// в шапке таблицы (см. ParamGroups.jsx HeaderCell), продолжена вниз в каждую
+// строку параметра, чтобы сетка колонок была видна не только в заголовке.
+const COL_DIVIDER = '1px solid rgba(120,120,120,0.2)'
 
 export default function ParamRow({ device, param, modbusConnected, deviceRunning, injectedValue, cols, onWrite, onClearGroupValue, pendingWriteValue, onPendingWriteChange, currentValue, currentFillStamp, onReadValue, hideDeviceValue }) {
   const [value, setValue]         = useState(null)
@@ -134,15 +138,12 @@ export default function ParamRow({ device, param, modbusConnected, deviceRunning
   const displayValue = injectedValue !== undefined ? injectedValue : value
   const currentFormatted = formatParamValue(param.type, displayValue, param.unit, param.options)
 
-  /* ── ширина ввода в колонке "Записать" ───────────────────────── */
-  const inputW = Math.max(60, C.write - 90)   // место за вычетом кнопки "Записать"
-
   return (
     <div style={{ borderBottom: '1px solid #f5f5f5' }}>
       <div style={{ display: 'flex', alignItems: 'center', padding: '6px 4px', minHeight: 36 }}>
 
         {/* Параметр / Адрес */}
-        <div style={{ width: C.id, flexShrink: 0 }}>
+        <div style={{ width: C.id, flexShrink: 0, paddingRight: 6, borderRight: COL_DIVIDER }}>
           <Typography.Text code style={{ fontSize: 11, display: 'block' }}>{param.id}</Typography.Text>
           <Tooltip title={accessTooltip} placement="right">
             <Typography.Text style={{ fontSize: 10, color: '#999', cursor: accessTooltip ? 'help' : undefined }}>
@@ -153,7 +154,7 @@ export default function ParamRow({ device, param, modbusConnected, deviceRunning
         </div>
 
         {/* Описание */}
-        <div style={{ width: C.desc, flexShrink: 0, paddingRight: 8, overflow: 'hidden' }}>
+        <div style={{ width: C.desc, flexShrink: 0, padding: '0 8px', overflow: 'hidden', borderRight: COL_DIVIDER }}>
           <Tooltip title={param.description ?? param.name} placement="topLeft">
             <Typography.Text
               style={{ fontSize: 12, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
@@ -164,7 +165,7 @@ export default function ParamRow({ device, param, modbusConnected, deviceRunning
         </div>
 
         {/* Заводское значение */}
-        <div style={{ width: C.def, flexShrink: 0, overflow: 'hidden' }}>
+        <div style={{ width: C.def, flexShrink: 0, padding: '0 8px', overflow: 'hidden', borderRight: COL_DIVIDER }}>
           <Tooltip title={param.default === undefined ? 'Не задано в шаблоне — это регистр команды/статуса или показание, а не хранимая настройка' : undefined}>
             <Typography.Text
               style={{ fontSize: 12, color: '#888', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', cursor: param.default === undefined ? 'help' : undefined }}
@@ -175,11 +176,14 @@ export default function ParamRow({ device, param, modbusConnected, deviceRunning
         </div>
 
         {/* Значение на устройстве — читать сюда же, отдельным отступом от заводского.
-            Текстовая часть фиксированной ширины, чтобы кнопка "Читать" всегда
-            была в одном и том же месте независимо от длины значения в этой
-            строке и в соседних (иначе кнопки "гуляют" по горизонтали). */}
-        <div style={{ width: C.cur, flexShrink: 0, marginLeft: 20, display: 'flex', alignItems: 'center' }}>
-          <div style={{ width: Math.max(40, C.cur - 74), flexShrink: 0, overflow: 'hidden' }}>
+            Текстовая часть — flex:1 (сжимается вместе с шириной колонки), кнопка
+            "Читать" — flexShrink:0, поэтому она всегда на одном и том же месте
+            от правого края колонки независимо от длины значения в этой строке
+            и в соседних (иначе кнопки "гуляют" по горизонтали). Ширина самой
+            колонки (C.cur) при этом можно поджимать — узкие значения вроде "—"
+            не тянут за собой лишний пустой запас, как было раньше. */}
+        <div style={{ width: C.cur, flexShrink: 0, marginLeft: 20, paddingRight: 8, display: 'flex', alignItems: 'center', gap: 6, borderRight: COL_DIVIDER }}>
+          <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
             {hideDeviceValue ? (
               <Tooltip title="Выбрано несколько устройств — значения по каждому смотрите в таблице результатов выше">
                 <Typography.Text style={{ fontSize: 12, color: '#bbb', cursor: 'help' }}>—</Typography.Text>
@@ -198,22 +202,22 @@ export default function ParamRow({ device, param, modbusConnected, deviceRunning
               </Typography.Text>
             )}
           </div>
-          <Button size="small" onClick={handleRead} disabled={!modbusConnected || !!onWrite} loading={reading}>
+          <Button size="small" onClick={handleRead} disabled={!modbusConnected || !!onWrite} loading={reading} style={{ flexShrink: 0 }}>
             Читать
           </Button>
         </div>
 
-        {/* Значение для записи — та же логика: поле ввода фиксированной ширины
-            (inputW), кнопка "Записать" всегда сразу после него на одном месте.
-            Для нередактируемых/битовых параметров место остаётся пустым, но
+        {/* Значение для записи — та же логика: поле ввода flex:1, кнопка
+            "Записать" flexShrink:0 сразу после него на одном месте. Для
+            нередактируемых/битовых параметров место остаётся пустым, но
             зарезервированным — колонка не "прыгает". */}
-        <div style={{ width: C.write, flexShrink: 0, marginLeft: 20, display: 'flex', alignItems: 'center' }}>
+        <div style={{ width: C.write, flexShrink: 0, marginLeft: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
           {canWrite && !isBitmask && (
             <>
               {param.type === 'enum' ? (
                 <Select
                   size="small"
-                  style={{ width: inputW }}
+                  style={{ flex: 1, minWidth: 0 }}
                   placeholder="Выбрать"
                   popupMatchSelectWidth={false}
                   value={editValue ?? undefined}
@@ -223,7 +227,7 @@ export default function ParamRow({ device, param, modbusConnected, deviceRunning
               ) : (
                 <InputNumber
                   size="small"
-                  style={{ width: inputW }}
+                  style={{ flex: 1, minWidth: 0 }}
                   min={param.min}
                   max={param.max}
                   step={param.step ?? param.scale ?? 1}
@@ -239,7 +243,7 @@ export default function ParamRow({ device, param, modbusConnected, deviceRunning
                   onClick={handleWrite}
                   disabled={!modbusConnected || editValue === null || editValue === undefined || blockedByRunning}
                   loading={writing}
-                  style={{ marginLeft: 8 }}
+                  style={{ flexShrink: 0 }}
                 >
                   Записать
                 </Button>

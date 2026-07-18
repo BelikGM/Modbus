@@ -21,8 +21,12 @@ import socket from '../socket'
 import { useDeviceSettings } from '../useDeviceSettings'
 import { isParamWritable } from '../access'
 
-const DEFAULT_COLS = { id: 90, desc: 220, def: 120, cur: 150, write: 290 }
-const MIN_COLS     = { id: 60, desc: 100, def: 80,  cur: 100, write: 200 }
+// Значение/запись специально не растянуты "с запасом" — короткие значения
+// (типично "—" пока не считано, или пара символов/цифр) не должны тянуть за
+// собой пустое место и толкать последующие колонки за край экрана. При
+// необходимости колонку всегда можно расширить вручную (перетаскиванием).
+const DEFAULT_COLS = { id: 90, desc: 220, def: 110, cur: 110, write: 220 }
+const MIN_COLS     = { id: 60, desc: 100, def: 70,  cur: 80,  write: 160 }
 
 function deviceFamily(templateId) {
   return (templateId ?? '').toLowerCase().includes('vl') ? 'vl' : 'pump'
@@ -62,7 +66,7 @@ function HeaderCell({ label, width, onResizeStart, marginLeft, divider = true })
     <div style={{
       position: 'relative', width, flexShrink: 0, paddingRight: 10, paddingLeft: 4,
       boxSizing: 'border-box', marginLeft,
-      borderRight: divider ? '1px solid rgba(120,120,120,0.25)' : 'none',
+      borderRight: divider ? '1px solid rgba(120,120,120,0.2)' : 'none',
     }}>
       <Typography.Text style={{
         fontSize: 11, color: '#888', fontWeight: 600, userSelect: 'none',
