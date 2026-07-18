@@ -1,6 +1,20 @@
 import { useState, useEffect, useRef } from 'react'
 import { Button, Table, Typography, Space } from 'antd'
-import { PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons'
+import { PlayCircleOutlined, PauseCircleOutlined, HolderOutlined } from '@ant-design/icons'
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  useSortable,
+  horizontalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import socket from '../socket'
 import { addLog } from '../log'
 import { formatParamValue } from '../paramFormat'
@@ -18,10 +32,68 @@ function formatCell(entry) {
   return <span style={{ whiteSpace: 'pre-line' }}>{formatParamValue(entry.type, entry.value, entry.unit, entry.options, entry.bits)}</span>
 }
 
+// Заголовок колонки-устройства — тянем весь <th> целиком (не отдельная ручка,
+// в шапке и так только название/адрес, кликать там всё равно больше не за чем).
+// Колонка "Параметр" (columnId === undefined) остаётся обычным неперетаскиваемым <th>.
+function DraggableHeaderCell({ columnId, children, ...restProps }) {
+  const sortable = useSortable({ id: columnId ?? '__param__', disabled: columnId === undefined })
+  if (columnId === undefined) return <th {...restProps}>{children}</th>
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = sortable
+  return (
+    <th
+      {...restProps}
+      ref={setNodeRef}
+      style={{
+        ...restProps.style,
+        transform: CSS.Translate.toString(transform),
+        transition,
+        cursor: 'grab',
+        position: 'relative',
+        zIndex: isDragging ? 3 : undefined,
+        background: isDragging ? '#e6f4ff' : restProps.style?.background,
+      }}
+      {...attributes}
+      {...listeners}
+    >
+      <HolderOutlined style={{ fontSize: 10, color: '#bbb', marginRight: 4 }} />
+      {children}
+    </th>
+  )
+}
+
 // Одна секция-таблица на семейство ПЧ (Pump/VL) — при смешанном выборе у
 // каждого семейства своя карта регистров мониторинга, общая таблица не имела
-// бы смысла.
+// бы смысла. Колонки-устройства можно перетаскивать за шапку, чтобы поменять
+// местами (порядок держится только в рамках текущего просмотра — сессионный,
+// не сохраняется).
 function FamilySection({ title, devices, monitorParams, dataByDevice }) {
+  const [order, setOrder] = useState(() => devices.map(d => d.id))
+  const idsKey = devices.map(d => d.id).join(',')
+  const orderedDevices = order
+    .map(id => devices.find(d => d.id === id))
+    .filter(Boolean)
+    .concat(devices.filter(d => !order.includes(d.id)))
+
+  useEffect(() => {
+    setOrder(prev => {
+      const stillValid = prev.filter(id => devices.some(d => d.id === id))
+      const added = devices.map(d => d.id).filter(id => !prev.includes(id))
+      return [...stillValid, ...added]
+    })
+  }, [idsKey])
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+  function handleColumnDragEnd(event) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    setOrder(prev => {
+      const oldIndex = prev.indexOf(active.id)
+      const newIndex = prev.indexOf(over.id)
+      if (oldIndex === -1 || newIndex === -1) return prev
+      return arrayMove(prev, oldIndex, newIndex)
+    })
+  }
+
   const columns = [
     {
       title: 'Параметр',
@@ -29,6 +101,7 @@ function FamilySection({ title, devices, monitorParams, dataByDevice }) {
       key: 'name',
       fixed: 'left',
       width: 220,
+      onHeaderCell: () => ({ columnId: undefined }),
       render: (name, row) => (
         <div>
           <Typography.Text style={{ fontSize: 13 }}>{name}</Typography.Text>
@@ -36,7 +109,7 @@ function FamilySection({ title, devices, monitorParams, dataByDevice }) {
         </div>
       ),
     },
-    ...devices.map(d => ({
+    ...orderedDevices.map(d => ({
       title: (
         <div>
           <div style={{ fontSize: 12 }}>{d.name}</div>
@@ -46,6 +119,7 @@ function FamilySection({ title, devices, monitorParams, dataByDevice }) {
       dataIndex: d.id,
       key: d.id,
       width: 130,
+      onHeaderCell: () => ({ columnId: d.id }),
       render: (_, row) => formatCell(dataByDevice[d.id]?.[row.paramId]),
     })),
   ]
@@ -60,14 +134,19 @@ function FamilySection({ title, devices, monitorParams, dataByDevice }) {
   return (
     <div>
       {title && <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>{title} ({devices.length})</Typography.Text>}
-      <Table
-        size="small"
-        pagination={false}
-        bordered
-        scroll={{ x: 'max-content', y: 'calc(100vh - 280px)' }}
-        columns={columns}
-        dataSource={dataSource}
-      />
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleColumnDragEnd}>
+        <SortableContext items={orderedDevices.map(d => d.id)} strategy={horizontalListSortingStrategy}>
+          <Table
+            size="small"
+            pagination={false}
+            bordered
+            scroll={{ x: 'max-content', y: 'calc(100vh - 280px)' }}
+            columns={columns}
+            dataSource={dataSource}
+            components={{ header: { cell: DraggableHeaderCell } }}
+          />
+        </SortableContext>
+      </DndContext>
     </div>
   )
 }
