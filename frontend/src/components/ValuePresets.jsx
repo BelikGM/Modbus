@@ -310,45 +310,15 @@ export default function ValuePresets({ device, devices }) {
           bordered
           dataSource={presets}
           renderItem={preset => (
-            <List.Item
-              actions={[
-                <Popconfirm
-                  key="apply"
-                  title={`Применить шаблон «${preset.name}»?`}
-                  description={`Подготовленные значения обновятся у ${targetDevices.length} выбранных устройств (${targetDevices.map(d => d.name).join(', ')}). Сама запись в ПЧ не произойдёт — только подготовка черновика.`}
-                  okText="Применить"
-                  cancelText="Отмена"
-                  disabled={targetDevices.length === 0 || Object.keys(preset.values).length === 0}
-                  onConfirm={() => applyPreset(preset)}
-                >
-                  <Button
-                    key="apply-btn"
-                    size="small"
-                    type="primary"
-                    icon={<ThunderboltOutlined />}
-                    loading={applyingId === preset.id}
-                    disabled={targetDevices.length === 0 || Object.keys(preset.values).length === 0}
-                    title={targetDevices.length === 0 ? 'Нет выбранных устройств этого типа' : undefined}
-                  >
-                    Применить для выбранных ({targetDevices.length})
-                  </Button>
-                </Popconfirm>,
-                <Button
-                  key="csv"
-                  size="small"
-                  icon={<DownloadOutlined />}
-                  disabled={Object.keys(preset.values).length === 0}
-                  onClick={() => exportPresetCsv(preset)}
-                >
-                  CSV
-                </Button>,
-                <Button key="edit" size="small" icon={<EditOutlined />} onClick={() => startEdit(preset)}>Изменить</Button>,
-                <Popconfirm key="delete" title="Удалить шаблон?" okText="Удалить" cancelText="Отмена" okButtonProps={{ danger: true }} onConfirm={() => remove(preset)}>
-                  <Button size="small" danger icon={<DeleteOutlined />}>Удалить</Button>
-                </Popconfirm>,
-              ]}
-            >
+            // Не используем стандартный `actions` List.Item — при 4 кнопках
+            // (в т.ч. одной с длинным текстом) и многострочных тегах описания
+            // он может наезжать текстом на кнопки на узких экранах. Свой
+            // flex-ряд с flexWrap переносит кнопки на отдельную строку вместо
+            // наложения, если места не хватает.
+            <List.Item>
+              <div style={{ width: '100%', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
               <List.Item.Meta
+                style={{ flex: '1 1 260px', minWidth: 0 }}
                 title={preset.name}
                 description={
                   <Space wrap size={4}>
@@ -365,6 +335,40 @@ export default function ValuePresets({ device, devices }) {
                   </Space>
                 }
               />
+              <Space wrap size={4} style={{ flexShrink: 0 }}>
+                <Popconfirm
+                  title={`Применить шаблон «${preset.name}»?`}
+                  description={`Подготовленные значения обновятся у ${targetDevices.length} выбранных устройств (${targetDevices.map(d => d.name).join(', ')}). Сама запись в ПЧ не произойдёт — только подготовка черновика.`}
+                  okText="Применить"
+                  cancelText="Отмена"
+                  disabled={targetDevices.length === 0 || Object.keys(preset.values).length === 0}
+                  onConfirm={() => applyPreset(preset)}
+                >
+                  <Button
+                    size="small"
+                    type="primary"
+                    icon={<ThunderboltOutlined />}
+                    loading={applyingId === preset.id}
+                    disabled={targetDevices.length === 0 || Object.keys(preset.values).length === 0}
+                    title={targetDevices.length === 0 ? 'Нет выбранных устройств этого типа' : undefined}
+                  >
+                    Применить для выбранных ({targetDevices.length})
+                  </Button>
+                </Popconfirm>
+                <Button
+                  size="small"
+                  icon={<DownloadOutlined />}
+                  disabled={Object.keys(preset.values).length === 0}
+                  onClick={() => exportPresetCsv(preset)}
+                >
+                  CSV
+                </Button>
+                <Button size="small" icon={<EditOutlined />} onClick={() => startEdit(preset)}>Изменить</Button>
+                <Popconfirm title="Удалить шаблон?" okText="Удалить" cancelText="Отмена" okButtonProps={{ danger: true }} onConfirm={() => remove(preset)}>
+                  <Button size="small" danger icon={<DeleteOutlined />}>Удалить</Button>
+                </Popconfirm>
+              </Space>
+              </div>
             </List.Item>
           )}
         />

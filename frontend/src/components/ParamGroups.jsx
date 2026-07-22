@@ -636,6 +636,14 @@ export default function ParamGroups({
         >
           Текущие параметры
         </Button>
+        <Button
+          icon={<DownloadOutlined />}
+          disabled={Object.keys(currentValues).length === 0}
+          onClick={exportCurrentValuesCsv}
+          title="Скачать все считанные значения этого устройства в CSV"
+        >
+          Скачать CSV
+        </Button>
         {groupProgress ? (
           <Button danger onClick={stopGroupedOperation}>
             Остановить {groupProgress.kind === 'read' ? 'чтение' : groupProgress.kind === 'write' ? 'запись' : 'сброс'}
