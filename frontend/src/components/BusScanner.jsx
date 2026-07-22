@@ -3,7 +3,7 @@ import {
   Button, Modal, InputNumber, Progress, Space,
   Tag, Typography, Alert, Row, Col, Divider, Tooltip, List, Spin, AutoComplete,
 } from 'antd'
-import { ApartmentOutlined, CloseCircleOutlined, PlusCircleOutlined, CheckCircleOutlined, ExclamationCircleOutlined, LoadingOutlined, InfoCircleOutlined, ThunderboltOutlined } from '@ant-design/icons'
+import { ApartmentOutlined, CloseCircleOutlined, PlusCircleOutlined, CheckCircleOutlined, ExclamationCircleOutlined, LoadingOutlined, InfoCircleOutlined, ThunderboltOutlined, RedoOutlined } from '@ant-design/icons'
 import socket from '../socket'
 import api from '../api'
 import { addLog } from '../log'
@@ -26,6 +26,7 @@ export default function BusScanner({ connected }) {
   const [identifying, setIdentifying] = useState(false)
   const [identifyResults, setIdentifyResults] = useState([]) // { slaveId, model, deviceId?, name?, error? }
   const [identifyDone, setIdentifyDone] = useState(false)
+  const [retryingIds, setRetryingIds] = useState(new Set()) // slaveId'ы, для которых сейчас идёт повторное определение
   const [probeModal, setProbeModal] = useState(null) // { slaveId, loading, data }
 
   const [ports, setPorts] = useState([])
@@ -59,7 +60,22 @@ export default function BusScanner({ connected }) {
       addLog('error', `Ошибка сканирования шины: ${msg}`)
     }
     function onIdentifyProgress(result) {
-      setIdentifyResults(prev => [...prev, result])
+      // При повторной попытке для уже известного slaveId — заменяем старую
+      // строку результата новой, а не добавляем ещё одну (иначе один и тот
+      // же адрес задваивался бы в списке после "Определить снова").
+      setIdentifyResults(prev => {
+        const idx = prev.findIndex(r => r.slaveId === result.slaveId)
+        if (idx === -1) return [...prev, result]
+        const next = [...prev]
+        next[idx] = result
+        return next
+      })
+      setRetryingIds(prev => {
+        if (!prev.has(result.slaveId)) return prev
+        const next = new Set(prev)
+        next.delete(result.slaveId)
+        return next
+      })
     }
     function onIdentifyDone() {
       setIdentifying(false)
@@ -131,6 +147,7 @@ export default function BusScanner({ connected }) {
     setIdentifying(false)
     setIdentifyResults([])
     setIdentifyDone(false)
+    setRetryingIds(new Set())
     setSweeping(false)
     setSweepProgress(null)
     setSweepResult(null)
@@ -152,6 +169,16 @@ export default function BusScanner({ connected }) {
     setIdentifyDone(false)
     socket.emit('bus:identify:start', { slaveIds: found })
     addLog('info', `Определение моделей устройств: Slave ID ${found.join(', ')}`)
+  }
+
+  // Повтор определения для ОДНОГО адреса — на реальной шине модель иногда не
+  // определяется с первого раза (та же природа, что и у нестабильного скана:
+  // устройство не успевает ответить в срок). Кнопка появляется только у строк
+  // с ошибкой (см. renderItem) и не трогает остальные уже определённые устройства.
+  function handleRetryIdentify(slaveId) {
+    setRetryingIds(prev => new Set(prev).add(slaveId))
+    socket.emit('bus:identify:start', { slaveIds: [slaveId] })
+    addLog('info', `Повторное определение модели: Slave ID ${slaveId}`)
   }
 
   function handleStart() {
@@ -446,6 +473,16 @@ export default function BusScanner({ connected }) {
                       </Tag>
                       {r.name && <Typography.Text strong>{r.name}</Typography.Text>}
                       {r.error && <Typography.Text type="danger" style={{ fontSize: 12 }}>{r.error}</Typography.Text>}
+                      {r.error && (
+                        <Button
+                          size="small"
+                          icon={<RedoOutlined />}
+                          loading={retryingIds.has(r.slaveId)}
+                          onClick={() => handleRetryIdentify(r.slaveId)}
+                        >
+                          Определить снова
+                        </Button>
+                      )}
                     </Space>
                   </List.Item>
                 )}

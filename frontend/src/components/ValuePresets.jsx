@@ -352,7 +352,7 @@ export default function ValuePresets({ device, devices }) {
                     disabled={targetDevices.length === 0 || Object.keys(preset.values).length === 0}
                     title={targetDevices.length === 0 ? 'Нет выбранных устройств этого типа' : undefined}
                   >
-                    Применить для выбранных ({targetDevices.length})
+                    Применить для выбранных ПЧ ({targetDevices.length})
                   </Button>
                 </Popconfirm>
                 <Button
