@@ -20,6 +20,7 @@ import api from '../api'
 import socket from '../socket'
 import { useDeviceSettings } from '../useDeviceSettings'
 import { isParamWritable } from '../access'
+import { downloadCsv } from '../csv'
 
 // Значение/запись специально не растянуты "с запасом" — короткие значения
 // (типично "—" пока не считано, или пара символов/цифр) не должны тянуть за
@@ -365,9 +366,9 @@ export default function ParamGroups({
     })
   }
 
-  async function readGroup(group, e) {
+  async function readGroup(group, e, { autoExpand = true } = {}) {
     e?.stopPropagation()
-    expandGroup(group.id)
+    if (autoExpand) expandGroup(group.id)
     setReadingGroup(group.id)
     const paramIds = group.params.map(p => p.id)
     const result = await runBulkOp('read', effectiveDeviceIds, paramIds)
@@ -388,9 +389,9 @@ export default function ParamGroups({
   // Запись группы: каждое устройство пишет СВОИ подготовленные значения этой
   // группы (не общее значение с экрана) — то, что реально нужно, если часть
   // выбранных ПЧ отличается от остальных.
-  async function writeGroup(group, e) {
+  async function writeGroup(group, e, { autoExpand = true } = {}) {
     e?.stopPropagation()
-    expandGroup(group.id)
+    if (autoExpand) expandGroup(group.id)
     setReadingGroup(group.id)
     const paramIds = group.params.filter(p => isParamWritable(device, p)).map(p => p.id)
     const result = await runBulkOp('write', effectiveDeviceIds, { usePending: true, paramIds })
@@ -413,9 +414,14 @@ export default function ParamGroups({
       const group = groupsInScope[i]
       setGroupProgress({ index: i, total: groupsInScope.length, groupName: group.name, kind })
       const fakeEvent = { stopPropagation: () => {} }
-      if (kind === 'read') await readGroup(group, fakeEvent)
-      else if (kind === 'write') await writeGroup(group, fakeEvent)
-      else await resetGroup(group, fakeEvent)
+      // При "Прочитать/Записать/Сбросить всё" группы НЕ разворачиваются одна за
+      // другой по ходу цикла — иначе к концу открытыми оказываются вообще все
+      // группы, страница расползается. Значения всё равно попадают в
+      // currentValues/groupValues независимо от того, открыта группа или нет.
+      const opts = { autoExpand: false }
+      if (kind === 'read') await readGroup(group, fakeEvent, opts)
+      else if (kind === 'write') await writeGroup(group, fakeEvent, opts)
+      else await resetGroup(group, fakeEvent, opts)
       processed++
     }
     setGroupProgress(null)
@@ -424,7 +430,7 @@ export default function ParamGroups({
     }
   }
 
-  async function resetGroup(group, e) {
+  async function resetGroup(group, e, { autoExpand = true } = {}) {
     e?.stopPropagation()
     const toWrite = group.params.filter(
       p => isParamWritable(device, p) && p.default !== undefined && p.default !== null && typeof p.default === 'number'
@@ -433,7 +439,7 @@ export default function ParamGroups({
       message.info('Нет параметров с заводскими значениями')
       return
     }
-    expandGroup(group.id)
+    if (autoExpand) expandGroup(group.id)
     setReadingGroup(group.id)
     const values = {}
     for (const p of toWrite) values[p.id] = p.default
@@ -480,6 +486,21 @@ export default function ParamGroups({
     } finally {
       setApplyingPreset(false)
     }
+  }
+
+  // Экспорт таблицы "Текущие параметры" (последние прочитанные значения этого
+  // устройства) в CSV — тот же формат, что и импорт/экспорт шаблонов значений
+  // в ValuePresets.jsx (колонки "Параметр"/"Значение"), поэтому такой файл
+  // можно и туда загрузить как заготовку шаблона.
+  function exportCurrentValuesCsv() {
+    const rows = device.groups.flatMap(g => g.params)
+      .filter(p => currentValues[p.id] != null)
+      .map(p => [p.id, p.name, currentValues[p.id], p.unit ?? ''])
+    downloadCsv(
+      `parameters_${activeDeviceId}_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`,
+      ['Параметр', 'Название', 'Значение', 'Единица'],
+      rows,
+    )
   }
 
   const query = search.trim().toLowerCase()
@@ -746,6 +767,16 @@ export default function ParamGroups({
         cancelText="Закрыть"
         width={640}
       >
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <Button
+            size="small"
+            icon={<DownloadOutlined />}
+            disabled={Object.keys(currentValues).length === 0}
+            onClick={exportCurrentValuesCsv}
+          >
+            Скачать CSV
+          </Button>
+        </div>
         <Table
           size="small"
           pagination={false}

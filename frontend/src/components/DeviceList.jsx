@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Typography, Badge, Avatar, Tag, Button, Modal, Form, Input, InputNumber, Select, Popconfirm, Tooltip, Checkbox, Space } from 'antd'
 import { LinkOutlined, DisconnectOutlined, PlusOutlined, DeleteOutlined, EditOutlined, HolderOutlined } from '@ant-design/icons'
 import {
@@ -16,6 +16,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import api from '../api'
+import { sortByDeviceOrder } from '../deviceOrder'
 
 function deviceType(device) {
   return (device.templateId ?? device.id ?? '').toLowerCase().includes('vl') ? 'vl' : 'pump'
@@ -47,7 +48,7 @@ function SortableDeviceRow({ id, compact, children }) {
   )
 }
 
-export default function DeviceList({ devices, selectedIds, onSelectionChange, connected, liveness = {}, hasProject, activeProjectId, sidebarWidth = 270 }) {
+export default function DeviceList({ devices, selectedIds, onSelectionChange, connected, liveness = {}, hasProject, activeProjectId, sidebarWidth = 270, deviceOrder, onDeviceOrderChange }) {
   const [addOpen, setAddOpen]       = useState(false)
   const [editDevice, setEditDevice] = useState(null)
   const [templates, setTemplates]   = useState([])
@@ -55,15 +56,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
   const [addForm]                   = Form.useForm()
   const [editForm]                  = Form.useForm()
   const [visibleTypes, setVisibleTypes] = useState(new Set(['pump', 'vl']))
-  const [deviceOrder, setDeviceOrder] = useState(null) // array id-шников или null (порядок по умолчанию, как пришло с бэка)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
-
-  useEffect(() => {
-    if (!activeProjectId) { setDeviceOrder(null); return }
-    api.get('/settings').then(({ data }) => {
-      setDeviceOrder(data.deviceOrders?.[activeProjectId] ?? null)
-    }).catch(() => setDeviceOrder(null))
-  }, [activeProjectId])
 
   async function openAdd() {
     const { data } = await api.get('/devices/templates')
@@ -192,15 +185,10 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
     return { status: 'processing', title: 'Проверка связи с устройством…' }
   }
   const rawDevices = devices.filter(d => !d.template)
-  // Порядок из настроек (drag-n-drop в сайдбаре) — устройства, которых в нём
-  // нет (новые/ещё не переставленные), уходят в конец в исходном порядке.
-  const allDevices = deviceOrder
-    ? [...rawDevices].sort((a, b) => {
-        const ai = deviceOrder.indexOf(a.id)
-        const bi = deviceOrder.indexOf(b.id)
-        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
-      })
-    : rawDevices
+  // Порядок из настроек (drag-n-drop в сайдбаре) — хранится и сохраняется в
+  // App.jsx (единый источник, чтобы групповой просмотр наследовал тот же
+  // порядок, см. deviceOrder.js).
+  const allDevices = sortByDeviceOrder(rawDevices, deviceOrder)
   const hasPump = allDevices.some(d => deviceType(d) === 'pump')
   const hasVl   = allDevices.some(d => deviceType(d) === 'vl')
   const visibleDevices = allDevices.filter(d => visibleTypes.has(deviceType(d)))
@@ -215,7 +203,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
     // сохраняем их в конце в прежнем относительном порядке.
     const hiddenIds = allDevices.filter(d => !visibleTypes.has(deviceType(d))).map(d => d.id)
     const newOrder = [...newVisibleOrder, ...hiddenIds]
-    setDeviceOrder(newOrder)
+    onDeviceOrderChange(newOrder)
     if (activeProjectId) {
       api.patch(`/settings/device-order/${activeProjectId}`, { order: newOrder }).catch(() => {})
     }

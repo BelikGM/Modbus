@@ -11,6 +11,7 @@ import ProjectSelector from './components/ProjectSelector'
 import socket from './socket'
 import api from './api'
 import { useLog } from './log'
+import { sortByDeviceOrder } from './deviceOrder'
 import 'antd/dist/reset.css'
 import './App.css'
 
@@ -74,6 +75,11 @@ export default function App() {
   // для одиночного и группового просмотра, чтобы при переключении состава
   // выделенных устройств (1 <-> несколько) вкладка не сбрасывалась сама.
   const [activeDeviceTab, setActiveDeviceTab] = useState('params')
+  // Порядок устройств (drag-n-drop в сайдбаре), per-project — хранится здесь,
+  // а не только внутри DeviceList, чтобы групповой просмотр (BulkPanel/
+  // BulkMonitor) собирал выбранные устройства в том же порядке, что и
+  // сайдбар, а не в порядке, в котором они лежат в файле проекта.
+  const [deviceOrder, setDeviceOrder] = useState(null)
   const resizingRef = useRef(null)
 
   useEffect(() => {
@@ -83,6 +89,13 @@ export default function App() {
       if (data.theme) setTheme(data.theme)
     }).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!activeProjectId) { setDeviceOrder(null); return }
+    api.get('/settings').then(({ data }) => {
+      setDeviceOrder(data.deviceOrders?.[activeProjectId] ?? null)
+    }).catch(() => setDeviceOrder(null))
+  }, [activeProjectId])
 
   function toggleTheme(checked) {
     const next = checked ? 'dark' : 'light'
@@ -278,13 +291,18 @@ export default function App() {
               hasProject={!!activeProjectId}
               activeProjectId={activeProjectId}
               sidebarWidth={siderWidth}
+              deviceOrder={deviceOrder}
+              onDeviceOrderChange={setDeviceOrder}
             />
           </div>
         </Sider>
 
         <Content id="app-scroll-content" style={{ padding: 24, background: '#fafafa', overflowY: 'auto', minHeight: 0 }}>
           {(() => {
-            const selectedDevices = devices.filter(d => selectedIds.has(d.id))
+            // Тот же порядок, что и в сайдбаре (drag-n-drop) — иначе групповой
+            // просмотр показывает устройства в порядке их обнаружения/создания
+            // в проекте, даже если пользователь вручную переставил их слева.
+            const selectedDevices = sortByDeviceOrder(devices, deviceOrder).filter(d => selectedIds.has(d.id))
             if (selectedIds.size > 1) {
               return (
                 <BulkPanel

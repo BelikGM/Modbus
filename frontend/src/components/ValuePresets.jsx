@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { List, Button, Input, Checkbox, InputNumber, Select, Typography, Space, Popconfirm, message, Empty, Collapse, Tag } from 'antd'
-import { PlusOutlined, DeleteOutlined, EditOutlined, SaveOutlined, ThunderboltOutlined } from '@ant-design/icons'
+import { PlusOutlined, DeleteOutlined, EditOutlined, SaveOutlined, ThunderboltOutlined, DownloadOutlined, UploadOutlined } from '@ant-design/icons'
 import api from '../api'
 import { formatParamValue, normalizeOptions } from '../paramFormat'
+import { isParamWritable } from '../access'
+import { downloadCsv, parseCsv } from '../csv'
 
 function deviceFamily(templateId) {
   return (templateId ?? '').toLowerCase().includes('vl') ? 'vl' : 'pump'
@@ -26,6 +28,7 @@ export default function ValuePresets({ device, devices }) {
   const [values, setValues] = useState({}) // paramId -> value, черновик редактора
   const [saving, setSaving] = useState(false)
   const [applyingId, setApplyingId] = useState(null)
+  const importInputRef = useRef(null)
 
   function load() {
     setLoading(true)
@@ -136,6 +139,68 @@ export default function ValuePresets({ device, devices }) {
 
   const allParamsById = new Map(device.groups.flatMap(g => g.params).map(p => [p.id, p]))
 
+  // Экспорт/импорт CSV — тот же формат (колонки "Параметр"/"Значение"), что и
+  // экспорт "Текущие параметры" на вкладке "Параметры" (ParamGroups.jsx), поэтому
+  // считанные с реального ПЧ значения можно сохранить как заготовку шаблона.
+  function exportPresetCsv(preset) {
+    const rows = Object.entries(preset.values).map(([paramId, val]) => {
+      const p = allParamsById.get(paramId)
+      return [paramId, p?.name ?? '', val, p?.unit ?? '']
+    })
+    downloadCsv(
+      `preset_${preset.name.replace(/[^\p{L}\p{N}_-]+/gu, '_')}.csv`,
+      ['Параметр', 'Название', 'Значение', 'Единица'],
+      rows,
+    )
+  }
+
+  function triggerImport() {
+    importInputRef.current?.click()
+  }
+
+  function handleImportFile(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const rows = parseCsv(String(reader.result))
+      if (rows.length === 0) { message.error('Пустой CSV-файл'); return }
+      const header = rows[0].map(h => h.trim().toLowerCase())
+      const idIdx = header.findIndex(h => h === 'параметр' || h === 'id')
+      const valIdx = header.findIndex(h => h === 'значение' || h === 'value')
+      if (idIdx === -1 || valIdx === -1) {
+        message.error('В CSV не найдены колонки "Параметр" и "Значение"')
+        return
+      }
+      const parsed = {}
+      let skipped = 0
+      for (const row of rows.slice(1)) {
+        const paramId = row[idIdx]?.trim()
+        const rawVal = row[valIdx]?.trim()
+        if (!paramId || !rawVal) continue
+        const param = allParamsById.get(paramId)
+        const num = Number(rawVal)
+        // Пропускаем параметры не из этой модели ПЧ, нечисловые значения и
+        // параметры, недоступные для записи (например, считанные показания
+        // датчиков) — шаблон нужен для записи в устройство, а не для чтения.
+        if (!param || Number.isNaN(num) || !isParamWritable(device, param)) { skipped++; continue }
+        parsed[paramId] = num
+      }
+      if (Object.keys(parsed).length === 0) {
+        message.error('В CSV не найдено ни одного параметра, доступного для записи у этой модели ПЧ')
+        return
+      }
+      const name = file.name.replace(/\.csv$/i, '')
+      setEditing({ id: null, name, family, values: parsed })
+      setNameInput(name)
+      setValues(parsed)
+      message.success(`Импортировано ${Object.keys(parsed).length} параметров${skipped ? `, пропущено ${skipped}` : ''} — проверьте и сохраните шаблон`)
+    }
+    reader.onerror = () => message.error('Не удалось прочитать файл')
+    reader.readAsText(file, 'utf-8')
+  }
+
   if (editing) {
     return (
       <div>
@@ -222,9 +287,21 @@ export default function ValuePresets({ device, devices }) {
 
   return (
     <div>
-      <Button type="primary" icon={<PlusOutlined />} onClick={startCreate} style={{ marginBottom: 16 }}>
-        Создать шаблон
-      </Button>
+      <Space style={{ marginBottom: 16 }}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={startCreate}>
+          Создать шаблон
+        </Button>
+        <Button icon={<UploadOutlined />} onClick={triggerImport}>
+          Импорт из CSV
+        </Button>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".csv"
+          style={{ display: 'none' }}
+          onChange={handleImportFile}
+        />
+      </Space>
       {presets.length === 0 && !loading ? (
         <Empty description={`Нет шаблонов для ${family === 'vl' ? 'VL' : 'Pump'}`} />
       ) : (
@@ -256,6 +333,15 @@ export default function ValuePresets({ device, devices }) {
                     Применить для выбранных ({targetDevices.length})
                   </Button>
                 </Popconfirm>,
+                <Button
+                  key="csv"
+                  size="small"
+                  icon={<DownloadOutlined />}
+                  disabled={Object.keys(preset.values).length === 0}
+                  onClick={() => exportPresetCsv(preset)}
+                >
+                  CSV
+                </Button>,
                 <Button key="edit" size="small" icon={<EditOutlined />} onClick={() => startEdit(preset)}>Изменить</Button>,
                 <Popconfirm key="delete" title="Удалить шаблон?" okText="Удалить" cancelText="Отмена" okButtonProps={{ danger: true }} onConfirm={() => remove(preset)}>
                   <Button size="small" danger icon={<DeleteOutlined />}>Удалить</Button>

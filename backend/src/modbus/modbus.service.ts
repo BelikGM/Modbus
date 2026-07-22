@@ -294,7 +294,12 @@ export class ModbusService implements OnModuleDestroy {
     const found: number[] = [];
     for (let addr = from; addr <= to; addr++) {
       if (isCancelled()) break;
-      const responded = await this.probeAddress(addr);
+      // Один неответ ещё не значит "устройства нет" — на реальной шине ПЧ
+      // иногда не успевает ответить в срок (внутренняя занятость, наводки),
+      // и тогда без повтора адрес находится только при повторном скане целиком.
+      // Перепроверяем один раз перед тем, как считать адрес пустым.
+      let responded = await this.probeAddress(addr);
+      if (!responded && !isCancelled()) responded = await this.probeAddress(addr);
       if (isCancelled()) break;
       if (responded) found.push(addr);
       onProgress(addr, [...found]);
