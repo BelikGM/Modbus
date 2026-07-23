@@ -201,7 +201,11 @@ function ParamRow({ device, param, modbusConnected, deviceRunning, injectedValue
                 textOverflow: 'ellipsis',
                 display: 'block',
               }}>
-                {isBitmask ? (displayValue !== null ? 'см. ниже' : '—') : currentFormatted}
+                {isBitmask
+                  ? (displayValue !== null
+                      ? formatParamValue(param.type, displayValue, param.unit, param.options, param.bits)
+                      : '—')
+                  : currentFormatted}
               </Typography.Text>
             )}
           </div>
