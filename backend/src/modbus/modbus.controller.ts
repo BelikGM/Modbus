@@ -80,7 +80,7 @@ export class ModbusController {
     if (!param) throw new NotFoundException(`Param '${body.paramId}' not found`);
     const slaveId = device.connection.slaveId ?? 1;
     try {
-      const rawValue = await this.modbusService.readRegister(param.register, slaveId);
+      const rawValue = await this.modbusService.readRegister(param.register, slaveId, 1);
       const scale = param.scale ?? 1;
       return {
         paramId: param.id,

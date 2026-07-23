@@ -20,6 +20,7 @@ import socket from '../socket'
 import { addLog } from '../log'
 import { useDeviceSettings } from '../useDeviceSettings'
 import { getMonitorParams } from '../monitorParams'
+import { isGenericBitLabel } from '../paramFormat'
 
 const MAX_POINTS = 60
 const COLORS = ['#1677ff', '#52c41a', '#fa8c16', '#eb2f96', '#722ed1', '#13c2c2', '#faad14', '#f5222d']
@@ -397,7 +398,8 @@ export default function Monitor({ device, modbusConnected }) {
                           const label = b.options?.[String(bitVal)] ?? String(bitVal)
                           return (
                             <Typography.Text key={b.bit} style={{ fontSize: 12 }}>
-                              {b.name}: <span style={{ fontWeight: 500 }}>{label}</span>
+                              {isGenericBitLabel(label) && <>{b.name}: </>}
+                              <span style={{ fontWeight: 500 }}>{label}</span>
                             </Typography.Text>
                           )
                         })}

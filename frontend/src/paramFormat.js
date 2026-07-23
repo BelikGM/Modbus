@@ -4,6 +4,17 @@ export function normalizeOptions(options) {
   return Object.entries(options).map(([k, v]) => ({ value: Number(k), label: v }))
 }
 
+// Для битовой маски: если подпись значения бита — это осмысленный текст
+// ("Прямое", "Остановлен"), она сама по себе понятна и техническое имя бита
+// ("direction"/"run") только мешает. Если же это обычный вкл/выкл-флаг —
+// смысл несёт ИМЯ бита (S1, FWD, M01...), а не значение, и его надо оставить.
+const GENERIC_BIT_LABELS = new Set([
+  'вкл', 'выкл', 'включено', 'выключено', 'on', 'off', 'да', 'нет', '0', '1', '—',
+])
+export function isGenericBitLabel(label) {
+  return GENERIC_BIT_LABELS.has(String(label).trim().toLowerCase())
+}
+
 export function formatParamValue(type, val, unit, options, bits) {
   if (val === null || val === undefined) return '—'
   // Некоторые параметры (напр. "Время ускорения") объявляют default текстом —
@@ -25,7 +36,8 @@ export function formatParamValue(type, val, unit, options, bits) {
         .map(b => {
           const bitVal = (raw >> b.bit) & 1
           const label = b.options?.[String(bitVal)] ?? String(bitVal)
-          return `${b.name}: ${label}`
+          // осмысленную подпись показываем как есть, вкл/выкл-флаг — с именем бита
+          return isGenericBitLabel(label) ? `${b.name}: ${label}` : label
         })
         .join('\n')
     }

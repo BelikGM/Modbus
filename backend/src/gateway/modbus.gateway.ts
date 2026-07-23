@@ -580,7 +580,7 @@ export class ModbusGateway
         const param = allParams.find(p => p.id === paramId);
         if (!param) { done++; continue; }
         try {
-          const rawValue = await this.modbusService.readRegister(param.register, slaveId);
+          const rawValue = await this.modbusService.readRegister(param.register, slaveId, 1);
           client.emit('bulk:op:progress', {
             kind: 'read', deviceId, paramId,
             value: rawValue * (param.scale ?? 1), unit: param.unit, name: param.name,

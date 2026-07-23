@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { List, Button, Input, Checkbox, InputNumber, Select, Typography, Space, Popconfirm, message, Empty, Collapse, Tag } from 'antd'
-import { PlusOutlined, DeleteOutlined, EditOutlined, SaveOutlined, ThunderboltOutlined, DownloadOutlined, UploadOutlined } from '@ant-design/icons'
+import { List, Button, Input, Checkbox, InputNumber, Select, Typography, Space, Popconfirm, message, Empty, Collapse, Tag, Table } from 'antd'
+import { PlusOutlined, DeleteOutlined, EditOutlined, SaveOutlined, ThunderboltOutlined, DownloadOutlined, UploadOutlined, DownOutlined, UpOutlined } from '@ant-design/icons'
 import api from '../api'
 import { formatParamValue, normalizeOptions } from '../paramFormat'
 import { isParamWritable } from '../access'
@@ -28,6 +28,7 @@ export default function ValuePresets({ device, devices }) {
   const [values, setValues] = useState({}) // paramId -> value, черновик редактора
   const [saving, setSaving] = useState(false)
   const [applyingId, setApplyingId] = useState(null)
+  const [expandedId, setExpandedId] = useState(null) // раскрытая карточка шаблона (показ всех регистров)
   const importInputRef = useRef(null)
 
   function load() {
@@ -316,7 +317,8 @@ export default function ValuePresets({ device, devices }) {
             // flex-ряд с flexWrap переносит кнопки на отдельную строку вместо
             // наложения, если места не хватает.
             <List.Item>
-              <div style={{ width: '100%', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+              <div style={{ width: '100%' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
               <List.Item.Meta
                 style={{ flex: '1 1 260px', minWidth: 0 }}
                 title={preset.name}
@@ -336,6 +338,14 @@ export default function ValuePresets({ device, devices }) {
                 }
               />
               <Space wrap size={4} style={{ flexShrink: 0 }}>
+                <Button
+                  size="small"
+                  icon={expandedId === preset.id ? <UpOutlined /> : <DownOutlined />}
+                  disabled={Object.keys(preset.values).length === 0}
+                  onClick={() => setExpandedId(expandedId === preset.id ? null : preset.id)}
+                >
+                  {expandedId === preset.id ? 'Свернуть' : 'Подробнее'}
+                </Button>
                 <Popconfirm
                   title={`Применить шаблон «${preset.name}»?`}
                   description={`Подготовленные значения обновятся у ${targetDevices.length} выбранных устройств (${targetDevices.map(d => d.name).join(', ')}). Сама запись в ПЧ не произойдёт — только подготовка черновика.`}
@@ -368,6 +378,31 @@ export default function ValuePresets({ device, devices }) {
                   <Button size="small" danger icon={<DeleteOutlined />}>Удалить</Button>
                 </Popconfirm>
               </Space>
+              </div>
+              {expandedId === preset.id && (
+                <div style={{ marginTop: 12 }}>
+                  <Table
+                    size="small"
+                    pagination={false}
+                    scroll={{ y: 320 }}
+                    dataSource={Object.entries(preset.values).map(([paramId, val]) => {
+                      const p = allParamsById.get(paramId)
+                      return {
+                        key: paramId,
+                        id: paramId,
+                        name: p?.name ?? '— нет в текущей модели',
+                        value: p ? formatParamValue(p.type, val, p.unit, p.options) : val,
+                      }
+                    })}
+                    columns={[
+                      { title: 'Параметр', dataIndex: 'id', width: 100 },
+                      { title: 'Название', dataIndex: 'name' },
+                      { title: 'Значение', dataIndex: 'value', width: 180 },
+                    ]}
+                    locale={{ emptyText: 'Шаблон пуст' }}
+                  />
+                </div>
+              )}
               </div>
             </List.Item>
           )}

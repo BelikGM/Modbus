@@ -3,7 +3,7 @@ import { Button, InputNumber, Select, Typography, Spin, message, Tag, Tooltip } 
 import api from '../api'
 import { addLog } from '../log'
 import { isParamWritable, isStopOnly } from '../access'
-import { formatParamValue, normalizeOptions } from '../paramFormat'
+import { formatParamValue, normalizeOptions, isGenericBitLabel } from '../paramFormat'
 
 function bitsToInt(bits, bitState) {
   return bits.reduce((acc, b) => acc | ((bitState[b.bit] ?? 0) << b.bit), 0)
@@ -122,10 +122,13 @@ function ParamRow({ device, param, modbusConnected, deviceRunning, injectedValue
       const bitVal = (Math.round(raw) >> b.bit) & 1
       const label  = b.options?.[String(bitVal)] ?? String(bitVal)
       const active = bitVal === 1
+      // Осмысленную подпись ("Прямое", "Остановлен") показываем без технического
+      // имени бита; вкл/выкл-флаг — с именем (S1, FWD...), т.к. смысл в имени.
+      const showName = isGenericBitLabel(label)
       return (
         <Tag key={b.bit} color={active ? 'success' : 'default'} style={{ margin: '2px', fontSize: 11 }}>
-          <span style={{ opacity: active ? 1 : 0.5 }}>{b.name}</span>
-          <span style={{ marginLeft: 4, fontWeight: 600, color: active ? undefined : '#aaa' }}>
+          {showName && <span style={{ opacity: active ? 1 : 0.5 }}>{b.name}</span>}
+          <span style={{ marginLeft: showName ? 4 : 0, fontWeight: 600, color: active ? undefined : '#aaa' }}>
             {active ? '●' : '○'} {label}
           </span>
         </Tag>

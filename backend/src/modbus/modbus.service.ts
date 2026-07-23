@@ -95,12 +95,27 @@ export class ModbusService implements OnModuleDestroy {
     }
   }
 
-  async readRegister(register: number, slaveId: number): Promise<number> {
-    return this.withLock(async () => {
-      this.client.setID(slaveId);
-      const data = await this.client.readHoldingRegisters(register, 1);
-      return data.data[0];
-    });
+  // `retries` — сколько раз повторить чтение при сбое. Единичные ошибки на
+  // RS-485 (таймаут ответа, битый CRC, потерянный байт в USB→RS-485) — обычное
+  // дело на шине; один повтор после короткой паузы лечит их, не поднимая ошибку
+  // наверх. По умолчанию 0 (для быстрых фоновых циклов — мониторинг/liveness,
+  // которым важнее темп, чем железобетонность каждого чтения); групповое и
+  // разовое чтение параметров вызывают с retries=1.
+  async readRegister(register: number, slaveId: number, retries = 0): Promise<number> {
+    let lastErr: unknown;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        return await this.withLock(async () => {
+          this.client.setID(slaveId);
+          const data = await this.client.readHoldingRegisters(register, 1);
+          return data.data[0];
+        });
+      } catch (e) {
+        lastErr = e;
+        if (attempt < retries) await new Promise(r => setTimeout(r, 60));
+      }
+    }
+    throw lastErr;
   }
 
   async writeRegister(register: number, rawValue: number, slaveId: number): Promise<void> {

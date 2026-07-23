@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import { Space, Typography, Tag, Alert, message, Tabs, Table, Button, Tooltip } from 'antd'
-import { CloseOutlined, ClearOutlined } from '@ant-design/icons'
+import { CloseOutlined, ClearOutlined, DownloadOutlined } from '@ant-design/icons'
 import socket from '../socket'
 import ParamGroups from './ParamGroups'
 import BulkMonitor from './BulkMonitor'
 import ValuePresets from './ValuePresets'
 import { useDeviceSettings } from '../useDeviceSettings'
 import { formatParamValue } from '../paramFormat'
+import { downloadCsv } from '../csv'
 
 // Pump-Full и Pump-OWN — один и тот же физический ПЧ, у OWN просто урезанный
 // (но регистрово идентичный) набор параметров — сверено вручную: все параметры
@@ -162,6 +163,46 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
     readResultsDataSource.push({ key: paramId, paramId, name })
   }
 
+  // Экспорт всей таблицы группового чтения (все выбранные устройства сразу) —
+  // по колонке на каждый ПЧ, строки-заголовки групп сохраняются. Это то, чего
+  // не даёт per-device "Скачать CSV" на вкладке "Параметры" (тот выгружает
+  // только одно устройство).
+  function exportGroupCsv() {
+    const header = ['Параметр', 'Название', ...devices.map(d => `${d.name} (Адрес ${d.connection.slaveId})`)]
+    const rows = []
+    let lastGroup = null
+    for (const paramId of readResultRows) {
+      const groupName = paramToGroup.get(paramId)?.name ?? ''
+      if (groupName !== lastGroup) {
+        rows.push([groupName, '', ...devices.map(() => '')])
+        lastGroup = groupName
+      }
+      const name = devices.map(d => bulkReadResults[d.id]?.[paramId]?.name).find(Boolean) ?? paramId
+      const cells = devices.map(d => {
+        const entry = bulkReadResults[d.id]?.[paramId]
+        if (!entry) return ''
+        if (entry.error) return 'ошибка'
+        return String(formatParamValue(entry.type, entry.value, entry.unit, entry.options, entry.bits))
+      })
+      rows.push([paramId, name, ...cells])
+    }
+    // Имя файла = какие группы считаны + семейство + адреса всех выбранных ПЧ:
+    // "F0-EMD-PUMP-1-4", "F0-F3-EMD-PUMP-1-4", "All-Param-EMD-PUMP-1-4".
+    const presentGroups = templateDevice.groups
+      .filter(g => g.params.some(p => readResultRows.includes(p.id)))
+      .map(g => g.id)
+    const groupPart = presentGroups.length === templateDevice.groups.length
+      ? 'All-Param'
+      : (presentGroups.join('-') || 'params')
+    const familyLabel = families[0] === 'vl' ? 'EMD-VL' : 'EMD-PUMP'
+    const nums = devices.map(d => d.connection.slaveId).join('-')
+    downloadCsv(
+      `${groupPart}-${familyLabel}-${nums}.csv`,
+      header,
+      rows,
+    )
+  }
+
   // BulkPanel не имеет вкладок "Устройство"/"Журнал" (это данные конкретного
   // ПЧ, не группы) — если пришли сюда из одиночного просмотра, откатываемся на
   // "Параметры".
@@ -183,6 +224,14 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
                   onClick={() => setBulkReadResults({})}
                 >
                   Очистить
+                </Button>
+                <Button
+                  size="small"
+                  icon={<DownloadOutlined />}
+                  onClick={exportGroupCsv}
+                  title="Скачать всю таблицу группового чтения (все выбранные ПЧ) в CSV"
+                >
+                  Скачать CSV группы
                 </Button>
               </Space>
               <Table

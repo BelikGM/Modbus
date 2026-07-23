@@ -124,6 +124,7 @@ export default function ParamGroups({
   const [activeDeviceId, setActiveDeviceId] = useState(effectiveDeviceIds[0])
   useEffect(() => {
     if (!effectiveDeviceIds.includes(activeDeviceId)) setActiveDeviceId(effectiveDeviceIds[0])
+    setBulkResults({}) // сменился состав выборки — старые групповые результаты не актуальны
   }, [effectiveDeviceIds.join(',')])
   const activeDevice = effectiveDevices.find(d => d.id === activeDeviceId) ?? effectiveDevices[0]
 
@@ -164,6 +165,11 @@ export default function ParamGroups({
   const [pendingWrites, setPendingWrites] = useState({})
   const [pendingVersion, setPendingVersion] = useState(0) // растёт при смене устройства/применении шаблона — форсирует переинициализацию полей записи в ParamRow
   const [currentValues, setCurrentValues] = useState({})
+  // Результаты последнего группового чтения ПЕР УСТРОЙСТВО ({ [deviceId]: { [paramId]: value } }).
+  // Нужны, чтобы per-device "Скачать CSV" в групповом режиме выгружал именно то
+  // устройство, что выбрано в переключателе, а не первое (у которого раньше
+  // остались сохранённые currentValues).
+  const [bulkResults, setBulkResults] = useState({})
   const [currentFillStamp, setCurrentFillStamp] = useState(0)
   const [currentValuesModalOpen, setCurrentValuesModalOpen] = useState(false)
   const [presetModalOpen, setPresetModalOpen] = useState(false)
@@ -256,6 +262,13 @@ export default function ParamGroups({
       latestCurrentValues.current = next
       return next
     })
+    // Держим значение и в per-device карте — на неё опирается колонка "Значение
+    // на устройстве" и per-device CSV в групповом режиме (одиночное чтение строки
+    // тоже должно там отражаться, не только групповое).
+    setBulkResults(prev => ({
+      ...prev,
+      [activeDeviceId]: { ...prev[activeDeviceId], [paramId]: val },
+    }))
     if (currentSaveTimer.current) clearTimeout(currentSaveTimer.current)
     currentSaveTimer.current = setTimeout(() => {
       api.patch(`/devices/${activeDeviceId}/current-values`, { currentValues: latestCurrentValues.current }).catch(() => {})
@@ -347,6 +360,13 @@ export default function ParamGroups({
             latestGroupValues.current = next
             return next
           })
+          // Копим результаты по каждому устройству отдельно — на них опирается
+          // per-device экспорт CSV (groupValues же общий и перетирается
+          // последним устройством в круге, для CSV он не годится).
+          setBulkResults(prev => ({
+            ...prev,
+            [p.deviceId]: { ...prev[p.deviceId], [p.paramId]: p.value },
+          }))
         }
       }
       function onDone(d) {
@@ -488,16 +508,27 @@ export default function ParamGroups({
     }
   }
 
+  // Значения для per-device CSV: в групповом режиме берём результаты текущего
+  // выбранного в переключателе устройства (bulkResults[activeDeviceId]) — иначе
+  // экспортировалось бы первое устройство. В одиночном режиме — как раньше,
+  // последние прочитанные значения (currentValues).
+  const csvValues = isBulk ? (bulkResults[activeDeviceId] ?? {}) : currentValues
+
   // Экспорт таблицы "Текущие параметры" (последние прочитанные значения этого
   // устройства) в CSV — тот же формат, что и импорт/экспорт шаблонов значений
   // в ValuePresets.jsx (колонки "Параметр"/"Значение"), поэтому такой файл
   // можно и туда загрузить как заготовку шаблона.
   function exportCurrentValuesCsv() {
     const rows = device.groups.flatMap(g => g.params)
-      .filter(p => currentValues[p.id] != null)
-      .map(p => [p.id, p.name, currentValues[p.id], p.unit ?? ''])
+      .filter(p => csvValues[p.id] != null)
+      .map(p => [p.id, p.name, csvValues[p.id], p.unit ?? ''])
+    // Имя файла = какие группы считаны + имя ПЧ: одна группа → "F0-EMD-PUMP-6",
+    // несколько → "F0-F3-F6-EMD-PUMP-6", все группы → "All-Param-EMD-PUMP-6".
+    const presentGroups = device.groups.filter(g => g.params.some(p => csvValues[p.id] != null)).map(g => g.id)
+    const groupPart = presentGroups.length === device.groups.length ? 'All-Param' : (presentGroups.join('-') || 'params')
+    const safeName = String(activeDevice.name).replace(/[^\p{L}\p{N}_-]+/gu, '_')
     downloadCsv(
-      `parameters_${activeDeviceId}_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`,
+      `${groupPart}-${safeName}.csv`,
       ['Параметр', 'Название', 'Значение', 'Единица'],
       rows,
     )
@@ -575,7 +606,7 @@ export default function ParamGroups({
               param={param}
               modbusConnected={modbusConnected}
               deviceRunning={deviceRunning}
-              injectedValue={groupValues[param.id]}
+              injectedValue={isBulk ? bulkResults[activeDeviceId]?.[param.id] : groupValues[param.id]}
               cols={cols}
               onWrite={onWrite}
               onClearGroupValue={clearGroupValue}
@@ -584,7 +615,6 @@ export default function ParamGroups({
               currentValue={currentValues[param.id]}
               currentFillStamp={currentFillStamp}
               onReadValue={handleReadValue}
-              hideDeviceValue={isBulk}
             />
           ))}
         </div>
@@ -638,9 +668,11 @@ export default function ParamGroups({
         </Button>
         <Button
           icon={<DownloadOutlined />}
-          disabled={Object.keys(currentValues).length === 0}
+          disabled={Object.keys(csvValues).length === 0}
           onClick={exportCurrentValuesCsv}
-          title="Скачать все считанные значения этого устройства в CSV"
+          title={isBulk
+            ? 'Скачать считанные значения выбранного в переключателе устройства в CSV'
+            : 'Скачать все считанные значения этого устройства в CSV'}
         >
           Скачать CSV
         </Button>
@@ -706,7 +738,7 @@ export default function ParamGroups({
           checked={visibleGroupIds.size === device.groups.length}
           indeterminate={visibleGroupIds.size > 0 && visibleGroupIds.size < device.groups.length}
           onChange={e => setAllGroupsVisible(e.target.checked)}
-          style={{ marginBottom: 6, display: 'block' }}
+          style={{ marginBottom: 6, display: 'inline-flex' }}
         >
           <span style={{ fontSize: 12, fontWeight: 600 }}>Все</span>
         </Checkbox>

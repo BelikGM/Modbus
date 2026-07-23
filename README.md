@@ -50,8 +50,8 @@ npm run start:dev
 # → NestJS слушает http://localhost:3000, chokidar следит за /devices и /projects
 
 # Терминал 2 — frontend
-cd frontend
-npm run dev
+  cd frontend
+  npm run dev
 # → Vite слушает http://localhost:5173 и проксирует /api/* на localhost:3000
 ```
 
@@ -113,7 +113,7 @@ Stop-Process -Name electron -Force
 **2. Запуск симулятора** (эмулирует "устройства" на одном конце пары):
 ```bash
 cd backend
-npm run simulate -- COM8 9600 1:pump,2:vh
+npm run simulate -- COM8 9600 1:pump,2:vl,3:vl,4:pump,5:pump,6:pump,7:pump
 ```
 Это поднимет на `COM8` три виртуальных устройства на шине: slaveId 1 отвечает как Pump, slaveId 2 — как VH (можно перечислить больше через запятую, напр. `1:pump,2:vh,5:pump`).
 
