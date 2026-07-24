@@ -64,6 +64,29 @@ export class ModbusService implements OnModuleDestroy {
     this.connected = true;
     this.options = opts;
     this.startWatchdog();
+    this.attachPortErrorHandler();
+  }
+
+  // modbus-serial эмитит событие 'error' прямо на объекте порта при сбоях
+  // ввода-вывода (например "Writing to COM port (GetOverlappedResult): Operation
+  // aborted" — USB→RS-485 адаптер дёрнулся или порт закрылся посреди записи).
+  // Без слушателя этого события Node роняет ВЕСЬ процесс бэкенда (throw er;
+  // Unhandled 'error' event). Здесь мы его гасим: конкретная read/write-операция
+  // и так отвалится по таймауту/ошибке в своём await, а если порт реально
+  // закрылся — помечаем связь потерянной, и гейтвей запустит авто-переподключение.
+  // connectRTUBuffered создаёт новый _port на каждое подключение, так что
+  // слушатель вешается заново при каждом connect() и не накапливается.
+  private attachPortErrorHandler() {
+    const port: any = (this.client as any)._port;
+    if (!port || typeof port.on !== 'function') return;
+    port.on('error', (err: Error) => {
+      this.events.emit('port:error', err?.message ?? String(err));
+      if (this.connected && !this.client.isOpen && !this.intentionalDisconnect) {
+        this.connected = false;
+        this.stopWatchdog();
+        this.events.emit('connection:lost');
+      }
+    });
   }
 
   async disconnect(): Promise<void> {

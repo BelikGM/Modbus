@@ -214,6 +214,10 @@ export default function ParamGroups({
 
   function setAllGroupsVisible(checked) {
     const next = checked ? new Set(device.groups.map(g => g.id)) : new Set()
+    setVisibleGroups(next)
+  }
+
+  function setVisibleGroups(next) {
     if (isGroupVisibilityControlled) {
       onVisibleGroupIdsChange(next)
     } else {
@@ -496,11 +500,15 @@ export default function ParamGroups({
       // Обновить видимые поля, если открытое сейчас устройство входит в выборку
       setPendingWrites(prev => ({ ...prev, ...preset.values }))
       setPendingVersion(v => v + 1)
-      for (const groupId of new Set(Object.keys(preset.values).map(paramId => {
-        const g = device.groups.find(gr => gr.params.some(p => p.id === paramId))
-        return g?.id
-      }).filter(Boolean))) {
-        expandGroup(groupId)
+      // Оставляем в отображении и раскрываем ровно те группы, которые есть в
+      // шаблоне — чтобы человек сразу видел подготовленные значения и не искал
+      // их среди всех групп.
+      const presetGroupIds = new Set(
+        device.groups.filter(g => g.params.some(p => preset.values[p.id] !== undefined)).map(g => g.id),
+      )
+      if (presetGroupIds.size) {
+        setVisibleGroups(presetGroupIds)
+        for (const groupId of presetGroupIds) expandGroup(groupId)
       }
       setPresetModalOpen(false)
     } finally {

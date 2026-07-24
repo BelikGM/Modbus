@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { Button, Select, AutoComplete, Space, Tag, Modal, Form, message, Tooltip, Collapse, Row, Col } from 'antd'
-import { ReloadOutlined, ScanOutlined, LoadingOutlined } from '@ant-design/icons'
+import { Button, Select, AutoComplete, Space, Tag, Modal, Form, message, Tooltip, Collapse, Row, Col, Alert } from 'antd'
+import { ReloadOutlined, ScanOutlined, LoadingOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import socket from '../socket'
 import api from '../api'
 import { addLog } from '../log'
@@ -12,6 +12,8 @@ export default function ConnectionPanel({ connected, reconnecting, reconnectAtte
   const [loadingPorts, setLoadingPorts] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [connecting, setConnecting] = useState(false)
+  const [detecting, setDetecting] = useState(false)
+  const [detectStage, setDetectStage] = useState('')
   const prevReconnecting = useRef(false)
 
   useEffect(() => {
@@ -82,6 +84,58 @@ export default function ConnectionPanel({ connected, reconnecting, reconnectAtte
     addLog('info', 'Отключение от порта')
   }
 
+  // У COM-порта нет «скорости», которую можно просто прочитать — обе стороны
+  // должны заранее договориться. Поэтому «определить скорость» = перебрать
+  // типовые сочетания скорость×чётность×стоп-биты и посмотреть, на каком из них
+  // устройство отвечает валидным Modbus-ответом. Это делает бэкенд
+  // (bus:autodetect:start): как только что-то ответило — он оставляет порт
+  // открытым с этой конфигурацией и сохраняет её для проекта.
+  function handleAutoDetectSpeed() {
+    const portPath = form.getFieldValue('portPath')
+    if (!portPath) { message.warning('Сначала выберите COM порт'); return }
+    setDetecting(true)
+    setDetectStage('Перебор скоростей…')
+
+    function cleanup() {
+      socket.off('bus:autodetect:progress', onProgress)
+      socket.off('bus:autodetect:found', onFound)
+      socket.off('bus:autodetect:notfound', onNotFound)
+      socket.off('bus:autodetect:error', onError)
+      setDetecting(false)
+      setDetectStage('')
+    }
+    function onProgress(p) {
+      const c = p.combo
+      if (c) setDetectStage(`Пробую ${c.baudRate} бод, ${c.dataBits ?? 8}${(c.parity ?? 'none')[0].toUpperCase()}${c.stopBits ?? 1}… (${p.comboIndex + 1}/${p.totalCombos})`)
+    }
+    function onFound({ combo }) {
+      cleanup()
+      form.setFieldsValue({
+        portPath: combo.portPath, baudRate: combo.baudRate,
+        dataBits: combo.dataBits, stopBits: combo.stopBits, parity: combo.parity,
+      })
+      const parityLetter = (combo.parity ?? 'none')[0].toUpperCase()
+      message.success(`Скорость определена: ${combo.baudRate} бод, ${combo.dataBits ?? 8}${parityLetter}${combo.stopBits ?? 1}. Порт подключён.`)
+      addLog('success', `Автоопределение: ${combo.portPath}, ${combo.baudRate} бод, ${combo.dataBits ?? 8}${parityLetter}${combo.stopBits ?? 1}`)
+      setOpen(false) // бэкенд уже подключил порт с этим сочетанием
+    }
+    function onNotFound() {
+      cleanup()
+      message.error('Не удалось определить скорость — ни одно устройство не ответило. Проверьте адреса ПЧ и провода A/B, либо задайте скорость вручную.')
+    }
+    function onError(e) { cleanup(); message.error(e?.message ?? 'Ошибка автоопределения') }
+
+    socket.on('bus:autodetect:progress', onProgress)
+    socket.on('bus:autodetect:found', onFound)
+    socket.on('bus:autodetect:notfound', onNotFound)
+    socket.on('bus:autodetect:error', onError)
+    socket.emit('bus:autodetect:start', { portPath })
+  }
+
+  function cancelDetect() {
+    socket.emit('bus:autodetect:cancel')
+  }
+
   const portOptions = ports.map(p => ({
     value: p.path,
     disabled: p.busy,
@@ -140,25 +194,44 @@ export default function ConnectionPanel({ connected, reconnecting, reconnectAtte
       <Modal
         title="Подключение к устройству"
         open={open}
-        onCancel={() => setOpen(false)}
+        onCancel={() => { if (detecting) cancelDetect(); setOpen(false) }}
         footer={[
           <Tooltip key="scan" title="Находит USB→RS-485 адаптер по идентификатору производителя (Silicon Labs, FTDI, CH340 и др.)">
             <Button
               icon={<ScanOutlined />}
               onClick={handleScan}
               loading={scanning}
+              disabled={detecting}
             >
-              Автопоиск
+              Найти адаптер
             </Button>
           </Tooltip>,
-          <Button key="cancel" onClick={() => setOpen(false)} disabled={connecting}>
+          <Tooltip key="detect" title="Перебирает скорость/чётность/стоп-биты на выбранном порту и подключается, как только ПЧ ответит. Скорость COM-порта нельзя «прочитать» — её можно только подобрать по ответу устройства.">
+            {detecting ? (
+              <Button danger onClick={cancelDetect}>Остановить подбор</Button>
+            ) : (
+              <Button icon={<ThunderboltOutlined />} onClick={handleAutoDetectSpeed}>
+                Определить скорость
+              </Button>
+            )}
+          </Tooltip>,
+          <Button key="cancel" onClick={() => { if (detecting) cancelDetect(); setOpen(false) }} disabled={connecting}>
             Отмена
           </Button>,
-          <Button key="connect" type="primary" loading={connecting} onClick={() => form.submit()}>
+          <Button key="connect" type="primary" loading={connecting} onClick={() => form.submit()} disabled={detecting}>
             Подключить
           </Button>,
         ]}
       >
+        {detecting && (
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message="Автоопределение скорости"
+            description={detectStage || 'Идёт подбор параметров связи…'}
+          />
+        )}
         <Form
           form={form}
           onFinish={handleConnect}

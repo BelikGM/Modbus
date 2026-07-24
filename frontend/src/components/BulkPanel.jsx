@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Space, Typography, Tag, Alert, message, Tabs, Table, Button, Tooltip } from 'antd'
-import { CloseOutlined, ClearOutlined, DownloadOutlined } from '@ant-design/icons'
+import { Space, Typography, Tag, Alert, message, Tabs, Table, Button, Tooltip, Popconfirm, Progress } from 'antd'
+import { CloseOutlined, ClearOutlined, DownloadOutlined, UploadOutlined } from '@ant-design/icons'
 import socket from '../socket'
 import ParamGroups from './ParamGroups'
 import BulkMonitor from './BulkMonitor'
@@ -46,6 +46,7 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
   const [deviceSettings, saveDeviceSettings] = useDeviceSettings(sameType ? templateDevice.templateId : '__mixed__')
   const [visibleGroupIds, setVisibleGroupIds] = useState(new Set())
   const [bulkReadResults, setBulkReadResults] = useState({}) // { [deviceId]: { [paramId]: { value/error, unit, name } } }
+  const [writeProgress, setWriteProgress] = useState(null) // { done, total } — прогресс «Записать подготовленное во все»
 
   useEffect(() => {
     if (!sameType || deviceSettings === null) return
@@ -203,6 +204,42 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
     )
   }
 
+  // Одна кнопка «Записать подготовленное во все выбранные ПЧ»: каждый ПЧ пишет
+  // СВОИ подготовленные значения (колонка «Значение для записи» / pendingWrites),
+  // независимо от того, Pump это или VL — сервер берёт pendingWrites каждого
+  // устройства по его собственной карте регистров. Работает и для смешанного
+  // выбора Pump+VL, поэтому кнопка живёт над вкладками и доступна всегда.
+  function writeAllPrepared() {
+    setWriteProgress({ done: 0, total: 0 })
+    let done = 0
+    function onTotal(t) { if (t.kind === 'write') setWriteProgress(() => ({ done, total: t.total })) }
+    function onProgress(p) {
+      if (p.kind !== 'write' || !deviceIds.includes(p.deviceId)) return
+      done++
+      setWriteProgress(prev => ({ done, total: prev?.total ?? done }))
+    }
+    function cleanup() {
+      socket.off('bulk:op:total', onTotal)
+      socket.off('bulk:op:progress', onProgress)
+      socket.off('bulk:op:done', onDone)
+      socket.off('bulk:op:error', onError)
+      setWriteProgress(null)
+    }
+    function onDone(d) {
+      if (d.kind !== 'write') return
+      cleanup()
+      if (d.total === 0) message.info('Ни у одного выбранного ПЧ нет подготовленных значений для записи')
+      else if (d.cancelled) message.warning(`Остановлено: записано ${d.ok} из ${d.total}`)
+      else message.success(`Записано ${d.ok} из ${d.total} подготовленных значений (${deviceIds.length} ПЧ)`)
+    }
+    function onError(e) { cleanup(); message.error(e?.message ?? 'Групповая операция уже выполняется') }
+    socket.on('bulk:op:total', onTotal)
+    socket.on('bulk:op:progress', onProgress)
+    socket.on('bulk:op:done', onDone)
+    socket.on('bulk:op:error', onError)
+    socket.emit('bulk:write:start', { deviceIds, usePending: true })
+  }
+
   // BulkPanel не имеет вкладок "Устройство"/"Журнал" (это данные конкретного
   // ПЧ, не группы) — если пришли сюда из одиночного просмотра, откатываемся на
   // "Параметры".
@@ -284,6 +321,46 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
             </Tag>
           ))}
         </Space>
+      </div>
+
+      {/* Главная кнопка сценария «на объекте»: выбрал все ПЧ — записал всё
+          подготовленное одним нажатием, даже если Pump и VL вперемешку. */}
+      <div style={{ marginBottom: 16 }}>
+        <Space wrap>
+          <Popconfirm
+            title="Записать подготовленные значения"
+            description={`Каждый из ${devices.length} выбранных ПЧ получит СВОИ подготовленные значения (колонка «Значение для записи»). Идёт реальная запись регистров в устройства.`}
+            okText="Записать"
+            cancelText="Отмена"
+            okButtonProps={{ danger: true }}
+            disabled={!modbusConnected || !!writeProgress}
+            onConfirm={writeAllPrepared}
+          >
+            <Button
+              type="primary"
+              icon={<UploadOutlined />}
+              disabled={!modbusConnected || !!writeProgress}
+              loading={!!writeProgress}
+            >
+              Записать подготовленное во все выбранные ({devices.length})
+            </Button>
+          </Popconfirm>
+          {writeProgress && (
+            <Button danger onClick={() => socket.emit('bulk:op:cancel')}>Остановить</Button>
+          )}
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            Каждый ПЧ пишет свои подготовленные значения — работает и для смешанного выбора Pump + VL
+          </Typography.Text>
+        </Space>
+        {writeProgress && (
+          <Progress
+            style={{ marginTop: 8 }}
+            size="small"
+            status="active"
+            percent={writeProgress.total > 0 ? Math.round((writeProgress.done / writeProgress.total) * 100) : 0}
+            format={() => `${writeProgress.done} из ${writeProgress.total} параметров`}
+          />
+        )}
       </div>
 
       {!sameType && tabKey !== 'monitor' && (
