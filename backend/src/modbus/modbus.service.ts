@@ -141,11 +141,22 @@ export class ModbusService implements OnModuleDestroy {
     throw lastErr;
   }
 
-  async writeRegister(register: number, rawValue: number, slaveId: number): Promise<void> {
-    return this.withLock(async () => {
-      this.client.setID(slaveId);
-      await this.client.writeRegister(register, rawValue);
-    });
+  // Запись идемпотентна (тот же регистр = то же значение), поэтому повтор при
+  // единичном сбое безопасен и полезен при массовой записи «во все ПЧ».
+  async writeRegister(register: number, rawValue: number, slaveId: number, retries = 0): Promise<void> {
+    let lastErr: unknown;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        return await this.withLock(async () => {
+          this.client.setID(slaveId);
+          await this.client.writeRegister(register, rawValue);
+        });
+      } catch (e) {
+        lastErr = e;
+        if (attempt < retries) await new Promise(r => setTimeout(r, 60));
+      }
+    }
+    throw lastErr;
   }
 
   async listPorts(): Promise<PortInfo[]> {

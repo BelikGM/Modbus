@@ -607,9 +607,11 @@ export class ModbusGateway
       deviceIds: string[];
       // Два режима:
       //  - values: общие значения для всех устройств (сброс до заводских и т.п.)
-      //  - usePending: у КАЖДОГО устройства пишутся его собственные подготовленные
-      //    значения (pendingWrites), опционально ограниченные paramIds (группой);
-      //    успешно записанные значения очищаются из pendingWrites устройства.
+      //  - usePending: у КАЖДОГО устройства пишутся его «эффективные» подготовленные
+      //    значения — заводские по умолчанию во всех записываемых параметрах +
+      //    сохранённые правки/шаблон поверх (getEffectivePendingWrites),
+      //    опционально ограниченные paramIds (группой). Значения НЕ очищаются
+      //    после записи — их можно записать повторно.
       values?: Record<string, number>;
       usePending?: boolean;
       paramIds?: string[];
@@ -627,7 +629,7 @@ export class ModbusGateway
     const jobs: { deviceId: string; values: Record<string, number> }[] = [];
     for (const deviceId of payload.deviceIds) {
       if (payload.usePending) {
-        const pending = this.devicesService.getDevicePendingWrites(deviceId) ?? {};
+        const pending = this.devicesService.getEffectivePendingWrites(deviceId);
         const values: Record<string, number> = {};
         for (const [paramId, value] of Object.entries(pending)) {
           if (payload.paramIds && !payload.paramIds.includes(paramId)) continue;
@@ -651,7 +653,6 @@ export class ModbusGateway
       if (!device) { done += paramIds.length; continue; }
       const slaveId = device.connection.slaveId ?? 1;
       const allParams = device.groups.flatMap(g => g.params);
-      const writtenParamIds: string[] = [];
 
       for (const paramId of paramIds) {
         if (this.bulkOpCancelled) break;
@@ -659,14 +660,13 @@ export class ModbusGateway
         if (!param || !this.devicesService.isParamWritable(device, param)) { done++; continue; }
         const rawValue = Math.round(job.values[paramId] / (param.scale ?? 1));
         try {
-          await this.modbusService.writeRegister(param.register, rawValue, slaveId);
+          await this.modbusService.writeRegister(param.register, rawValue, slaveId, 1);
           client.emit('bulk:op:progress', {
             kind: 'write', deviceId: job.deviceId, paramId,
             value: job.values[paramId], unit: param.unit, name: param.name,
             type: param.type, options: param.options, bits: param.bits,
           });
           ok++;
-          writtenParamIds.push(paramId);
         } catch (e) {
           client.emit('bulk:op:progress', {
             kind: 'write', deviceId: job.deviceId, paramId, name: param.name, error: (e as Error).message,
@@ -675,13 +675,9 @@ export class ModbusGateway
         done++;
       }
 
-      // Подготовленные значения выполнили свою задачу — очищаем записанное,
-      // неудавшиеся/недописанные остаются на повторную попытку.
-      if (payload.usePending && writtenParamIds.length > 0) {
-        const cleared: Record<string, null> = {};
-        for (const paramId of writtenParamIds) cleared[paramId] = null;
-        this.devicesService.mergeDevicePendingWrites(job.deviceId, cleared);
-      }
+      // Подготовленные значения НЕ очищаем после записи (в отличие от прежнего
+      // поведения): человек на объекте может записать их повторно, а overrides
+      // остаются в проекте.
 
       if (this.bulkOpCancelled) break outer;
     }

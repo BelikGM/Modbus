@@ -258,6 +258,32 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     return instance?.pendingWrites ?? {};
   }
 
+  // «Эффективные» подготовленные значения = заводское значение по умолчанию для
+  // КАЖДОГО записываемого параметра с числовым default, поверх которого ложатся
+  // сохранённые в проекте ручные правки и значения из шаблона (overrides). Так у
+  // только что добавленного ПЧ во всех полях всех групп сразу стоит заводское
+  // значение, а «Записать всё» приводит устройство к известному состоянию,
+  // перетирая чужие правки, кроме параметров, которые мы намеренно поменяли.
+  // В файле проекта хранятся ТОЛЬКО overrides (компактно и переживает правки
+  // шаблона); заводская база подставляется на лету. Overrides НЕ очищаются после
+  // записи — человек на объекте может нажать «Записать» повторно.
+  getEffectivePendingWrites(id: string): Record<string, number> {
+    const device = this.getById(id);
+    if (!device) return {};
+    const result: Record<string, number> = {};
+    for (const group of device.groups) {
+      for (const param of group.params) {
+        if (!this.isParamWritable(device, param)) continue;
+        if (typeof param.default === 'number') result[param.id] = param.default;
+      }
+    }
+    const stored = this.getDevicePendingWrites(id);
+    for (const [key, value] of Object.entries(stored)) {
+      if (typeof value === 'number') result[key] = value;
+    }
+    return result;
+  }
+
   updateDevicePendingWrites(id: string, pendingWrites: Record<string, any>): void {
     const instance = this.instances.get(id);
     if (!instance) return;

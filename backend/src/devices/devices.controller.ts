@@ -35,7 +35,10 @@ export class DevicesController {
 
   @Get(':id/pending-writes')
   getPendingWrites(@Param('id') id: string) {
-    return this.devicesService.getDevicePendingWrites(id);
+    // Отдаём «эффективные» значения: заводские по умолчанию во всех полях +
+    // сохранённые правки поверх. Так колонка «Значение для записи» на фронте
+    // сразу заполнена во всех группах, а не пустая.
+    return this.devicesService.getEffectivePendingWrites(id);
   }
 
   @Patch(':id/pending-writes')
