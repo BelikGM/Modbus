@@ -7,7 +7,7 @@ import BulkMonitor from './BulkMonitor'
 import ValuePresets from './ValuePresets'
 import { useDeviceSettings } from '../useDeviceSettings'
 import { formatParamValue } from '../paramFormat'
-import { downloadCsv } from '../csv'
+import { downloadCsv, groupFileLabel } from '../csv'
 
 // Pump-Full и Pump-OWN — один и тот же физический ПЧ, у OWN просто урезанный
 // (но регистрово идентичный) набор параметров — сверено вручную: все параметры
@@ -127,6 +127,13 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
     .slice()
     .sort((a, b) => templateParamOrder.indexOf(a) - templateParamOrder.indexOf(b))
 
+  // CSV группы доступен, только когда КАЖДАЯ отображаемая группа считана у
+  // КАЖДОГО выбранного ПЧ (сначала считка — потом скачивание).
+  const visibleGroupsList = sameType ? templateDevice.groups.filter(g => visibleGroupIds.has(g.id)) : []
+  const groupCsvReady = visibleGroupsList.length > 0 && devices.every(d =>
+    visibleGroupsList.every(g => g.params.some(p => bulkReadResults[d.id]?.[p.id] != null)),
+  )
+
   const readResultsColumns = [
     {
       title: 'Параметр',
@@ -191,12 +198,13 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
     // "F0-EMD-PUMP-1-4", "F0-F3-EMD-PUMP-1-4", "All-Param-EMD-PUMP-1-4".
     const presentGroups = templateDevice.groups
       .filter(g => g.params.some(p => readResultRows.includes(p.id)))
-      .map(g => g.id)
     const groupPart = presentGroups.length === templateDevice.groups.length
       ? 'All-Param'
-      : (presentGroups.join('-') || 'params')
+      : (presentGroups.map(groupFileLabel).join('-') || 'params')
     const familyLabel = families[0] === 'vl' ? 'EMD-VL' : 'EMD-PUMP'
-    const nums = devices.map(d => d.connection.slaveId).join('-')
+    // Номера ПЧ через запятую (1,7 — это ПЧ №1 и №7), а НЕ через дефис (1-7
+    // читалось бы как диапазон 1..7).
+    const nums = devices.map(d => d.connection.slaveId).join(',')
     downloadCsv(
       `${groupPart}-${familyLabel}-${nums}.csv`,
       header,
@@ -262,14 +270,18 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
                 >
                   Очистить
                 </Button>
-                <Button
-                  size="small"
-                  icon={<DownloadOutlined />}
-                  onClick={exportGroupCsv}
-                  title="Скачать всю таблицу группового чтения (все выбранные ПЧ) в CSV"
-                >
-                  Скачать CSV группы
-                </Button>
+                <Tooltip title={groupCsvReady
+                  ? 'Скачать таблицу отображаемых групп по всем выбранным ПЧ в CSV'
+                  : 'Сначала считайте все отображаемые группы у всех выбранных ПЧ — потом станет доступно скачивание'}>
+                  <Button
+                    size="small"
+                    icon={<DownloadOutlined />}
+                    disabled={!groupCsvReady}
+                    onClick={exportGroupCsv}
+                  >
+                    Скачать CSV группы
+                  </Button>
+                </Tooltip>
               </Space>
               <Table
                 size="small"

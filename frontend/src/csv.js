@@ -5,6 +5,14 @@
 const DELIM = ';'
 const BOM = '﻿'
 
+// Короткая метка группы для имени CSV-файла: если id — это код (F0/P8/D0),
+// берём его как есть; иначе (напр. "vfd-control") — человекочитаемое имя группы
+// ("Управление ПЧ" → "Управление_ПЧ").
+export function groupFileLabel(group) {
+  if (/^[A-Za-z]+\d+$/.test(group.id)) return group.id
+  return String(group.name).replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/g, '')
+}
+
 export function downloadCsv(filename, header, rows) {
   const escape = v => `"${String(v).replace(/"/g, '""')}"`
   const csv = [header, ...rows].map(r => r.map(escape).join(DELIM)).join('\r\n')

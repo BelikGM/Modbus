@@ -308,6 +308,30 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     this.updateDevicePendingWrites(id, merged);
   }
 
+  // Вливает один и тот же patch в pendingWrites сразу нескольких устройств и
+  // сохраняет проект ОДНИМ перезаписыванием файла (а не N — как было бы при
+  // отдельном PATCH на каждое устройство). Используется опцией «Все выбранные
+  // ПЧ» в редакторе подготовленных значений: правка значения применяется ко
+  // всем выбранным ПЧ разом.
+  mergeManyDevicesPendingWrites(ids: string[], patch: Record<string, any>): void {
+    const projectId = this.projectsService.getActiveProjectId();
+    if (!projectId) return;
+    const updated: DeviceInstance[] = [];
+    for (const id of ids) {
+      const instance = this.instances.get(id);
+      if (!instance) continue;
+      const merged = { ...(instance.pendingWrites ?? {}) };
+      for (const [key, value] of Object.entries(patch ?? {})) {
+        if (value === null || value === undefined) delete merged[key];
+        else merged[key] = value;
+      }
+      const next = { ...instance, pendingWrites: merged };
+      this.instances.set(id, next);
+      updated.push(next);
+    }
+    this.projectsService.writeInstances(projectId, updated);
+  }
+
   getDeviceCurrentValues(id: string): Record<string, any> {
     const instance = this.instances.get(id);
     return instance?.currentValues ?? {};

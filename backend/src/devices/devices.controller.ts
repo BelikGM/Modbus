@@ -41,6 +41,17 @@ export class DevicesController {
     return this.devicesService.getEffectivePendingWrites(id);
   }
 
+  // Массовая правка подготовленных значений сразу у нескольких ПЧ (опция «Все
+  // выбранные ПЧ»). Объявлен ДО ':id/pending-writes', но статический путь
+  // 'pending-writes/bulk' с ним и так не пересекается (второй сегмент 'bulk').
+  @Patch('pending-writes/bulk')
+  updatePendingWritesBulk(
+    @Body() body: { deviceIds: string[]; pendingWrites: Record<string, any> },
+  ) {
+    this.devicesService.mergeManyDevicesPendingWrites(body.deviceIds ?? [], body.pendingWrites ?? {});
+    return { success: true };
+  }
+
   @Patch(':id/pending-writes')
   updatePendingWrites(
     @Param('id') id: string,

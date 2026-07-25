@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Collapse, Button, Input, message, Typography, Popconfirm, Space, Modal, Table, Checkbox, Progress, Select } from 'antd'
-import { DownloadOutlined, SearchOutlined, RollbackOutlined, HolderOutlined, DatabaseOutlined, UploadOutlined, FileTextOutlined } from '@ant-design/icons'
+import { Collapse, Button, Input, message, Typography, Popconfirm, Space, Modal, Checkbox, Progress, Select } from 'antd'
+import { DownloadOutlined, SearchOutlined, RollbackOutlined, HolderOutlined, UploadOutlined, FileTextOutlined } from '@ant-design/icons'
 import {
   DndContext,
   closestCenter,
@@ -20,7 +20,7 @@ import api from '../api'
 import socket from '../socket'
 import { useDeviceSettings } from '../useDeviceSettings'
 import { isParamWritable } from '../access'
-import { downloadCsv } from '../csv'
+import { downloadCsv, groupFileLabel } from '../csv'
 
 // Значение/запись специально не растянуты "с запасом" — короткие значения
 // (типично "—" пока не считано, или пара символов/цифр) не должны тянуть за
@@ -122,11 +122,18 @@ export default function ParamGroups({
   const effectiveDeviceIds = effectiveDevices.map(d => d.id)
   const isBulk = effectiveDevices.length > 1
   const [activeDeviceId, setActiveDeviceId] = useState(effectiveDeviceIds[0])
+  // Спец-значение переключателя «текущее устройство для правки»: правки
+  // подготовленных значений применяются сразу ко ВСЕМ выбранным ПЧ.
+  const ALL_DEVICES = '__all__'
+  const isAllMode = isBulk && activeDeviceId === ALL_DEVICES
   useEffect(() => {
-    if (!effectiveDeviceIds.includes(activeDeviceId)) setActiveDeviceId(effectiveDeviceIds[0])
+    if (activeDeviceId !== ALL_DEVICES && !effectiveDeviceIds.includes(activeDeviceId)) setActiveDeviceId(effectiveDeviceIds[0])
     setBulkResults({}) // сменился состав выборки — старые групповые результаты не актуальны
   }, [effectiveDeviceIds.join(',')])
-  const activeDevice = effectiveDevices.find(d => d.id === activeDeviceId) ?? effectiveDevices[0]
+  // В режиме «Все» показываем как образец эталонное устройство (с самой полной
+  // картой), а правки пишем во все; в обычном — выбранное устройство.
+  const activeDevice = isAllMode ? device : (effectiveDevices.find(d => d.id === activeDeviceId) ?? effectiveDevices[0])
+  const displayDeviceId = isAllMode ? device.id : activeDeviceId
 
   const [readingGroup, setReadingGroup] = useState(null)
   const [groupValues, setGroupValues]   = useState({})
@@ -170,8 +177,7 @@ export default function ParamGroups({
   // устройство, что выбрано в переключателе, а не первое (у которого раньше
   // остались сохранённые currentValues).
   const [bulkResults, setBulkResults] = useState({})
-  const [currentFillStamp, setCurrentFillStamp] = useState(0)
-  const [currentValuesModalOpen, setCurrentValuesModalOpen] = useState(false)
+  const [currentFillStamp] = useState(0)
   const [presetModalOpen, setPresetModalOpen] = useState(false)
   const [presets, setPresets] = useState([])
   const [selectedPresetId, setSelectedPresetId] = useState(null)
@@ -234,14 +240,14 @@ export default function ParamGroups({
     setPendingWrites({})
     setCurrentValues({})
     let cancelled = false
-    api.get(`/devices/${activeDeviceId}/pending-writes`)
+    api.get(`/devices/${displayDeviceId}/pending-writes`)
       .then(({ data }) => {
         if (cancelled) return
         setPendingWrites(data ?? {})
         setPendingVersion(v => v + 1)
       })
       .catch(() => {})
-    api.get(`/devices/${activeDeviceId}/current-values`)
+    api.get(`/devices/${displayDeviceId}/current-values`)
       .then(({ data }) => {
         if (cancelled) return
         const cv = data ?? {}
@@ -253,12 +259,14 @@ export default function ParamGroups({
   }, [activeDeviceId])
 
   const handlePendingWriteChange = useCallback((paramId, val) => {
-    setPendingWrites(prev => {
-      const next = { ...prev, [paramId]: val }
+    setPendingWrites(prev => ({ ...prev, [paramId]: val }))
+    if (isAllMode) {
+      // Одним запросом — во все выбранные ПЧ (сервер сохраняет проект один раз).
+      api.patch('/devices/pending-writes/bulk', { deviceIds: effectiveDeviceIds, pendingWrites: { [paramId]: val } }).catch(() => {})
+    } else {
       api.patch(`/devices/${activeDeviceId}/pending-writes`, { merge: true, pendingWrites: { [paramId]: val } }).catch(() => {})
-      return next
-    })
-  }, [activeDeviceId])
+    }
+  }, [activeDeviceId, isAllMode, effectiveDeviceIds.join(',')])
 
   const handleReadValue = useCallback((paramId, val) => {
     setCurrentValues(prev => {
@@ -271,13 +279,13 @@ export default function ParamGroups({
     // тоже должно там отражаться, не только групповое).
     setBulkResults(prev => ({
       ...prev,
-      [activeDeviceId]: { ...prev[activeDeviceId], [paramId]: val },
+      [displayDeviceId]: { ...prev[displayDeviceId], [paramId]: val },
     }))
     if (currentSaveTimer.current) clearTimeout(currentSaveTimer.current)
     currentSaveTimer.current = setTimeout(() => {
-      api.patch(`/devices/${activeDeviceId}/current-values`, { currentValues: latestCurrentValues.current }).catch(() => {})
+      api.patch(`/devices/${displayDeviceId}/current-values`, { currentValues: latestCurrentValues.current }).catch(() => {})
     }, 500)
-  }, [activeDeviceId])
+  }, [activeDeviceId, displayDeviceId])
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
@@ -516,24 +524,28 @@ export default function ParamGroups({
     }
   }
 
-  // Значения для per-device CSV: в групповом режиме берём результаты текущего
-  // выбранного в переключателе устройства (bulkResults[activeDeviceId]) — иначе
-  // экспортировалось бы первое устройство. В одиночном режиме — как раньше,
-  // последние прочитанные значения (currentValues).
-  const csvValues = isBulk ? (bulkResults[activeDeviceId] ?? {}) : currentValues
+  // Значения для per-device CSV: в групповом режиме — результаты отображаемого
+  // устройства (bulkResults[displayDeviceId]); в одиночном — последние
+  // прочитанные (currentValues).
+  const csvValues = isBulk ? (bulkResults[displayDeviceId] ?? {}) : currentValues
+  // Скачиваем ТОЛЬКО отображаемые (отмеченные галочками) группы и только если
+  // все они уже считаны — иначе кнопка неактивна (сначала считка, потом CSV).
+  const csvGroupIsRead = g => g.params.some(p => csvValues[p.id] != null)
+  const csvReady = groupsInScope.length > 0 && groupsInScope.every(csvGroupIsRead)
 
-  // Экспорт таблицы "Текущие параметры" (последние прочитанные значения этого
-  // устройства) в CSV — тот же формат, что и импорт/экспорт шаблонов значений
-  // в ValuePresets.jsx (колонки "Параметр"/"Значение"), поэтому такой файл
-  // можно и туда загрузить как заготовку шаблона.
+  // Экспорт значений отображаемых групп в CSV — тот же формат, что и
+  // импорт/экспорт шаблонов значений (колонки "Параметр"/"Значение"), поэтому
+  // такой файл можно загрузить и как заготовку шаблона. Имя файла = метки
+  // отображаемых групп + имя ПЧ: "F2-EMD-PUMP-6", "Управление_ПЧ-F2-EMD-PUMP-6",
+  // все группы → "All-Param-EMD-PUMP-6".
   function exportCurrentValuesCsv() {
-    const rows = device.groups.flatMap(g => g.params)
+    if (!csvReady) return
+    const rows = groupsInScope.flatMap(g => g.params)
       .filter(p => csvValues[p.id] != null)
       .map(p => [p.id, p.name, csvValues[p.id], p.unit ?? ''])
-    // Имя файла = какие группы считаны + имя ПЧ: одна группа → "F0-EMD-PUMP-6",
-    // несколько → "F0-F3-F6-EMD-PUMP-6", все группы → "All-Param-EMD-PUMP-6".
-    const presentGroups = device.groups.filter(g => g.params.some(p => csvValues[p.id] != null)).map(g => g.id)
-    const groupPart = presentGroups.length === device.groups.length ? 'All-Param' : (presentGroups.join('-') || 'params')
+    const groupPart = groupsInScope.length === device.groups.length
+      ? 'All-Param'
+      : (groupsInScope.map(groupFileLabel).join('-') || 'params')
     const safeName = String(activeDevice.name).replace(/[^\p{L}\p{N}_-]+/gu, '_')
     downloadCsv(
       `${groupPart}-${safeName}.csv`,
@@ -614,7 +626,7 @@ export default function ParamGroups({
               param={param}
               modbusConnected={modbusConnected}
               deviceRunning={deviceRunning}
-              injectedValue={isBulk ? bulkResults[activeDeviceId]?.[param.id] : groupValues[param.id]}
+              injectedValue={isBulk ? bulkResults[displayDeviceId]?.[param.id] : groupValues[param.id]}
               cols={cols}
               onWrite={onWrite}
               onClearGroupValue={clearGroupValue}
@@ -652,12 +664,15 @@ export default function ParamGroups({
           <Select
             value={activeDeviceId}
             onChange={setActiveDeviceId}
-            style={{ width: 220 }}
+            style={{ width: 240 }}
             popupMatchSelectWidth={false}
-            options={effectiveDevices.map(d => ({
-              value: d.id,
-              label: `${d.name} · Адрес ${d.connection.slaveId}`,
-            }))}
+            options={[
+              { value: ALL_DEVICES, label: `★ Все выбранные ПЧ (${effectiveDeviceIds.length}) — править разом` },
+              ...effectiveDevices.map(d => ({
+                value: d.id,
+                label: `${d.name} · Адрес ${d.connection.slaveId}`,
+              })),
+            ]}
           />
         )}
         <Button
@@ -666,24 +681,17 @@ export default function ParamGroups({
         >
           Подготовить из шаблона
         </Button>
-        <Button
-          icon={<DatabaseOutlined />}
-          disabled={Object.keys(currentValues).length === 0}
-          onClick={() => setCurrentValuesModalOpen(true)}
-          title="Просмотреть и применить последние прочитанные значения"
-        >
-          Текущие параметры
-        </Button>
-        <Button
-          icon={<DownloadOutlined />}
-          disabled={Object.keys(csvValues).length === 0}
-          onClick={exportCurrentValuesCsv}
-          title={isBulk
-            ? 'Скачать считанные значения выбранного в переключателе устройства в CSV'
-            : 'Скачать все считанные значения этого устройства в CSV'}
-        >
-          Скачать CSV
-        </Button>
+        <Tooltip title={csvReady
+          ? 'Скачать значения отображаемых (отмеченных галочками) групп в CSV'
+          : 'Сначала считайте все отображаемые группы (кнопкой «Прочитать все» или по группам) — потом станет доступно скачивание'}>
+          <Button
+            icon={<DownloadOutlined />}
+            disabled={!csvReady}
+            onClick={exportCurrentValuesCsv}
+          >
+            Скачать CSV
+          </Button>
+        </Tooltip>
         {groupProgress ? (
           <Button danger onClick={stopGroupedOperation}>
             Остановить {groupProgress.kind === 'read' ? 'чтение' : groupProgress.kind === 'write' ? 'запись' : 'сброс'}
@@ -719,6 +727,14 @@ export default function ParamGroups({
           </>
         )}
       </Space>
+
+      {isAllMode && (
+        <div style={{ marginBottom: 8, padding: '4px 10px', background: '#fff7e6', border: '1px solid #ffd591', borderRadius: 6 }}>
+          <Typography.Text style={{ fontSize: 12, color: '#d46b08' }}>
+            ★ Режим «Все выбранные ПЧ»: любое изменение поля «Значение для записи» применяется сразу ко всем {effectiveDeviceIds.length} выбранным ПЧ.
+          </Typography.Text>
+        </div>
+      )}
 
       {groupProgress && (
         <Progress
@@ -802,45 +818,6 @@ export default function ParamGroups({
           </div>
         </SortableContext>
       </DndContext>
-
-      <Modal
-        title={<Space><DatabaseOutlined />Текущие параметры устройства</Space>}
-        open={currentValuesModalOpen}
-        onCancel={() => setCurrentValuesModalOpen(false)}
-        onOk={() => {
-          setCurrentFillStamp(s => s + 1)
-          setCurrentValuesModalOpen(false)
-        }}
-        okText="Подставить в поля записи"
-        cancelText="Закрыть"
-        width={640}
-      >
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-          <Button
-            size="small"
-            icon={<DownloadOutlined />}
-            disabled={Object.keys(currentValues).length === 0}
-            onClick={exportCurrentValuesCsv}
-          >
-            Скачать CSV
-          </Button>
-        </div>
-        <Table
-          size="small"
-          pagination={false}
-          scroll={{ y: 400 }}
-          dataSource={device.groups.flatMap(g => g.params)
-            .filter(p => currentValues[p.id] != null)
-            .map(p => ({ key: p.id, id: p.id, name: p.name, value: currentValues[p.id], unit: p.unit ?? '' }))
-          }
-          columns={[
-            { title: 'Параметр', dataIndex: 'id', width: 90 },
-            { title: 'Название', dataIndex: 'name' },
-            { title: 'Значение', dataIndex: 'value', width: 100, render: (v, r) => `${v} ${r.unit}`.trim() },
-          ]}
-          locale={{ emptyText: 'Нет сохранённых значений' }}
-        />
-      </Modal>
 
       <Modal
         title={<Space><FileTextOutlined />Подготовить значения из шаблона</Space>}

@@ -319,6 +319,23 @@ export class ProjectsService implements OnModuleInit, OnModuleDestroy {
     this.writeProjectFile(found.filePath, data);
   }
 
+  // Записать сразу несколько инстансов одним перезаписыванием файла проекта
+  // (вместо N чтений-записей) — для массовой правки подготовленных значений
+  // сразу у многих ПЧ.
+  writeInstances(projectId: string, instances: DeviceInstance[]): void {
+    if (instances.length === 0) return;
+    const dir = path.join(this.projectsPath, projectId);
+    const found = this.findProjectFile(dir);
+    if (!found) throw new NotFoundException(`Файл проекта '${projectId}' не найден`);
+    const data = this.readProjectFile(found.filePath) ?? this.emptyFile(projectId, projectId);
+    for (const instance of instances) {
+      const idx = data.devices.findIndex(d => d.id === instance.id);
+      if (idx >= 0) data.devices[idx] = instance;
+      else data.devices.push(instance);
+    }
+    this.writeProjectFile(found.filePath, data);
+  }
+
   deleteInstance(projectId: string, instanceId: string): void {
     const dir = path.join(this.projectsPath, projectId);
     const found = this.findProjectFile(dir);

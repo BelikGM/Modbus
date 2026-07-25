@@ -113,9 +113,15 @@ Stop-Process -Name electron -Force
 **2. Запуск симулятора** (эмулирует "устройства" на одном конце пары):
 ```bash
 cd backend
-npm run simulate -- COM8 9600 1:pump,2:vl,3:vl,4:pump,5:pump,6:pump,7:pump
+npm run simulate -- COM11 9600 1:pump,2:vl,3:vl,4:pump,5:pump,6:pump,7:pump
 ```
 Это поднимет на `COM8` три виртуальных устройства на шине: slaveId 1 отвечает как Pump, slaveId 2 — как VH (можно перечислить больше через запятую, напр. `1:pump,2:vh,5:pump`).
+
+**2.1 Очистка занятого COM порта
+Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
+  Where-Object { $_.CommandLine -like '*modbus-simulator*' } |
+  ForEach-Object { Write-Host "kill $($_.ProcessId): $($_.CommandLine)"; Stop-Process -Id $_.ProcessId -Force }
+
 
 **3. В самом приложении** подключаться нужно к **другому** концу пары — `COM9` — как к обычному порту. Дальше всё работает как с настоящим железом: автопоиск слейв-адресов, автоопределение модели, мониторинг с "живыми" (слегка шумящими) значениями.
 
