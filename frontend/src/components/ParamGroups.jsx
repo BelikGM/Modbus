@@ -21,6 +21,7 @@ import socket from '../socket'
 import { useDeviceSettings } from '../useDeviceSettings'
 import { isParamWritable } from '../access'
 import { downloadCsv, groupFileLabel } from '../csv'
+import { processStart, processUpdate, processDone, processInfo } from '../notify'
 
 // Значение/запись специально не растянуты "с запасом" — короткие значения
 // (типично "—" пока не считано, или пара символов/цифр) не должны тянуть за
@@ -351,6 +352,10 @@ export default function ParamGroups({
   //    (сервер сам берёт pendingWrites каждого устройства и очищает записанное)
   //  - обычный объект { paramId: value } — запись ОДИНАКОВЫХ значений всем
   //    устройствам (используется только для сброса до заводских)
+  // Прогресс и накопленные значения обновляют React-состояние НЕ на каждый
+  // параметр (при сотнях регистров × нескольких ПЧ это сотни ре-рендеров и
+  // подлагивания), а пачками не чаще ~1 раза в 80 мс — визуально то же самое,
+  // но кратно меньше работы у браузера.
   function runBulkOp(kind, ids, payload) {
     const knownTotal = kind === 'read'
       ? ids.length * payload.length
@@ -358,34 +363,47 @@ export default function ParamGroups({
     setOpProgress({ done: 0, total: knownTotal ?? 0 })
     return new Promise(resolve => {
       let done = 0
-      function onTotal(t) {
-        if (t.kind !== kind) return
-        setOpProgress({ done, total: t.total })
+      let total = knownTotal ?? 0
+      const gvAcc = {}   // накопитель groupValues
+      const brAcc = {}   // накопитель bulkResults (по устройствам)
+      let flushTimer = null
+      function flush() {
+        flushTimer = null
+        setOpProgress({ done, total })
+        if (Object.keys(gvAcc).length) {
+          setGroupValues(prev => ({ ...prev, ...gvAcc }))
+          for (const k of Object.keys(gvAcc)) delete gvAcc[k]
+        }
+        if (Object.keys(brAcc).length) {
+          setBulkResults(prev => {
+            const next = { ...prev }
+            for (const [dId, vals] of Object.entries(brAcc)) next[dId] = { ...next[dId], ...vals }
+            return next
+          })
+          for (const k of Object.keys(brAcc)) delete brAcc[k]
+        }
       }
+      function schedule() { if (!flushTimer) flushTimer = setTimeout(flush, 80) }
+      function onTotal(t) { if (t.kind !== kind) return; total = t.total; schedule() }
       function onProgress(p) {
         if (p.kind !== kind || !ids.includes(p.deviceId)) return
         done++
-        setOpProgress(prev => ({ done, total: prev?.total ?? done }))
         if (!p.error) {
-          setGroupValues(prev => {
-            const next = { ...prev, [p.paramId]: p.value }
-            latestGroupValues.current = next
-            return next
-          })
-          // Копим результаты по каждому устройству отдельно — на них опирается
-          // per-device экспорт CSV (groupValues же общий и перетирается
-          // последним устройством в круге, для CSV он не годится).
-          setBulkResults(prev => ({
-            ...prev,
-            [p.deviceId]: { ...prev[p.deviceId], [p.paramId]: p.value },
-          }))
+          gvAcc[p.paramId] = p.value
+          // latestGroupValues.current держим свежим сразу (на него смотрит
+          // readGroup при слиянии в currentValues одиночного ПЧ).
+          latestGroupValues.current = { ...latestGroupValues.current, [p.paramId]: p.value }
+          brAcc[p.deviceId] = { ...(brAcc[p.deviceId] || {}), [p.paramId]: p.value }
         }
+        schedule()
       }
       function onDone(d) {
         if (d.kind !== kind) return
         socket.off('bulk:op:total', onTotal)
         socket.off('bulk:op:progress', onProgress)
         socket.off('bulk:op:done', onDone)
+        if (flushTimer) clearTimeout(flushTimer)
+        flush()            // финальный сброс накопленного
         setOpProgress(null)
         resolve(d)
       }
@@ -398,15 +416,21 @@ export default function ParamGroups({
     })
   }
 
-  async function readGroup(group, e, { autoExpand = true } = {}) {
+  async function readGroup(group, e, { autoExpand = true, notify = true } = {}) {
     e?.stopPropagation()
     if (autoExpand) expandGroup(group.id)
     setReadingGroup(group.id)
+    const key = notify ? processStart(`Чтение группы «${group.name}»…`, 'Опрос ПЧ') : null
     const paramIds = group.params.map(p => p.id)
     const result = await runBulkOp('read', effectiveDeviceIds, paramIds)
     setReadingGroup(null)
-    if (result.cancelled) message.info(`Остановлено: группа «${group.name}» прочитана частично (${result.ok}/${result.total})`)
-    else message.success(`Группа «${group.name}» прочитана (${result.ok}/${result.total})`)
+    if (result.cancelled) {
+      message.info(`Остановлено: группа «${group.name}» прочитана частично (${result.ok}/${result.total})`)
+      if (key) processInfo(key, `Группа «${group.name}» прочитана частично (${result.ok}/${result.total})`)
+    } else {
+      message.success(`Группа «${group.name}» прочитана (${result.ok}/${result.total})`)
+      if (key) processDone(key, `Группа «${group.name}» прочитана (${result.ok}/${result.total})`)
+    }
     if (effectiveDeviceIds.length === 1) {
       const merged = { ...latestCurrentValues.current }
       for (const paramId of paramIds) {
@@ -421,16 +445,24 @@ export default function ParamGroups({
   // Запись группы: каждое устройство пишет СВОИ подготовленные значения этой
   // группы (не общее значение с экрана) — то, что реально нужно, если часть
   // выбранных ПЧ отличается от остальных.
-  async function writeGroup(group, e, { autoExpand = true } = {}) {
+  async function writeGroup(group, e, { autoExpand = true, notify = true } = {}) {
     e?.stopPropagation()
     if (autoExpand) expandGroup(group.id)
     setReadingGroup(group.id)
+    const key = notify ? processStart(`Запись группы «${group.name}»…`, 'Запись в ПЧ') : null
     const paramIds = group.params.filter(p => isParamWritable(device, p)).map(p => p.id)
     const result = await runBulkOp('write', effectiveDeviceIds, { usePending: true, paramIds })
     setReadingGroup(null)
-    if (result.total === 0) message.info(`В группе «${group.name}» ни у одного устройства нет подготовленных значений для записи`)
-    else if (result.cancelled) message.info(`Остановлено: группа «${group.name}» записана частично (${result.ok}/${result.total})`)
-    else message.success(`Записано ${result.ok} из ${result.total} (группа «${group.name}»)`)
+    if (result.total === 0) {
+      message.info(`В группе «${group.name}» ни у одного устройства нет подготовленных значений для записи`)
+      if (key) processInfo(key, `В группе «${group.name}» нет значений для записи`)
+    } else if (result.cancelled) {
+      message.info(`Остановлено: группа «${group.name}» записана частично (${result.ok}/${result.total})`)
+      if (key) processInfo(key, `Группа «${group.name}» записана частично (${result.ok}/${result.total})`)
+    } else {
+      message.success(`Записано ${result.ok} из ${result.total} (группа «${group.name}»)`)
+      if (key) processDone(key, `Записано ${result.ok} из ${result.total} (группа «${group.name}»)`)
+    }
     setPendingVersion(v => v + 1)
   }
 
@@ -440,17 +472,22 @@ export default function ParamGroups({
       return
     }
     bulkCancelRef.current = false
+    const verb = kind === 'read' ? 'Опрос' : kind === 'write' ? 'Запись' : 'Сброс до заводских'
+    const total = groupsInScope.length
+    const key = processStart(`${verb}: 0 из ${total} групп…`, verb)
     let processed = 0
     for (let i = 0; i < groupsInScope.length; i++) {
       if (bulkCancelRef.current) break
       const group = groupsInScope[i]
       setGroupProgress({ index: i, total: groupsInScope.length, groupName: group.name, kind })
+      processUpdate(key, `${verb}: группа ${i + 1} из ${total} — «${group.name}»…`, verb)
       const fakeEvent = { stopPropagation: () => {} }
       // При "Прочитать/Записать/Сбросить всё" группы НЕ разворачиваются одна за
       // другой по ходу цикла — иначе к концу открытыми оказываются вообще все
       // группы, страница расползается. Значения всё равно попадают в
       // currentValues/groupValues независимо от того, открыта группа или нет.
-      const opts = { autoExpand: false }
+      // notify:false — общее уведомление ведём здесь, по каждой группе не плодим.
+      const opts = { autoExpand: false, notify: false }
       if (kind === 'read') await readGroup(group, fakeEvent, opts)
       else if (kind === 'write') await writeGroup(group, fakeEvent, opts)
       else await resetGroup(group, fakeEvent, opts)
@@ -458,11 +495,20 @@ export default function ParamGroups({
     }
     setGroupProgress(null)
     if (bulkCancelRef.current) {
-      message.info(`Остановлено: обработано ${processed} из ${groupsInScope.length} групп`)
+      message.info(`Остановлено: обработано ${processed} из ${total} групп`)
+      processInfo(key, `Остановлено: обработано ${processed} из ${total} групп`)
+    } else {
+      const doneMsg = kind === 'read'
+        ? `Опрос завершён — считаны все отображаемые группы (${total})`
+        : kind === 'write'
+          ? `Запись завершена — обработаны все отображаемые группы (${total})`
+          : `Сброс завершён — все отображаемые группы (${total})`
+      message.success(doneMsg)
+      processDone(key, doneMsg, `${verb} завершён`)
     }
   }
 
-  async function resetGroup(group, e, { autoExpand = true } = {}) {
+  async function resetGroup(group, e, { autoExpand = true, notify = true } = {}) {
     e?.stopPropagation()
     const toWrite = group.params.filter(
       p => isParamWritable(device, p) && p.default !== undefined && p.default !== null && typeof p.default === 'number'
@@ -473,12 +519,18 @@ export default function ParamGroups({
     }
     if (autoExpand) expandGroup(group.id)
     setReadingGroup(group.id)
+    const key = notify ? processStart(`Сброс группы «${group.name}» до заводских…`, 'Сброс до заводских') : null
     const values = {}
     for (const p of toWrite) values[p.id] = p.default
     const result = await runBulkOp('write', effectiveDeviceIds, values)
     setReadingGroup(null)
-    if (result.cancelled) message.info(`Остановлено: группа «${group.name}» сброшена частично (${result.ok}/${result.total})`)
-    else message.success(`Сброшено ${result.ok} из ${result.total} параметров группы ${group.name}`)
+    if (result.cancelled) {
+      message.info(`Остановлено: группа «${group.name}» сброшена частично (${result.ok}/${result.total})`)
+      if (key) processInfo(key, `Группа «${group.name}» сброшена частично (${result.ok}/${result.total})`)
+    } else {
+      message.success(`Сброшено ${result.ok} из ${result.total} параметров группы ${group.name}`)
+      if (key) processDone(key, `Сброшено ${result.ok} из ${result.total} (группа «${group.name}»)`)
+    }
   }
 
   // ─── Шаблоны значений (пресеты) ────────────────────────────────────────────
@@ -736,7 +788,9 @@ export default function ParamGroups({
         </div>
       )}
 
-      {groupProgress && (
+      {/* В групповом режиме полосу прогресса показывает BulkPanel НАД таблицей
+          результатов; здесь (одиночный ПЧ) — рядом с кнопками. */}
+      {!isBulk && groupProgress && (
         <Progress
           style={{ marginBottom: 4 }}
           percent={Math.round(((groupProgress.index) / groupProgress.total) * 100)}
@@ -744,7 +798,7 @@ export default function ParamGroups({
           format={() => `Группа ${groupProgress.index + 1} из ${groupProgress.total}: ${groupProgress.groupName}`}
         />
       )}
-      {opProgress && (
+      {!isBulk && opProgress && (
         <Progress
           style={{ marginBottom: 12 }}
           size="small"

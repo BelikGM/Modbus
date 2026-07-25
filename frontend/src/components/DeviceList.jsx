@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Typography, Badge, Avatar, Tag, Button, Modal, Form, Input, InputNumber, Select, Popconfirm, Tooltip, Checkbox, Space } from 'antd'
 import { LinkOutlined, DisconnectOutlined, PlusOutlined, DeleteOutlined, EditOutlined, HolderOutlined } from '@ant-design/icons'
 import {
@@ -123,6 +123,8 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
     }
   }
 
+  // Добавить/убрать устройство из группы выделения (мультивыбор). Вызывается
+  // галочкой и двойным кликом по строке.
   function toggleSelection(device) {
     const next = new Set(selectedIds)
     if (next.has(device.id)) next.delete(device.id)
@@ -130,10 +132,28 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
     onSelectionChange(next)
   }
 
-  // Двойной клик — выбрать ТОЛЬКО это устройство, независимо от того, что было
-  // отмечено раньше (не нужно сперва "Выбрать все", потом "Снять выделение").
+  // Одиночный клик — открыть ТОЛЬКО это устройство (сменить показываемый ПЧ), не
+  // трогая правил мультивыбора: членство в группе меняется отдельно (галочка /
+  // двойной клик).
   function selectOnly(device) {
     onSelectionChange(new Set([device.id]))
+  }
+
+  // Один и тот же клик по строке порождает и onClick, и (при втором нажатии)
+  // onDoubleClick, поэтому одиночное действие откладываем таймером: двойной клик
+  // успевает его отменить. Так одиночный = «показать этот ПЧ», двойной =
+  // «добавить/убрать из группы», и они не срабатывают вместе.
+  const clickTimerRef = useRef(null)
+  function handleRowClick(device) {
+    if (clickTimerRef.current) { clearTimeout(clickTimerRef.current); clickTimerRef.current = null }
+    clickTimerRef.current = setTimeout(() => {
+      clickTimerRef.current = null
+      selectOnly(device)
+    }, 220)
+  }
+  function handleRowDoubleClick(device) {
+    if (clickTimerRef.current) { clearTimeout(clickTimerRef.current); clickTimerRef.current = null }
+    toggleSelection(device)
   }
 
   // Снятие галочки "Все" прячет вообще все устройства — ровно как снятие
@@ -350,8 +370,8 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
                 <SortableDeviceRow key={device.id} id={device.id} compact={compact}>
                   <Tooltip title={compact ? `${device.name} · ${modelLabel} · Адрес ${device.connection.slaveId ?? 1}` : ''} placement="right">
                     <div
-                      onClick={() => toggleSelection(device)}
-                      onDoubleClick={() => selectOnly(device)}
+                      onClick={() => handleRowClick(device)}
+                      onDoubleClick={() => handleRowDoubleClick(device)}
                       className={isSelected ? 'device-row device-row-selected' : 'device-row'}
                       style={{
                         position: 'relative',
@@ -367,11 +387,20 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
                       }}
                     >
                       {!compact && (
-                        <Checkbox
-                          checked={isSelected}
+                        // Увеличенная галочка и расширенная зона клика по ней —
+                        // проще попасть, отделено от «показать этот ПЧ».
+                        <span
                           onClick={e => e.stopPropagation()}
-                          onChange={() => toggleSelection(device)}
-                        />
+                          onDoubleClick={e => e.stopPropagation()}
+                          style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 6px', margin: '-4px 0' }}
+                          title="Добавить/убрать из группового выбора"
+                        >
+                          <Checkbox
+                            checked={isSelected}
+                            onChange={() => toggleSelection(device)}
+                            style={{ transform: 'scale(1.35)' }}
+                          />
+                        </span>
                       )}
 
                       {avatar}

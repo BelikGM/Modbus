@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Space, Typography, Tag, Alert, message, Tabs, Table, Button, Tooltip, Popconfirm, Progress } from 'antd'
-import { CloseOutlined, ClearOutlined, DownloadOutlined, UploadOutlined } from '@ant-design/icons'
+import { CloseOutlined, ClearOutlined, DownloadOutlined, UploadOutlined, LoadingOutlined } from '@ant-design/icons'
 import socket from '../socket'
 import ParamGroups from './ParamGroups'
 import BulkMonitor from './BulkMonitor'
@@ -8,6 +8,7 @@ import ValuePresets from './ValuePresets'
 import { useDeviceSettings } from '../useDeviceSettings'
 import { formatParamValue } from '../paramFormat'
 import { downloadCsv, groupFileLabel } from '../csv'
+import { processStart, processDone, processInfo, processError } from '../notify'
 
 // Pump-Full и Pump-OWN — один и тот же физический ПЧ, у OWN просто урезанный
 // (но регистрово идентичный) набор параметров — сверено вручную: все параметры
@@ -46,7 +47,8 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
   const [deviceSettings, saveDeviceSettings] = useDeviceSettings(sameType ? templateDevice.templateId : '__mixed__')
   const [visibleGroupIds, setVisibleGroupIds] = useState(new Set())
   const [bulkReadResults, setBulkReadResults] = useState({}) // { [deviceId]: { [paramId]: { value/error, unit, name } } }
-  const [writeProgress, setWriteProgress] = useState(null) // { done, total } — прогресс «Записать подготовленное во все»
+  const [bulkOpBar, setBulkOpBar] = useState(null) // { kind:'read'|'write', done, total } — полоса прогресса НАД таблицей
+  const [busy, setBusy] = useState(false) // идёт «Записать всё» / «Скачать всё» (для блокировки кнопок)
 
   useEffect(() => {
     if (!sameType || deviceSettings === null) return
@@ -83,21 +85,58 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
   // WebSocket (bulk:read:start) — сюда прилетают те же самые прогресс-события
   // просто чтобы построить таблицу "по устройствам" отдельно от собственного
   // (одноколоночного) отображения ParamGroups.
+  // Единый пассивный слушатель групповых операций: держит полосу прогресса НАД
+  // таблицей (task: прогресс сверху) и копит результаты чтения ПАЧКАМИ (не на
+  // каждый параметр — при сотнях регистров это тормозило бы таблицу), сбрасывая
+  // накопленное в состояние не чаще ~1 раза в 80 мс.
   useEffect(() => {
+    let done = 0
+    let flushTimer = null
+    const acc = {} // { [deviceId]: { [paramId]: entry } }
+    function flush() {
+      flushTimer = null
+      if (Object.keys(acc).length === 0) return
+      setBulkReadResults(prev => {
+        const next = { ...prev }
+        for (const [dId, vals] of Object.entries(acc)) next[dId] = { ...next[dId], ...vals }
+        return next
+      })
+      for (const k of Object.keys(acc)) delete acc[k]
+    }
+    function schedule() { if (!flushTimer) flushTimer = setTimeout(flush, 80) }
+    function onTotal(t) { setBulkOpBar({ kind: t.kind, done, total: t.total }) }
     function onProgress(p) {
-      if (p.kind !== 'read' || !deviceIds.includes(p.deviceId)) return
-      setBulkReadResults(prev => ({
-        ...prev,
-        [p.deviceId]: {
-          ...prev[p.deviceId],
+      if (!deviceIds.includes(p.deviceId)) return
+      done++
+      setBulkOpBar(prev => ({ kind: p.kind, done, total: prev?.total ?? 0 }))
+      if (p.kind === 'read') {
+        acc[p.deviceId] = {
+          ...(acc[p.deviceId] || {}),
           [p.paramId]: p.error
             ? { error: p.error, name: p.name }
             : { value: p.value, unit: p.unit, name: p.name, type: p.type, options: p.options, bits: p.bits },
-        },
-      }))
+        }
+        schedule()
+      }
     }
+    function onDone() {
+      if (flushTimer) clearTimeout(flushTimer)
+      flush()
+      setBulkOpBar(null)
+      done = 0
+    }
+    function onError() { setBulkOpBar(null); done = 0 }
+    socket.on('bulk:op:total', onTotal)
     socket.on('bulk:op:progress', onProgress)
-    return () => socket.off('bulk:op:progress', onProgress)
+    socket.on('bulk:op:done', onDone)
+    socket.on('bulk:op:error', onError)
+    return () => {
+      socket.off('bulk:op:total', onTotal)
+      socket.off('bulk:op:progress', onProgress)
+      socket.off('bulk:op:done', onDone)
+      socket.off('bulk:op:error', onError)
+      if (flushTimer) clearTimeout(flushTimer)
+    }
   }, [deviceIds.join(',')])
 
   function handleVisibleGroupIdsChange(next) {
@@ -218,34 +257,91 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
   // устройства по его собственной карте регистров. Работает и для смешанного
   // выбора Pump+VL, поэтому кнопка живёт над вкладками и доступна всегда.
   function writeAllPrepared() {
-    setWriteProgress({ done: 0, total: 0 })
-    let done = 0
-    function onTotal(t) { if (t.kind === 'write') setWriteProgress(() => ({ done, total: t.total })) }
-    function onProgress(p) {
-      if (p.kind !== 'write' || !deviceIds.includes(p.deviceId)) return
-      done++
-      setWriteProgress(prev => ({ done, total: prev?.total ?? done }))
-    }
+    setBusy(true)
+    const key = processStart(`Запись подготовленных значений во все выбранные ПЧ (${deviceIds.length})…`, 'Запись в ПЧ')
     function cleanup() {
-      socket.off('bulk:op:total', onTotal)
-      socket.off('bulk:op:progress', onProgress)
       socket.off('bulk:op:done', onDone)
       socket.off('bulk:op:error', onError)
-      setWriteProgress(null)
+      setBusy(false)
     }
     function onDone(d) {
       if (d.kind !== 'write') return
       cleanup()
-      if (d.total === 0) message.info('Ни у одного выбранного ПЧ нет подготовленных значений для записи')
-      else if (d.cancelled) message.warning(`Остановлено: записано ${d.ok} из ${d.total}`)
-      else message.success(`Записано ${d.ok} из ${d.total} подготовленных значений (${deviceIds.length} ПЧ)`)
+      if (d.total === 0) { message.info('Ни у одного выбранного ПЧ нет подготовленных значений для записи'); processInfo(key, 'Нет подготовленных значений для записи') }
+      else if (d.cancelled) { message.warning(`Остановлено: записано ${d.ok} из ${d.total}`); processInfo(key, `Остановлено: записано ${d.ok} из ${d.total}`) }
+      else { message.success(`Записано ${d.ok} из ${d.total} подготовленных значений (${deviceIds.length} ПЧ)`); processDone(key, `Записано ${d.ok} из ${d.total} значений в ${deviceIds.length} ПЧ`) }
     }
-    function onError(e) { cleanup(); message.error(e?.message ?? 'Групповая операция уже выполняется') }
-    socket.on('bulk:op:total', onTotal)
-    socket.on('bulk:op:progress', onProgress)
+    function onError(e) { cleanup(); message.error(e?.message ?? 'Групповая операция уже выполняется'); processError(key, e?.message ?? 'Групповая операция уже выполняется') }
     socket.on('bulk:op:done', onDone)
     socket.on('bulk:op:error', onError)
     socket.emit('bulk:write:start', { deviceIds, usePending: true })
+  }
+
+  // Task: общая кнопка «Скачать все параметры с выбранных ПЧ» — работает и для
+  // смешанного выбора Pump+VL. Сначала считываем ВСЕ параметры каждого ПЧ (сервер
+  // сам пропускает параметры, которых у устройства нет), затем автоматически
+  // формируем и скачиваем CSV: секция на каждое семейство (у Pump и VL разные
+  // карты регистров), внутри — по колонке на каждый ПЧ.
+  function downloadAllParams() {
+    setBusy(true)
+    const key = processStart(`Чтение всех параметров с ${deviceIds.length} ПЧ…`, 'Опрос ПЧ')
+    const collected = {} // { [deviceId]: { [paramId]: entry } }
+    const allParamIds = [...new Set(devices.flatMap(d => d.groups.flatMap(g => g.params.map(p => p.id))))]
+    function onProgress(p) {
+      if (p.kind !== 'read' || !deviceIds.includes(p.deviceId)) return
+      collected[p.deviceId] = {
+        ...(collected[p.deviceId] || {}),
+        [p.paramId]: p.error ? { error: p.error } : { value: p.value, unit: p.unit, type: p.type, options: p.options, bits: p.bits },
+      }
+    }
+    function cleanup() {
+      socket.off('bulk:op:progress', onProgress)
+      socket.off('bulk:op:done', onDone)
+      socket.off('bulk:op:error', onError)
+      setBusy(false)
+    }
+    function onDone(d) {
+      if (d.kind !== 'read') return
+      cleanup()
+      if (d.cancelled) { message.info(`Остановлено: считано ${d.ok} из ${d.total}`); processInfo(key, `Остановлено: считано ${d.ok} из ${d.total}`); return }
+      buildAndDownloadAllCsv(collected)
+      message.success(`Считаны все параметры (${d.ok}/${d.total}). CSV скачан.`)
+      processDone(key, `Считаны все параметры с ${deviceIds.length} ПЧ — CSV скачан`, 'Готово, файл скачан')
+    }
+    function onError(e) { cleanup(); message.error(e?.message ?? 'Групповая операция уже выполняется'); processError(key, e?.message ?? 'Групповая операция уже выполняется') }
+    socket.on('bulk:op:progress', onProgress)
+    socket.on('bulk:op:done', onDone)
+    socket.on('bulk:op:error', onError)
+    socket.emit('bulk:read:start', { deviceIds, paramIds: allParamIds })
+  }
+
+  function buildAndDownloadAllCsv(collected) {
+    const header = ['Параметр', 'Название', ...devices.map(d => `${d.name} (Адрес ${d.connection.slaveId})`)]
+    const rows = []
+    for (const fam of families) {
+      const famDevices = devices.filter(d => deviceFamily(d.templateId) === fam)
+      if (famDevices.length === 0) continue
+      // Эталон семейства — с самой полной картой параметров.
+      const famTemplate = famDevices.reduce((best, d) => (
+        d.groups.flatMap(g => g.params).length > best.groups.flatMap(g => g.params).length ? d : best
+      ), famDevices[0])
+      rows.push([`=== ${fam === 'vl' ? 'VL' : 'Pump'} ===`, '', ...devices.map(() => '')])
+      for (const g of famTemplate.groups) {
+        rows.push([g.name, '', ...devices.map(() => '')])
+        for (const param of g.params) {
+          const cells = devices.map(d => {
+            if (deviceFamily(d.templateId) !== fam) return ''
+            const entry = collected[d.id]?.[param.id]
+            if (!entry) return ''
+            if (entry.error) return 'ошибка'
+            return String(formatParamValue(entry.type, entry.value, entry.unit, entry.options, entry.bits))
+          })
+          rows.push([param.id, param.name, ...cells])
+        }
+      }
+    }
+    const nums = devices.map(d => d.connection.slaveId).join(',')
+    downloadCsv(`All-Param-${nums}.csv`, header, rows)
   }
 
   // BulkPanel не имеет вкладок "Устройство"/"Журнал" (это данные конкретного
@@ -335,8 +431,8 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
         </Space>
       </div>
 
-      {/* Главная кнопка сценария «на объекте»: выбрал все ПЧ — записал всё
-          подготовленное одним нажатием, даже если Pump и VL вперемешку. */}
+      {/* Главные кнопки сценария «на объекте» — работают и для смешанного выбора
+          Pump+VL: записать всё подготовленное / считать всё и скачать CSV. */}
       <div style={{ marginBottom: 16 }}>
         <Space wrap>
           <Popconfirm
@@ -345,33 +441,50 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
             okText="Записать"
             cancelText="Отмена"
             okButtonProps={{ danger: true }}
-            disabled={!modbusConnected || !!writeProgress}
+            disabled={!modbusConnected || busy || !!bulkOpBar}
             onConfirm={writeAllPrepared}
           >
             <Button
               type="primary"
               icon={<UploadOutlined />}
-              disabled={!modbusConnected || !!writeProgress}
-              loading={!!writeProgress}
+              disabled={!modbusConnected || busy || !!bulkOpBar}
+              loading={busy}
             >
               Записать подготовленное во все выбранные ({devices.length})
             </Button>
           </Popconfirm>
-          {writeProgress && (
+          <Tooltip title="Считать ВСЕ параметры с каждого выбранного ПЧ и сразу скачать общий CSV (Pump и VL — отдельными секциями в файле)">
+            <Button
+              icon={<DownloadOutlined />}
+              disabled={!modbusConnected || busy || !!bulkOpBar}
+              loading={busy}
+              onClick={downloadAllParams}
+            >
+              Скачать все параметры ({devices.length})
+            </Button>
+          </Tooltip>
+          {(busy || bulkOpBar) && (
             <Button danger onClick={() => socket.emit('bulk:op:cancel')}>Остановить</Button>
           )}
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            Каждый ПЧ пишет свои подготовленные значения — работает и для смешанного выбора Pump + VL
+            Работает и для смешанного выбора Pump + VL
           </Typography.Text>
         </Space>
-        {writeProgress && (
-          <Progress
-            style={{ marginTop: 8 }}
-            size="small"
-            status="active"
-            percent={writeProgress.total > 0 ? Math.round((writeProgress.done / writeProgress.total) * 100) : 0}
-            format={() => `${writeProgress.done} из ${writeProgress.total} параметров`}
-          />
+        {/* Полоса прогресса — СВЕРХУ, выше таблицы с данными. */}
+        {bulkOpBar && (
+          bulkOpBar.total > 0 ? (
+            <Progress
+              style={{ marginTop: 8 }}
+              size="small"
+              status="active"
+              percent={Math.round((bulkOpBar.done / bulkOpBar.total) * 100)}
+              format={() => `${bulkOpBar.kind === 'write' ? 'Запись' : 'Чтение'}: ${bulkOpBar.done} из ${bulkOpBar.total}`}
+            />
+          ) : (
+            <Typography.Text type="secondary" style={{ display: 'block', marginTop: 8, fontSize: 12, color: '#faad14' }}>
+              <LoadingOutlined spin /> {bulkOpBar.kind === 'write' ? 'Запись' : 'Чтение'}: обработано {bulkOpBar.done} параметров…
+            </Typography.Text>
+          )
         )}
       </div>
 
