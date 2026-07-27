@@ -615,6 +615,11 @@ export class ModbusGateway
       values?: Record<string, number>;
       usePending?: boolean;
       paramIds?: string[];
+      // Параметры, которые НЕ надо трогать, по каждому устройству отдельно:
+      // { [deviceId]: [paramId, ...] }. Используется защитой от случайной
+      // перезаписи — оператор снял галочку с конкретного параметра в
+      // предупреждении «заводское затрёт настроенное значение».
+      skip?: Record<string, string[]>;
     },
   ) {
     if (this.bulkOpRunning) {
@@ -628,17 +633,24 @@ export class ModbusGateway
     // набор параметров, и total известен только после сбора всех pendingWrites.
     const jobs: { deviceId: string; values: Record<string, number> }[] = [];
     for (const deviceId of payload.deviceIds) {
+      const skipSet = new Set(payload.skip?.[deviceId] ?? []);
       if (payload.usePending) {
         const pending = this.devicesService.getEffectivePendingWrites(deviceId);
         const values: Record<string, number> = {};
         for (const [paramId, value] of Object.entries(pending)) {
           if (payload.paramIds && !payload.paramIds.includes(paramId)) continue;
+          if (skipSet.has(paramId)) continue;
           if (typeof value !== 'number') continue;
           values[paramId] = value;
         }
         jobs.push({ deviceId, values });
       } else {
-        jobs.push({ deviceId, values: payload.values ?? {} });
+        const values: Record<string, number> = {};
+        for (const [paramId, value] of Object.entries(payload.values ?? {})) {
+          if (skipSet.has(paramId)) continue;
+          values[paramId] = value;
+        }
+        jobs.push({ deviceId, values });
       }
     }
     const total = jobs.reduce((sum, j) => sum + Object.keys(j.values).length, 0);

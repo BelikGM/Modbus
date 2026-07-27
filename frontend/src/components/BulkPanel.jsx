@@ -9,6 +9,8 @@ import { useDeviceSettings } from '../useDeviceSettings'
 import { formatParamValue } from '../paramFormat'
 import { downloadCsv, groupFileLabel } from '../csv'
 import { processStart, processDone, processInfo, processError } from '../notify'
+import OverwriteGuard, { collectOverwriteConflicts } from './OverwriteGuard'
+import api from '../api'
 
 // Pump-Full и Pump-OWN — один и тот же физический ПЧ, у OWN просто урезанный
 // (но регистрово идентичный) набор параметров — сверено вручную: все параметры
@@ -49,6 +51,7 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
   const [bulkReadResults, setBulkReadResults] = useState({}) // { [deviceId]: { [paramId]: { value/error, unit, name } } }
   const [bulkOpBar, setBulkOpBar] = useState(null) // { kind:'read'|'write', done, total } — полоса прогресса НАД таблицей
   const [busy, setBusy] = useState(false) // идёт «Записать всё» / «Скачать всё» (для блокировки кнопок)
+  const [guard, setGuard] = useState(null) // { conflicts, uncheckedCount } — предупреждение о перезаписи
 
   useEffect(() => {
     if (!sameType || deviceSettings === null) return
@@ -256,7 +259,49 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
   // независимо от того, Pump это или VL — сервер берёт pendingWrites каждого
   // устройства по его собственной карте регистров. Работает и для смешанного
   // выбора Pump+VL, поэтому кнопка живёт над вкладками и доступна всегда.
-  function writeAllPrepared() {
+  // Перед реальной записью проверяем, не затрут ли ЗАВОДСКИЕ значения (те, что
+  // шаблон не задаёт) уже настроенные параметры на ПЧ. Если да — показываем
+  // список и даём выбрать, что перезаписывать.
+  async function checkAndWriteAll() {
+    setBusy(true)
+    try {
+      const [effective, raw] = await Promise.all([
+        Promise.all(devices.map(d => api.get(`/devices/${d.id}/pending-writes`).then(r => [d.id, r.data ?? {}]).catch(() => [d.id, {}]))),
+        Promise.all(devices.map(d => api.get(`/devices/${d.id}/pending-writes/raw`).then(r => [d.id, r.data ?? {}]).catch(() => [d.id, {}]))),
+      ])
+      const values = Object.fromEntries(effective)
+      // Покрытые шаблоном/ручной правкой — их изменение ожидаемо, не предупреждаем.
+      const covered = new Set(raw.flatMap(([, v]) => Object.keys(v)))
+      // Что реально известно с ПЧ: последние прочитанные значения.
+      const known = {}
+      for (const d of devices) {
+        const fromTable = Object.fromEntries(
+          Object.entries(bulkReadResults[d.id] ?? {})
+            .filter(([, e]) => e && !e.error && typeof e.value === 'number')
+            .map(([pid, e]) => [pid, e.value]),
+        )
+        const stored = await api.get(`/devices/${d.id}/current-values`).then(r => r.data ?? {}).catch(() => ({}))
+        known[d.id] = { ...stored, ...fromTable }
+      }
+      const paramsById = new Map(devices.flatMap(d => d.groups.flatMap(g => g.params)).map(p => [p.id, p]))
+      const conflicts = collectOverwriteConflicts({ devices, values, known, coveredParamIds: covered, paramsById })
+      const totalUnchecked = devices.reduce((sum, d) => {
+        const vals = values[d.id] ?? {}
+        return sum + Object.keys(vals).filter(pid => !covered.has(pid) && known[d.id]?.[pid] === undefined).length
+      }, 0)
+      if (conflicts.length > 0) {
+        setBusy(false)
+        setGuard({ conflicts, uncheckedCount: totalUnchecked })
+        return
+      }
+      writeAllPrepared({})
+    } catch {
+      setBusy(false)
+      message.error('Не удалось проверить подготовленные значения')
+    }
+  }
+
+  function writeAllPrepared(skip = {}) {
     setBusy(true)
     const key = processStart(`Запись подготовленных значений во все выбранные ПЧ (${deviceIds.length})…`, 'Запись в ПЧ')
     function cleanup() {
@@ -274,7 +319,7 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
     function onError(e) { cleanup(); message.error(e?.message ?? 'Групповая операция уже выполняется'); processError(key, e?.message ?? 'Групповая операция уже выполняется') }
     socket.on('bulk:op:done', onDone)
     socket.on('bulk:op:error', onError)
-    socket.emit('bulk:write:start', { deviceIds, usePending: true })
+    socket.emit('bulk:write:start', { deviceIds, usePending: true, skip })
   }
 
   // Task: общая кнопка «Скачать все параметры с выбранных ПЧ» — работает и для
@@ -442,7 +487,7 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
             cancelText="Отмена"
             okButtonProps={{ danger: true }}
             disabled={!modbusConnected || busy || !!bulkOpBar}
-            onConfirm={writeAllPrepared}
+            onConfirm={checkAndWriteAll}
           >
             <Button
               type="primary"
@@ -499,6 +544,14 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
       )}
 
       <Tabs activeKey={tabKey} onChange={handleTabChange} items={items} />
+
+      <OverwriteGuard
+        open={!!guard}
+        conflicts={guard?.conflicts ?? []}
+        uncheckedCount={guard?.uncheckedCount ?? 0}
+        onCancel={() => setGuard(null)}
+        onConfirm={skip => { setGuard(null); writeAllPrepared(skip) }}
+      />
     </div>
   )
 }

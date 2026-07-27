@@ -202,6 +202,91 @@ export default function ValuePresets({ device, devices }) {
     reader.readAsText(file, 'utf-8')
   }
 
+  // Группы делятся на «используемые» (хотя бы один параметр входит в шаблон) и
+  // «неиспользуемые». Группы без записываемых параметров в редакторе не нужны.
+  const editableGroups = (device.groups ?? []).filter(g => g.params.some(p => p.access !== 'read'))
+  const usedGroups = editableGroups.filter(g => groupSomeInPreset(g))
+  const unusedGroups = editableGroups.filter(g => !groupSomeInPreset(g))
+
+  // Панель одной группы. dim=true — неиспользуемая: тускло-серая, а значения
+  // показываются ЗАВОДСКИЕ (именно они уйдут в ПЧ при записи, если группу так и
+  // не добавить в шаблон).
+  function groupPanel(group, dim) {
+    const writableParams = group.params.filter(p => p.access !== 'read')
+    const inPreset = writableParams.filter(p => values[p.id] !== undefined)
+    const color = dim ? '#8c8c8c' : undefined
+    return {
+      key: group.id,
+      style: dim ? { background: 'transparent' } : undefined,
+      label: (
+        <Space onClick={e => e.stopPropagation()}>
+          <Checkbox
+            checked={groupAllInPreset(group)}
+            indeterminate={groupSomeInPreset(group) && !groupAllInPreset(group)}
+            onChange={e => toggleGroup(group, e.target.checked)}
+          />
+          <span style={{ color }}>{group.name}</span>
+          {inPreset.length > 0
+            ? <Tag color="blue">{inPreset.length} в шаблоне</Tag>
+            : <Tag style={{ color: '#8c8c8c' }}>{writableParams.length} рег. — заводские</Tag>}
+        </Space>
+      ),
+      children: dim ? (
+        <>
+          <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+            Группа не входит в шаблон. При записи в эти регистры будут записаны заводские значения —
+            отметьте группу галочкой выше, чтобы задать свои.
+          </Typography.Text>
+          <Space direction="vertical" style={{ width: '100%' }} size={2}>
+            {writableParams.map(p => (
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#8c8c8c' }}>
+                <Typography.Text code style={{ fontSize: 11, width: 70, flexShrink: 0, color: '#8c8c8c' }}>{p.id}</Typography.Text>
+                <Typography.Text style={{ fontSize: 12, width: 260, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#8c8c8c' }}>
+                  {p.name}
+                </Typography.Text>
+                <Typography.Text style={{ fontSize: 12, color: '#8c8c8c' }}>
+                  {formatParamValue(p.type, p.default, p.unit, p.options, p.bits)}
+                </Typography.Text>
+              </div>
+            ))}
+          </Space>
+        </>
+      ) : (
+        <Space direction="vertical" style={{ width: '100%' }} size={4}>
+          {inPreset.map(p => (
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Typography.Text code style={{ fontSize: 11, width: 70, flexShrink: 0 }}>{p.id}</Typography.Text>
+              <Typography.Text style={{ fontSize: 12, width: 260, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {p.name}
+              </Typography.Text>
+              {p.type === 'enum' ? (
+                <Select
+                  size="small"
+                  style={{ width: 200 }}
+                  value={values[p.id]}
+                  options={normalizeOptions(p.options)}
+                  onChange={v => setParamValue(p.id, v)}
+                />
+              ) : (
+                <InputNumber
+                  size="small"
+                  style={{ width: 140 }}
+                  min={p.min}
+                  max={p.max}
+                  step={p.step ?? p.scale ?? 1}
+                  value={values[p.id]}
+                  onChange={v => v != null && setParamValue(p.id, v)}
+                  addonAfter={p.unit}
+                />
+              )}
+              <Button size="small" danger type="text" icon={<DeleteOutlined />} onClick={() => removeParam(p.id)} />
+            </div>
+          ))}
+        </Space>
+      ),
+    }
+  }
+
   if (editing) {
     return (
       <div>
@@ -224,63 +309,54 @@ export default function ValuePresets({ device, devices }) {
           Ненужный регистр можно убрать отдельно, а нужное значение — поправить. В шаблоне сейчас {Object.keys(values).length} регистров.
         </Typography.Text>
 
+        {/* Используемые группы шаблона — ярким цветом, раскрываются по клику
+            (сначала только названия групп, параметры внутри — вторым уровнем). */}
         <Collapse
-          items={device.groups.map(group => {
-            const writableParams = group.params.filter(p => p.access !== 'read')
-            if (writableParams.length === 0) return null
-            const inPreset = writableParams.filter(p => values[p.id] !== undefined)
-            return {
-              key: group.id,
-              label: (
-                <Space onClick={e => e.stopPropagation()}>
-                  <Checkbox
-                    checked={groupAllInPreset(group)}
-                    indeterminate={groupSomeInPreset(group) && !groupAllInPreset(group)}
-                    onChange={e => toggleGroup(group, e.target.checked)}
-                  />
-                  <span>{group.name}</span>
-                  {inPreset.length > 0 && <Tag color="blue">{inPreset.length} в шаблоне</Tag>}
-                </Space>
-              ),
-              children: inPreset.length === 0 ? (
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  Отметьте группу галочкой выше, чтобы добавить её регистры в шаблон
+          defaultActiveKey={['used']}
+          style={{ marginBottom: 12 }}
+          items={[{
+            key: 'used',
+            label: (
+              <Space>
+                <Typography.Text strong>Используемые группы шаблона</Typography.Text>
+                <Tag color="blue">{usedGroups.length}</Tag>
+                <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                  эти значения шаблон задаёт явно
                 </Typography.Text>
-              ) : (
-                <Space direction="vertical" style={{ width: '100%' }} size={4}>
-                  {inPreset.map(p => (
-                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <Typography.Text code style={{ fontSize: 11, width: 70, flexShrink: 0 }}>{p.id}</Typography.Text>
-                      <Typography.Text style={{ fontSize: 12, width: 260, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {p.name}
-                      </Typography.Text>
-                      {p.type === 'enum' ? (
-                        <Select
-                          size="small"
-                          style={{ width: 200 }}
-                          value={values[p.id]}
-                          options={normalizeOptions(p.options)}
-                          onChange={v => setParamValue(p.id, v)}
-                        />
-                      ) : (
-                        <InputNumber
-                          size="small"
-                          style={{ width: 140 }}
-                          min={p.min}
-                          max={p.max}
-                          step={p.step ?? p.scale ?? 1}
-                          value={values[p.id]}
-                          onChange={v => v != null && setParamValue(p.id, v)}
-                          addonAfter={p.unit}
-                        />
-                      )}
-                      <Button size="small" danger type="text" icon={<DeleteOutlined />} onClick={() => removeParam(p.id)} />
-                    </div>
-                  ))}
-                </Space>
-              ),
-            }
-          }).filter(Boolean)}
+              </Space>
+            ),
+            children: usedGroups.length === 0 ? (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                Пока ни одна группа не входит в шаблон — отметьте нужные ниже, в списке неиспользуемых
+              </Typography.Text>
+            ) : (
+              <Collapse items={usedGroups.map(group => groupPanel(group, false))} />
+            ),
+          }]}
+        />
+
+        {/* Неиспользуемые группы — тускло-серым. Их параметры шаблон не задаёт,
+            поэтому при записи в них уйдут ЗАВОДСКИЕ значения (показаны внутри). */}
+        <Collapse
+          items={[{
+            key: 'unused',
+            label: (
+              <Space>
+                <Typography.Text style={{ color: '#8c8c8c' }}>Неиспользуемые группы</Typography.Text>
+                <Tag>{unusedGroups.length}</Tag>
+                <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                  шаблон их не задаёт — при записи получат заводские значения
+                </Typography.Text>
+              </Space>
+            ),
+            children: unusedGroups.length === 0 ? (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                Все группы уже входят в шаблон
+              </Typography.Text>
+            ) : (
+              <Collapse items={unusedGroups.map(group => groupPanel(group, true))} />
+            ),
+          }]}
         />
       </div>
     )

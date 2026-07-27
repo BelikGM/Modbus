@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Collapse, Button, Input, message, Typography, Popconfirm, Space, Modal, Checkbox, Progress, Select } from 'antd'
-import { DownloadOutlined, SearchOutlined, RollbackOutlined, HolderOutlined, UploadOutlined, FileTextOutlined } from '@ant-design/icons'
+import { Collapse, Button, Input, message, Typography, Popconfirm, Space, Modal, Checkbox, Progress, Select, Tag, Tooltip } from 'antd'
+import { DownloadOutlined, SearchOutlined, RollbackOutlined, HolderOutlined, UploadOutlined, FileTextOutlined, StarOutlined } from '@ant-design/icons'
 import {
   DndContext,
   closestCenter,
@@ -22,6 +22,7 @@ import { useDeviceSettings } from '../useDeviceSettings'
 import { isParamWritable } from '../access'
 import { downloadCsv, groupFileLabel } from '../csv'
 import { processStart, processUpdate, processDone, processInfo } from '../notify'
+import OverwriteGuard, { collectOverwriteConflicts } from './OverwriteGuard'
 
 // Значение/запись специально не растянуты "с запасом" — короткие значения
 // (типично "—" пока не считано, или пара символов/цифр) не должны тянуть за
@@ -181,6 +182,15 @@ export default function ParamGroups({
   const [currentFillStamp] = useState(0)
   const [presetModalOpen, setPresetModalOpen] = useState(false)
   const [presets, setPresets] = useState([])
+  // «Избранное» — собственный список параметров на семейство ПЧ (см.
+  // FavoritesService на бэке). Виртуальная группа, собираемая на лету.
+  const [favoriteIds, setFavoriteIds] = useState([])
+  const [favModalOpen, setFavModalOpen] = useState(false)
+  const [favDraft, setFavDraft] = useState(new Set())
+  const [favSearch, setFavSearch] = useState('')
+  const [favPresetOpen, setFavPresetOpen] = useState(false)
+  const [favPresetName, setFavPresetName] = useState('')
+  const [savingFavPreset, setSavingFavPreset] = useState(false)
   const [selectedPresetId, setSelectedPresetId] = useState(null)
   const [applyingPreset, setApplyingPreset] = useState(false)
   const latestCols = useRef(DEFAULT_COLS)
@@ -220,7 +230,8 @@ export default function ParamGroups({
   }
 
   function setAllGroupsVisible(checked) {
-    const next = checked ? new Set(device.groups.map(g => g.id)) : new Set()
+    // orderedGroups включает виртуальную группу «Избранное», если она непуста.
+    const next = checked ? new Set(orderedGroups.map(g => g.id)) : new Set()
     setVisibleGroups(next)
   }
 
@@ -290,13 +301,91 @@ export default function ParamGroups({
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
+  // ─── Избранное: своя группа из произвольных параметров ────────────────────
+  const FAV_GROUP_ID = '__favorites__'
+  const deviceFamilyId = deviceFamily(device.templateId ?? device.id)
+
+  useEffect(() => {
+    let cancelled = false
+    api.get('/favorites', { params: { family: deviceFamilyId } })
+      .then(({ data }) => { if (!cancelled) setFavoriteIds(Array.isArray(data) ? data : []) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [deviceFamilyId])
+
+  const allParamsById = new Map(device.groups.flatMap(g => g.params).map(p => [p.id, p]))
+  // Виртуальная группа «Избранное»: конкретные параметры в порядке, заданном
+  // пользователем (не целые группы). Параметры, которых нет у этой модели,
+  // просто отбрасываются — список общий на семейство.
+  const favoriteParams = favoriteIds.map(id => allParamsById.get(id)).filter(Boolean)
+  const favoriteGroup = { id: FAV_GROUP_ID, name: '★ Избранное', params: favoriteParams }
+
+  async function saveFavorites(ids) {
+    setFavoriteIds(ids)
+    try {
+      await api.put('/favorites', { family: deviceFamilyId, paramIds: ids })
+    } catch {
+      message.error('Не удалось сохранить избранное')
+    }
+  }
+
+  function openFavModal() {
+    setFavDraft(new Set(favoriteIds))
+    setFavSearch('')
+    setFavModalOpen(true)
+  }
+
+  async function applyFavDraft() {
+    // Сохраняем в порядке следования параметров в шаблоне модели — предсказуемо.
+    const ordered = device.groups.flatMap(g => g.params).map(p => p.id).filter(id => favDraft.has(id))
+    await saveFavorites(ordered)
+    setFavModalOpen(false)
+    if (ordered.length > 0) {
+      setVisibleGroups(new Set([...visibleGroupIds, FAV_GROUP_ID]))
+      message.success(`В избранном ${ordered.length} параметров`)
+    }
+  }
+
+  // Шаблон значений на основе избранного: берём текущие подготовленные (или
+  // заводские) значения ровно по избранным параметрам.
+  async function createPresetFromFavorites() {
+    const name = favPresetName.trim()
+    if (!name) { message.warning('Введите название шаблона'); return }
+    const presetValues = {}
+    for (const p of favoriteParams) {
+      if (!isParamWritable(device, p)) continue
+      const val = pendingWrites[p.id] ?? (typeof p.default === 'number' ? p.default : undefined)
+      if (typeof val === 'number') presetValues[p.id] = val
+    }
+    if (Object.keys(presetValues).length === 0) {
+      message.warning('В избранном нет записываемых параметров со значениями')
+      return
+    }
+    setSavingFavPreset(true)
+    try {
+      await api.post('/presets', { name, family: deviceFamilyId, values: presetValues })
+      message.success(`Шаблон «${name}» создан из избранного (${Object.keys(presetValues).length} рег.)`)
+      setFavPresetOpen(false)
+      setFavPresetName('')
+    } catch (e) {
+      message.error(e?.response?.data?.message ?? 'Не удалось создать шаблон')
+    } finally {
+      setSavingFavPreset(false)
+    }
+  }
+
+  // Избранное всегда первым — это «самое нужное», ради чего его и заводят.
+  const groupsWithFavorites = favoriteParams.length > 0 ? [favoriteGroup, ...device.groups] : device.groups
+
   const orderedGroups = groupOrder
-    ? [...device.groups].sort((a, b) => {
+    ? [...groupsWithFavorites].sort((a, b) => {
+        if (a.id === FAV_GROUP_ID) return -1
+        if (b.id === FAV_GROUP_ID) return 1
         const ai = groupOrder.indexOf(a.id)
         const bi = groupOrder.indexOf(b.id)
         return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
       })
-    : device.groups
+    : groupsWithFavorites
 
   const groupsInScope = orderedGroups.filter(g => visibleGroupIds.has(g.id))
 
@@ -813,8 +902,8 @@ export default function ParamGroups({
           Отображаемые группы параметров (влияет на «Прочитать/Записать/Сбросить все»)
         </Typography.Text>
         <Checkbox
-          checked={visibleGroupIds.size === device.groups.length}
-          indeterminate={visibleGroupIds.size > 0 && visibleGroupIds.size < device.groups.length}
+          checked={visibleGroupIds.size === orderedGroups.length}
+          indeterminate={visibleGroupIds.size > 0 && visibleGroupIds.size < orderedGroups.length}
           onChange={e => setAllGroupsVisible(e.target.checked)}
           style={{ marginBottom: 6, display: 'inline-flex' }}
         >
@@ -827,15 +916,29 @@ export default function ParamGroups({
           columnGap: 20,
           rowGap: 4,
         }}>
-          {device.groups.map(group => (
+          {orderedGroups.map(group => (
             <Checkbox
               key={group.id}
               checked={visibleGroupIds.has(group.id)}
               onChange={e => toggleGroupVisible(group.id, e.target.checked)}
             >
-              <span style={{ fontSize: 12 }}>{group.name}</span>
+              <span style={{ fontSize: 12, fontWeight: group.id === FAV_GROUP_ID ? 600 : undefined }}>{group.name}</span>
             </Checkbox>
           ))}
+        </div>
+        {/* Управление составом избранного — рядом с чекбоксами групп */}
+        <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Button size="small" icon={<StarOutlined />} onClick={openFavModal}>
+            {favoriteParams.length > 0 ? `Изменить избранное (${favoriteParams.length})` : 'Собрать избранное'}
+          </Button>
+          {favoriteParams.length > 0 && (
+            <Button size="small" icon={<FileTextOutlined />} onClick={() => { setFavPresetName(''); setFavPresetOpen(true) }}>
+              Создать шаблон из избранного
+            </Button>
+          )}
+          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+            «★ Избранное» — свой список любых параметров этой модели ПЧ; читается и пишется как обычная группа
+          </Typography.Text>
         </div>
       </div>
 
@@ -872,6 +975,98 @@ export default function ParamGroups({
           </div>
         </SortableContext>
       </DndContext>
+
+      {/* Состав избранного: отмечаем ОТДЕЛЬНЫЕ параметры (не группы целиком) */}
+      <Modal
+        title={<Space><StarOutlined />Состав группы «Избранное»</Space>}
+        open={favModalOpen}
+        onCancel={() => setFavModalOpen(false)}
+        onOk={applyFavDraft}
+        okText={`Сохранить (${favDraft.size})`}
+        cancelText="Отмена"
+        width={760}
+      >
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+          Отмечайте нужные параметры по одному — галочка на параметре добавляет ТОЛЬКО его, а не всю его группу.
+          Список общий для всех ПЧ семейства {deviceFamilyId === 'vl' ? 'VL' : 'Pump'} и сохраняется между проектами.
+        </Typography.Paragraph>
+        <Space style={{ marginBottom: 8 }} wrap>
+          <Input
+            prefix={<SearchOutlined style={{ color: '#bbb' }} />}
+            placeholder="Поиск параметра по коду или названию"
+            value={favSearch}
+            onChange={e => setFavSearch(e.target.value)}
+            allowClear
+            style={{ width: 320 }}
+          />
+          <Button size="small" onClick={() => setFavDraft(new Set())} disabled={favDraft.size === 0}>
+            Очистить всё
+          </Button>
+        </Space>
+        <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+          <Collapse
+            items={device.groups.map(group => {
+              const q = favSearch.trim().toLowerCase()
+              const params = q
+                ? group.params.filter(p => p.id.toLowerCase().includes(q) || p.name.toLowerCase().includes(q))
+                : group.params
+              if (params.length === 0) return null
+              const countInFav = group.params.filter(p => favDraft.has(p.id)).length
+              return {
+                key: group.id,
+                label: (
+                  <Space>
+                    <span>{group.name}</span>
+                    {countInFav > 0 && <Tag color="gold">{countInFav} в избранном</Tag>}
+                  </Space>
+                ),
+                children: (
+                  <Space direction="vertical" size={2} style={{ width: '100%' }}>
+                    {params.map(p => (
+                      <Checkbox
+                        key={p.id}
+                        checked={favDraft.has(p.id)}
+                        onChange={e => {
+                          const next = new Set(favDraft)
+                          if (e.target.checked) next.add(p.id)
+                          else next.delete(p.id)
+                          setFavDraft(next)
+                        }}
+                      >
+                        <Typography.Text code style={{ fontSize: 11 }}>{p.id}</Typography.Text>{' '}
+                        <span style={{ fontSize: 12 }}>{p.name}</span>
+                      </Checkbox>
+                    ))}
+                  </Space>
+                ),
+              }
+            }).filter(Boolean)}
+          />
+        </div>
+      </Modal>
+
+      {/* Шаблон значений из избранного */}
+      <Modal
+        title={<Space><FileTextOutlined />Шаблон из избранного</Space>}
+        open={favPresetOpen}
+        onCancel={() => setFavPresetOpen(false)}
+        onOk={createPresetFromFavorites}
+        okText="Создать шаблон"
+        okButtonProps={{ loading: savingFavPreset }}
+        cancelText="Отмена"
+      >
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+          Будет создан шаблон значений только из записываемых параметров избранного
+          ({favoriteParams.filter(p => isParamWritable(device, p)).length} шт.).
+          Значения берутся из текущих подготовленных (или заводских, если ничего не подготовлено).
+        </Typography.Paragraph>
+        <Input
+          placeholder="Название шаблона"
+          value={favPresetName}
+          onChange={e => setFavPresetName(e.target.value)}
+          onPressEnter={createPresetFromFavorites}
+        />
+      </Modal>
 
       <Modal
         title={<Space><FileTextOutlined />Подготовить значения из шаблона</Space>}

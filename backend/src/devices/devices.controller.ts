@@ -33,6 +33,14 @@ export class DevicesController {
     return device;
   }
 
+  // Только СОХРАНЁННЫЕ правки (значения из шаблона / введённые руками), без
+  // заводской базы. Нужны защите от перезаписи: параметр, которого здесь нет,
+  // шаблоном не покрыт и получит заводское значение.
+  @Get(':id/pending-writes/raw')
+  getPendingWritesRaw(@Param('id') id: string) {
+    return this.devicesService.getDevicePendingWrites(id);
+  }
+
   @Get(':id/pending-writes')
   getPendingWrites(@Param('id') id: string) {
     // Отдаём «эффективные» значения: заводские по умолчанию во всех полях +
