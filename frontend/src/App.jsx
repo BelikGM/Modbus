@@ -67,6 +67,11 @@ function ThemeToggle({ dark, onChange }) {
 export default function App() {
   const [devices, setDevices] = useState([])
   const [selectedIds, setSelectedIds] = useState(new Set())
+  // «Активный» ПЧ внутри группового выбора: одиночный клик по строке в сайдбаре
+  // НЕ разрушает собранную группу, а лишь переключает, чей ПЧ сейчас показан
+  // (значения с устройства, подготовленные значения) — то же, что выпадающее
+  // меню на вкладке «Параметры».
+  const [focusedDeviceId, setFocusedDeviceId] = useState(null)
   const [siderSide, setSiderSide] = useState('left')
   const [siderWidth, setSiderWidth] = useState(270)
   const [activeProjectId, setActiveProjectId] = useState(null)
@@ -293,6 +298,8 @@ export default function App() {
               sidebarWidth={siderWidth}
               deviceOrder={deviceOrder}
               onDeviceOrderChange={setDeviceOrder}
+              focusedDeviceId={focusedDeviceId}
+              onFocusDevice={setFocusedDeviceId}
             />
           </div>
         </Sider>
@@ -311,6 +318,8 @@ export default function App() {
                   onDeselect={id => setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n })}
                   activeTab={activeDeviceTab}
                   onActiveTabChange={setActiveDeviceTab}
+                  focusedDeviceId={focusedDeviceId}
+                  onFocusDevice={setFocusedDeviceId}
                 />
               )
             }

@@ -48,7 +48,7 @@ function SortableDeviceRow({ id, compact, children }) {
   )
 }
 
-export default function DeviceList({ devices, selectedIds, onSelectionChange, connected, liveness = {}, hasProject, activeProjectId, sidebarWidth = 270, deviceOrder, onDeviceOrderChange }) {
+export default function DeviceList({ devices, selectedIds, onSelectionChange, connected, liveness = {}, hasProject, activeProjectId, sidebarWidth = 270, deviceOrder, onDeviceOrderChange, focusedDeviceId, onFocusDevice }) {
   const [addOpen, setAddOpen]       = useState(false)
   const [editDevice, setEditDevice] = useState(null)
   const [templates, setTemplates]   = useState([])
@@ -132,23 +132,26 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
     onSelectionChange(next)
   }
 
-  // Одиночный клик — открыть ТОЛЬКО это устройство (сменить показываемый ПЧ), не
-  // трогая правил мультивыбора: членство в группе меняется отдельно (галочка /
-  // двойной клик).
-  function selectOnly(device) {
-    onSelectionChange(new Set([device.id]))
+  // Одиночный клик НЕ разрушает собранную группу:
+  //  - ПЧ уже в группе → просто делаем его активным (его значения показываются
+  //    справа — то же, что выбор в выпадающем меню на вкладке «Параметры»);
+  //  - ПЧ вне группы → показываем его одного (иначе клик по невыбранному
+  //    устройству ни к чему бы не приводил).
+  function focusDevice(device) {
+    if (!selectedIds.has(device.id)) onSelectionChange(new Set([device.id]))
+    onFocusDevice?.(device.id)
   }
 
   // Один и тот же клик по строке порождает и onClick, и (при втором нажатии)
   // onDoubleClick, поэтому одиночное действие откладываем таймером: двойной клик
-  // успевает его отменить. Так одиночный = «показать этот ПЧ», двойной =
+  // успевает его отменить. Так одиночный = «сделать активным», двойной =
   // «добавить/убрать из группы», и они не срабатывают вместе.
   const clickTimerRef = useRef(null)
   function handleRowClick(device) {
     if (clickTimerRef.current) { clearTimeout(clickTimerRef.current); clickTimerRef.current = null }
     clickTimerRef.current = setTimeout(() => {
       clickTimerRef.current = null
-      selectOnly(device)
+      focusDevice(device)
     }, 220)
   }
   function handleRowDoubleClick(device) {
@@ -343,6 +346,8 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
           <SortableContext items={visibleDevices.map(d => d.id)} strategy={verticalListSortingStrategy}>
             {visibleDevices.map(device => {
               const isSelected = selectedIds.has(device.id)
+              // Активный ПЧ внутри группы — тот, чьи значения показаны справа.
+              const isFocused = isSelected && selectedIds.size > 1 && focusedDeviceId === device.id
               const modelLabel = deviceType(device) === 'vl' ? 'VL' : 'Pump'
               const liveStatus = deviceLiveStatus(device)
               const avatar = device.images?.device
@@ -381,8 +386,10 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
                         alignItems: 'center',
                         justifyContent: compact ? 'center' : 'flex-start',
                         gap: 8,
-                        background: isSelected ? '#e6f4ff' : 'transparent',
-                        borderLeft: isSelected ? '3px solid #1677ff' : '3px solid transparent',
+                        background: isFocused ? '#bae0ff' : (isSelected ? '#e6f4ff' : 'transparent'),
+                        borderLeft: isFocused
+                          ? '3px solid #0958d9'
+                          : (isSelected ? '3px solid #1677ff' : '3px solid transparent'),
                         borderBottom: '1px solid #f5f5f5',
                       }}
                     >

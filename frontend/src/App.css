@@ -270,3 +270,14 @@ body {
     border-right-color: var(--border);
   }
 }
+
+/* Чекбоксы «Отображаемые группы параметров»: названия групп занимают 2–3
+   строки, и по умолчанию antd прижимает квадратик к первой строке — текст
+   выглядит съехавшим. Выравниваем квадратик по вертикальному центру подписи. */
+.param-toolbar-box .ant-checkbox-wrapper {
+  align-items: center;
+}
+.param-toolbar-box .ant-checkbox-wrapper > .ant-checkbox {
+  align-self: center;
+  top: 0;
+}

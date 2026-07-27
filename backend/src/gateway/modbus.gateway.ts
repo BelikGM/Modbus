@@ -556,7 +556,16 @@ export class ModbusGateway
   @SubscribeMessage('bulk:read:start')
   async handleBulkReadStart(
     @ConnectedSocket() client: Socket,
-    @MessageBody() payload: { deviceIds: string[]; paramIds: string[] },
+    @MessageBody() payload: {
+      deviceIds: string[];
+      paramIds?: string[];
+      // Свой список параметров на каждое устройство: { [deviceId]: [paramId] }.
+      // Нужен при смешанном выборе Pump+VL — у семейств разные карты регистров,
+      // и слать общий (объединённый) список бессмысленно: половина параметров
+      // у устройства просто отсутствует, а total получается вдвое завышенным
+      // («считано 600 из 1200»). С поимённым списком total точный.
+      paramsByDevice?: Record<string, string[]>;
+    },
   ) {
     if (this.bulkOpRunning) {
       client.emit('bulk:op:error', { message: 'Групповая операция уже выполняется' });
@@ -564,18 +573,21 @@ export class ModbusGateway
     }
     this.bulkOpRunning = true;
     this.bulkOpCancelled = false;
-    const total = payload.deviceIds.length * payload.paramIds.length;
+    const paramsFor = (deviceId: string): string[] =>
+      payload.paramsByDevice?.[deviceId] ?? payload.paramIds ?? [];
+    const total = payload.deviceIds.reduce((sum, id) => sum + paramsFor(id).length, 0);
+    client.emit('bulk:op:total', { kind: 'read', total });
     let done = 0;
     let ok = 0;
 
     outer:
     for (const deviceId of payload.deviceIds) {
       const device = this.devicesService.getById(deviceId);
-      if (!device) { done += payload.paramIds.length; continue; }
+      if (!device) { done += paramsFor(deviceId).length; continue; }
       const slaveId = device.connection.slaveId ?? 1;
       const allParams = device.groups.flatMap(g => g.params);
 
-      for (const paramId of payload.paramIds) {
+      for (const paramId of paramsFor(deviceId)) {
         if (this.bulkOpCancelled) break outer;
         const param = allParams.find(p => p.id === paramId);
         if (!param) { done++; continue; }

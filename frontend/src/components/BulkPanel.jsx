@@ -35,7 +35,7 @@ function formatResult(entry) {
 
 const TAB_LABELS = { params: 'Параметры', templates: 'Шаблоны' }
 
-export default function BulkPanel({ devices, modbusConnected, onDeselect, activeTab, onActiveTabChange }) {
+export default function BulkPanel({ devices, modbusConnected, onDeselect, activeTab, onActiveTabChange, focusedDeviceId, onFocusDevice }) {
   const templateIds = [...new Set(devices.map(d => d.templateId))]
   const families = [...new Set(devices.map(d => deviceFamily(d.templateId)))]
   const sameType = families.length === 1
@@ -331,7 +331,12 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
     setBusy(true)
     const key = processStart(`Чтение всех параметров с ${deviceIds.length} ПЧ…`, 'Опрос ПЧ')
     const collected = {} // { [deviceId]: { [paramId]: entry } }
-    const allParamIds = [...new Set(devices.flatMap(d => d.groups.flatMap(g => g.params.map(p => p.id))))]
+    // У каждого ПЧ читаем ТОЛЬКО его собственные параметры (у Pump и VL разные
+    // карты регистров) — иначе половина запросов уходит впустую и прогресс
+    // показывает завышенный total вроде «600 из 1200».
+    const paramsByDevice = Object.fromEntries(
+      devices.map(d => [d.id, d.groups.flatMap(g => g.params.map(p => p.id))]),
+    )
     function onProgress(p) {
       if (p.kind !== 'read' || !deviceIds.includes(p.deviceId)) return
       collected[p.deviceId] = {
@@ -357,12 +362,18 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
     socket.on('bulk:op:progress', onProgress)
     socket.on('bulk:op:done', onDone)
     socket.on('bulk:op:error', onError)
-    socket.emit('bulk:read:start', { deviceIds, paramIds: allParamIds })
+    socket.emit('bulk:read:start', { deviceIds, paramsByDevice })
   }
 
+  // Отдельная таблица на каждое семейство: у Pump и VL разные карты регистров,
+  // поэтому колонки VL-устройств в Pump-таблице были бы полностью пустыми (и
+  // наоборот). Секции идут одна под другой в одном файле, у каждой — своя
+  // строка заголовков со своим набором колонок.
   function buildAndDownloadAllCsv(collected) {
-    const header = ['Параметр', 'Название', ...devices.map(d => `${d.name} (Адрес ${d.connection.slaveId})`)]
+    const maxCols = Math.max(...families.map(f => devices.filter(d => deviceFamily(d.templateId) === f).length))
+    const pad = arr => [...arr, ...Array(Math.max(0, maxCols + 2 - arr.length)).fill('')]
     const rows = []
+    let first = true
     for (const fam of families) {
       const famDevices = devices.filter(d => deviceFamily(d.templateId) === fam)
       if (famDevices.length === 0) continue
@@ -370,23 +381,26 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
       const famTemplate = famDevices.reduce((best, d) => (
         d.groups.flatMap(g => g.params).length > best.groups.flatMap(g => g.params).length ? d : best
       ), famDevices[0])
-      rows.push([`=== ${fam === 'vl' ? 'VL' : 'Pump'} ===`, '', ...devices.map(() => '')])
+      if (!first) rows.push(pad([]))
+      first = false
+      rows.push(pad([`=== ${fam === 'vl' ? 'EMD-VL' : 'EMD-PUMP'} (${famDevices.length} ПЧ) ===`]))
+      rows.push(pad(['Параметр', 'Название', ...famDevices.map(d => `${d.name} (Адрес ${d.connection.slaveId})`)]))
       for (const g of famTemplate.groups) {
-        rows.push([g.name, '', ...devices.map(() => '')])
+        rows.push(pad([g.name]))
         for (const param of g.params) {
-          const cells = devices.map(d => {
-            if (deviceFamily(d.templateId) !== fam) return ''
+          const cells = famDevices.map(d => {
             const entry = collected[d.id]?.[param.id]
             if (!entry) return ''
             if (entry.error) return 'ошибка'
             return String(formatParamValue(entry.type, entry.value, entry.unit, entry.options, entry.bits))
           })
-          rows.push([param.id, param.name, ...cells])
+          rows.push(pad([param.id, param.name, ...cells]))
         }
       }
     }
     const nums = devices.map(d => d.connection.slaveId).join(',')
-    downloadCsv(`All-Param-${nums}.csv`, header, rows)
+    // Заголовок файла общий-технический; настоящие заголовки — внутри секций.
+    downloadCsv(`All-Param-${nums}.csv`, pad(['Параметр', 'Название']), rows)
   }
 
   // BulkPanel не имеет вкладок "Устройство"/"Журнал" (это данные конкретного
@@ -441,6 +455,8 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
             modbusConnected={modbusConnected}
             visibleGroupIds={visibleGroupIds}
             onVisibleGroupIdsChange={handleVisibleGroupIdsChange}
+            focusedDeviceId={focusedDeviceId}
+            onFocusDevice={onFocusDevice}
           />
         </Space>
       ),

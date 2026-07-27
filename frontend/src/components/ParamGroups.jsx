@@ -114,6 +114,7 @@ function ParamTableHeader({ cols, onResizeStart }) {
 export default function ParamGroups({
   device, devices, modbusConnected, deviceRunning, onWrite,
   visibleGroupIds: controlledVisibleGroupIds, onVisibleGroupIdsChange,
+  focusedDeviceId, onFocusDevice,
 }) {
   // В одиночном режиме (DeviceDetail) `devices` не передаётся — работаем с одним
   // `device`. В групповом (BulkPanel) `devices` — полный список выбранных ПЧ
@@ -132,6 +133,19 @@ export default function ParamGroups({
     if (activeDeviceId !== ALL_DEVICES && !effectiveDeviceIds.includes(activeDeviceId)) setActiveDeviceId(effectiveDeviceIds[0])
     setBulkResults({}) // сменился состав выборки — старые групповые результаты не актуальны
   }, [effectiveDeviceIds.join(',')])
+
+  // Клик по строке в сайдбаре делает ПЧ активным — переключатель ниже следует
+  // за ним (и наоборот: выбор в переключателе подсвечивает строку слева).
+  useEffect(() => {
+    if (focusedDeviceId && effectiveDeviceIds.includes(focusedDeviceId) && focusedDeviceId !== activeDeviceId) {
+      setActiveDeviceId(focusedDeviceId)
+    }
+  }, [focusedDeviceId])
+
+  function changeActiveDevice(id) {
+    setActiveDeviceId(id)
+    if (id !== ALL_DEVICES) onFocusDevice?.(id)
+  }
   // В режиме «Все» показываем как образец эталонное устройство (с самой полной
   // картой), а правки пишем во все; в обычном — выбранное устройство.
   const activeDevice = isAllMode ? device : (effectiveDevices.find(d => d.id === activeDeviceId) ?? effectiveDevices[0])
@@ -320,12 +334,31 @@ export default function ParamGroups({
   const favoriteParams = favoriteIds.map(id => allParamsById.get(id)).filter(Boolean)
   const favoriteGroup = { id: FAV_GROUP_ID, name: '★ Избранное', params: favoriteParams }
 
+  // Сохраняем на бэке; локальное состояние обновляем только при успехе, иначе
+  // список «на экране есть, а на самом деле не сохранён» (эта рассинхронизация
+  // и путала: галочки применялись, а следом падала ошибка).
   async function saveFavorites(ids) {
+    const prev = favoriteIds
     setFavoriteIds(ids)
     try {
       await api.put('/favorites', { family: deviceFamilyId, paramIds: ids })
-    } catch {
-      message.error('Не удалось сохранить избранное')
+      return true
+    } catch (e) {
+      setFavoriteIds(prev) // откат — на бэке ничего не изменилось
+      const status = e?.response?.status
+      message.error(
+        status === 404
+          ? 'Избранное недоступно: бэкенд запущен без модуля favorites — перезапустите backend (npm run start:dev)'
+          : (e?.response?.data?.message ?? 'Не удалось сохранить избранное'),
+      )
+      return false
+    }
+  }
+
+  async function clearFavorites() {
+    if (await saveFavorites([])) {
+      setFavModalOpen(false)
+      message.success('Избранное очищено')
     }
   }
 
@@ -338,11 +371,13 @@ export default function ParamGroups({
   async function applyFavDraft() {
     // Сохраняем в порядке следования параметров в шаблоне модели — предсказуемо.
     const ordered = device.groups.flatMap(g => g.params).map(p => p.id).filter(id => favDraft.has(id))
-    await saveFavorites(ordered)
+    if (!(await saveFavorites(ordered))) return // не закрываем окно — правки не потеряются
     setFavModalOpen(false)
     if (ordered.length > 0) {
       setVisibleGroups(new Set([...visibleGroupIds, FAV_GROUP_ID]))
       message.success(`В избранном ${ordered.length} параметров`)
+    } else {
+      message.success('Избранное очищено')
     }
   }
 
@@ -804,7 +839,7 @@ export default function ParamGroups({
         {isBulk && (
           <Select
             value={activeDeviceId}
-            onChange={setActiveDeviceId}
+            onChange={changeActiveDevice}
             style={{ width: 240 }}
             popupMatchSelectWidth={false}
             options={[
@@ -917,12 +952,18 @@ export default function ParamGroups({
           rowGap: 4,
         }}>
           {orderedGroups.map(group => (
+            // align-items:center — иначе у названий, занимающих 2–3 строки,
+            // квадратик прижимается к первой строке и «съезжает» вверх
+            // относительно текста.
             <Checkbox
               key={group.id}
               checked={visibleGroupIds.has(group.id)}
               onChange={e => toggleGroupVisible(group.id, e.target.checked)}
+              style={{ display: 'flex', alignItems: 'center', marginInlineStart: 0 }}
             >
-              <span style={{ fontSize: 12, fontWeight: group.id === FAV_GROUP_ID ? 600 : undefined }}>{group.name}</span>
+              <span style={{ fontSize: 12, lineHeight: 1.3, display: 'block', fontWeight: group.id === FAV_GROUP_ID ? 600 : undefined }}>
+                {group.name}
+              </span>
             </Checkbox>
           ))}
         </div>
@@ -932,9 +973,21 @@ export default function ParamGroups({
             {favoriteParams.length > 0 ? `Изменить избранное (${favoriteParams.length})` : 'Собрать избранное'}
           </Button>
           {favoriteParams.length > 0 && (
-            <Button size="small" icon={<FileTextOutlined />} onClick={() => { setFavPresetName(''); setFavPresetOpen(true) }}>
-              Создать шаблон из избранного
-            </Button>
+            <>
+              <Button size="small" icon={<FileTextOutlined />} onClick={() => { setFavPresetName(''); setFavPresetOpen(true) }}>
+                Создать шаблон из избранного
+              </Button>
+              <Popconfirm
+                title="Очистить избранное?"
+                description={`Из группы «★ Избранное» будут убраны все ${favoriteParams.length} параметров. Сами параметры и их значения не тронуты.`}
+                okText="Очистить"
+                cancelText="Отмена"
+                okButtonProps={{ danger: true }}
+                onConfirm={clearFavorites}
+              >
+                <Button size="small" danger>Очистить избранное</Button>
+              </Popconfirm>
+            </>
           )}
           <Typography.Text type="secondary" style={{ fontSize: 11 }}>
             «★ Избранное» — свой список любых параметров этой модели ПЧ; читается и пишется как обычная группа
