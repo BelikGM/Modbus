@@ -227,7 +227,7 @@ export default function BusScanner({ connected }) {
             color: '#fff',
           }}
         >
-          Сканер шины
+          Найти ПЧ на шине
         </Button>
       </Tooltip>
 
@@ -279,7 +279,7 @@ export default function BusScanner({ connected }) {
         title={
           <Space>
             <ApartmentOutlined />
-            Сканер Modbus-шины
+            Поиск и определение ПЧ на шине
           </Space>
         }
         open={open}

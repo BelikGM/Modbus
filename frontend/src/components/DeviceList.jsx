@@ -355,6 +355,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
                   <Tooltip title={liveStatus.title}>
                     <Badge dot status={liveStatus.status} offset={compact ? [-2, 2] : [-4, 4]}>
                       <Avatar
+                        className="device-avatar"
                         src={`/api/devices/images/${device.images.device}`}
                         size={avatarSize}
                         shape="square"
