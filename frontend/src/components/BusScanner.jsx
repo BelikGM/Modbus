@@ -17,7 +17,11 @@ export default function BusScanner({ connected }) {
   const [open, setOpen] = useState(false)
   const [running, setRunning] = useState(false)
   const [from, setFrom] = useState(1)
-  const [to, setTo] = useState(32)
+  // 1..247 — весь допустимый диапазон Modbus RTU slave-адресов (0 —
+  // широковещательный адрес, 248..255 зарезервированы); бэкенд и так
+  // ограничивает "до" этим значением (см. modbus.gateway.ts), так что по
+  // умолчанию сразу сканируем всё, а не только первые 32 адреса.
+  const [to, setTo] = useState(247)
   const [progress, setProgress] = useState(0)
   const [total, setTotal] = useState(0)
   const [found, setFound] = useState([])
