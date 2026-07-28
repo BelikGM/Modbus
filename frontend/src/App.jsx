@@ -271,7 +271,13 @@ export default function App() {
             }}
           />
           {siderWidth >= 90 && (
-            <div style={{ flexShrink: 0, padding: '12px 16px', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            // На правой стороне заголовок зеркалится: стрелка перемещения — слева,
+            // подпись "УСТРОЙСТВА" — правее (симметрично левому варианту).
+            <div style={{
+              flexShrink: 0, padding: '12px 16px', borderBottom: '1px solid #f0f0f0',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              flexDirection: siderSide === 'right' ? 'row-reverse' : 'row',
+            }}>
               <Typography.Text strong style={{ fontSize: 13, color: '#666' }}>
                 УСТРОЙСТВА
               </Typography.Text>
@@ -300,6 +306,7 @@ export default function App() {
               onDeviceOrderChange={setDeviceOrder}
               focusedDeviceId={focusedDeviceId}
               onFocusDevice={setFocusedDeviceId}
+              mirrored={siderSide === 'right'}
             />
           </div>
         </Sider>

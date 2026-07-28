@@ -22,7 +22,7 @@ function deviceType(device) {
   return (device.templateId ?? device.id ?? '').toLowerCase().includes('vl') ? 'vl' : 'pump'
 }
 
-function SortableDeviceRow({ id, compact, children }) {
+function SortableDeviceRow({ id, compact, mirrored, children }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
   return (
     <div
@@ -30,12 +30,14 @@ function SortableDeviceRow({ id, compact, children }) {
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, position: 'relative' }}
     >
       {!compact && (
+        // На правой стороне экрана точки перетаскивания переезжают к правому
+        // краю строки (зеркально левому варианту).
         <div
           {...attributes}
           {...listeners}
           title="Перетащить — изменить порядок"
           style={{
-            position: 'absolute', left: 2, top: 0, bottom: 0, width: 14,
+            position: 'absolute', [mirrored ? 'right' : 'left']: 2, top: 0, bottom: 0, width: 14,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             cursor: 'grab', zIndex: 2, color: '#bbb',
           }}
@@ -48,7 +50,7 @@ function SortableDeviceRow({ id, compact, children }) {
   )
 }
 
-export default function DeviceList({ devices, selectedIds, onSelectionChange, connected, liveness = {}, hasProject, activeProjectId, sidebarWidth = 270, deviceOrder, onDeviceOrderChange, focusedDeviceId, onFocusDevice }) {
+export default function DeviceList({ devices, selectedIds, onSelectionChange, connected, liveness = {}, hasProject, activeProjectId, sidebarWidth = 270, deviceOrder, onDeviceOrderChange, focusedDeviceId, onFocusDevice, mirrored = false }) {
   const [addOpen, setAddOpen]       = useState(false)
   const [editDevice, setEditDevice] = useState(null)
   const [templates, setTemplates]   = useState([])
@@ -372,9 +374,19 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
                   </Tooltip>
                 )
 
+              // На правой стороне экрана строка зеркалится целиком: порядок
+              // элементов (точки → текст, картинка, галочка при row-reverse —
+              // main-start у row-reverse это правый край, поэтому justifyContent
+              // flex-start сам прижимает группу к правому краю без доп. правок),
+              // отступы под точки/кнопки редактирования и цветная полоска
+              // выделения — всё меняется местами.
+              const rowPadding = compact ? '8px 4px' : (mirrored ? '8px 20px 8px 12px' : '8px 12px 8px 20px')
+              const accentSide = mirrored ? 'borderRight' : 'borderLeft'
+              const accentColor = isFocused ? '3px solid #0958d9' : (isSelected ? '3px solid #1677ff' : '3px solid transparent')
+
               return (
-                <SortableDeviceRow key={device.id} id={device.id} compact={compact}>
-                  <Tooltip title={compact ? `${device.name} · ${modelLabel} · Адрес ${device.connection.slaveId ?? 1}` : ''} placement="right">
+                <SortableDeviceRow key={device.id} id={device.id} compact={compact} mirrored={mirrored}>
+                  <Tooltip title={compact ? `${device.name} · ${modelLabel} · Адрес ${device.connection.slaveId ?? 1}` : ''} placement={mirrored ? 'left' : 'right'}>
                     <div
                       onClick={() => handleRowClick(device)}
                       onDoubleClick={() => handleRowDoubleClick(device)}
@@ -382,15 +394,14 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
                       style={{
                         position: 'relative',
                         cursor: 'pointer',
-                        padding: compact ? '8px 4px' : '8px 12px 8px 20px',
+                        padding: rowPadding,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: compact ? 'center' : 'flex-start',
+                        flexDirection: mirrored ? 'row-reverse' : 'row',
                         gap: 8,
                         background: isFocused ? '#bae0ff' : (isSelected ? '#e6f4ff' : 'transparent'),
-                        borderLeft: isFocused
-                          ? '3px solid #0958d9'
-                          : (isSelected ? '3px solid #1677ff' : '3px solid transparent'),
+                        [accentSide]: accentColor,
                         borderBottom: '1px solid #f5f5f5',
                       }}
                     >
@@ -415,7 +426,12 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
 
                       {!compact && (
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingRight: narrow ? 0 : 48 }}>
+                          <div style={{
+                            fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                            // Отступ под кнопки редактирования/удаления — они
+                            // на правой стороне зеркалятся на левую.
+                            [mirrored ? 'paddingLeft' : 'paddingRight']: narrow ? 0 : 48,
+                          }}>
                             {device.name}
                           </div>
                           {!narrow && (
@@ -433,7 +449,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
                         <div
                           onClick={e => e.stopPropagation()}
                           className="device-row-actions"
-                          style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 2, background: isSelected ? '#e6f4ff' : '#fff' }}
+                          style={{ position: 'absolute', top: 4, [mirrored ? 'left' : 'right']: 4, display: 'flex', gap: 2, background: isSelected ? '#e6f4ff' : '#fff' }}
                         >
                           <Tooltip title="Редактировать">
                             <Button
