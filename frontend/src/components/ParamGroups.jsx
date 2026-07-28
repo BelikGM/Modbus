@@ -1039,6 +1039,10 @@ export default function ParamGroups({
         // длинный, и прокручивать его до низа ради «Сохранить» неудобно.
         footer={null}
       >
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+          Отмечайте нужные параметры по одному — галочка на параметре добавляет ТОЛЬКО его, а не всю его группу.
+          Список общий для всех ПЧ семейства {deviceFamilyId === 'vl' ? 'VL' : 'Pump'} и сохраняется между проектами.
+        </Typography.Paragraph>
         <Space style={{ marginBottom: 12 }} wrap>
           <Button type="primary" onClick={applyFavDraft}>
             Сохранить ({favDraft.size})
@@ -1047,12 +1051,6 @@ export default function ParamGroups({
           <Button danger onClick={() => setFavDraft(new Set())} disabled={favDraft.size === 0}>
             Очистить всё
           </Button>
-        </Space>
-        <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
-          Отмечайте нужные параметры по одному — галочка на параметре добавляет ТОЛЬКО его, а не всю его группу.
-          Список общий для всех ПЧ семейства {deviceFamilyId === 'vl' ? 'VL' : 'Pump'} и сохраняется между проектами.
-        </Typography.Paragraph>
-        <Space style={{ marginBottom: 8 }} wrap>
           <Input
             prefix={<SearchOutlined style={{ color: '#bbb' }} />}
             placeholder="Поиск параметра по коду или названию"
