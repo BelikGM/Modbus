@@ -31,6 +31,13 @@ import OverwriteGuard, { collectOverwriteConflicts } from './OverwriteGuard'
 const DEFAULT_COLS = { id: 90, desc: 220, def: 110, cur: 110, write: 220 }
 const MIN_COLS     = { id: 60, desc: 100, def: 70,  cur: 80,  write: 160 }
 
+// Спец-значение переключателя «текущее устройство для правки» — режим «Все
+// выбранные ПЧ», правки применяются сразу ко всем. Экспортируется, чтобы
+// DeviceList (сайдбар) мог распознать этот же маркер в focusedDeviceId и
+// подсветить ВСЕ выбранные строки, а не одну — иначе при переходе в этот режим
+// в сайдбаре продолжал ярко гореть тот ПЧ, что был активен раньше.
+export const ALL_DEVICES = '__all__'
+
 function deviceFamily(templateId) {
   return (templateId ?? '').toLowerCase().includes('vl') ? 'vl' : 'pump'
 }
@@ -125,9 +132,6 @@ export default function ParamGroups({
   const effectiveDeviceIds = effectiveDevices.map(d => d.id)
   const isBulk = effectiveDevices.length > 1
   const [activeDeviceId, setActiveDeviceId] = useState(effectiveDeviceIds[0])
-  // Спец-значение переключателя «текущее устройство для правки»: правки
-  // подготовленных значений применяются сразу ко ВСЕМ выбранным ПЧ.
-  const ALL_DEVICES = '__all__'
   const isAllMode = isBulk && activeDeviceId === ALL_DEVICES
   useEffect(() => {
     if (activeDeviceId !== ALL_DEVICES && !effectiveDeviceIds.includes(activeDeviceId)) setActiveDeviceId(effectiveDeviceIds[0])
@@ -144,7 +148,10 @@ export default function ParamGroups({
 
   function changeActiveDevice(id) {
     setActiveDeviceId(id)
-    if (id !== ALL_DEVICES) onFocusDevice?.(id)
+    // Прокидываем и ALL_DEVICES — DeviceList распознаёт этот маркер и
+    // подсвечивает ВСЕ выбранные строки, а не гасит подсветку/оставляет
+    // старую от ранее активного устройства.
+    onFocusDevice?.(id)
   }
   // В режиме «Все» показываем как образец эталонное устройство (с самой полной
   // картой), а правки пишем во все; в обычном — выбранное устройство.

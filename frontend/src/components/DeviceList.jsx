@@ -17,6 +17,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import api from '../api'
 import { sortByDeviceOrder } from '../deviceOrder'
+import { ALL_DEVICES } from './ParamGroups'
 
 function deviceType(device) {
   return (device.templateId ?? device.id ?? '').toLowerCase().includes('vl') ? 'vl' : 'pump'
@@ -349,7 +350,11 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
             {visibleDevices.map(device => {
               const isSelected = selectedIds.has(device.id)
               // Активный ПЧ внутри группы — тот, чьи значения показаны справа.
-              const isFocused = isSelected && selectedIds.size > 1 && focusedDeviceId === device.id
+              // В режиме "Все выбранные ПЧ — править разом" (ALL_DEVICES)
+              // активны сразу ВСЕ выбранные — ярче горит вся группа, а не
+              // случайно оставшийся с прошлого раза одиночный ПЧ.
+              const isFocused = isSelected && selectedIds.size > 1 &&
+                (focusedDeviceId === device.id || focusedDeviceId === ALL_DEVICES)
               const modelLabel = deviceType(device) === 'vl' ? 'VL' : 'Pump'
               const liveStatus = deviceLiveStatus(device)
               const avatar = device.images?.device
