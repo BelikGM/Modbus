@@ -285,7 +285,7 @@ export default function BusScanner({ connected }) {
         open={open}
         onCancel={handleClose}
         footer={null}
-        width={500}
+        width={640}
         destroyOnHidden={false}
       >
         <Space orientation="vertical" style={{ width: '100%' }} size={16}>
@@ -462,28 +462,40 @@ export default function BusScanner({ connected }) {
                 dataSource={identifyResults}
                 renderItem={r => (
                   <List.Item style={{ padding: '4px 0' }}>
-                    <Space>
-                      {r.error
-                        ? <ExclamationCircleOutlined style={{ color: '#ff4d4f' }} />
-                        : <CheckCircleOutlined style={{ color: '#52c41a' }} />
-                      }
-                      <Tag color="blue">Адрес {r.slaveId}</Tag>
-                      <Tag color={r.model === 'vl' ? 'purple' : r.model === 'pump' ? 'green' : 'orange'}>
+                    {/* Фиксированные колонки (иконка / адрес / модель), а не Space —
+                        иначе текст ошибки у Pump и VL начинался в разных местах
+                        (тег "EMD-PUMP" шире "EMD-VL") и переносился в 3 строки
+                        вместо 2 из-за нехватки места. */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, width: '100%' }}>
+                      <div style={{ flexShrink: 0, paddingTop: 2 }}>
+                        {r.error
+                          ? <ExclamationCircleOutlined style={{ color: '#ff4d4f' }} />
+                          : <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                        }
+                      </div>
+                      <Tag color="blue" style={{ flexShrink: 0, width: 68, textAlign: 'center' }}>Адрес {r.slaveId}</Tag>
+                      <Tag
+                        color={r.model === 'vl' ? 'purple' : r.model === 'pump' ? 'green' : 'orange'}
+                        style={{ flexShrink: 0, width: 92, textAlign: 'center' }}
+                      >
                         {r.model === 'unknown' ? 'Неизвестно' : `EMD-${r.model?.toUpperCase()}`}
                       </Tag>
-                      {r.name && <Typography.Text strong>{r.name}</Typography.Text>}
-                      {r.error && <Typography.Text type="danger" style={{ fontSize: 12 }}>{r.error}</Typography.Text>}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        {r.name && <Typography.Text strong>{r.name}</Typography.Text>}
+                        {r.error && <Typography.Text type="danger" style={{ fontSize: 12 }}>{r.error}</Typography.Text>}
+                      </div>
                       {r.error && (
                         <Button
                           size="small"
                           icon={<RedoOutlined />}
                           loading={retryingIds.has(r.slaveId)}
                           onClick={() => handleRetryIdentify(r.slaveId)}
+                          style={{ flexShrink: 0 }}
                         >
                           Определить снова
                         </Button>
                       )}
-                    </Space>
+                    </div>
                   </List.Item>
                 )}
               />
