@@ -227,7 +227,7 @@ export default function BusScanner({ connected }) {
             color: '#fff',
           }}
         >
-          Найти ПЧ на шине
+          Автообнаружение ПЧ
         </Button>
       </Tooltip>
 
