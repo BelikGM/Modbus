@@ -1043,14 +1043,7 @@ export default function ParamGroups({
           Отмечайте нужные параметры по одному — галочка на параметре добавляет ТОЛЬКО его, а не всю его группу.
           Список общий для всех ПЧ семейства {deviceFamilyId === 'vl' ? 'VL' : 'Pump'} и сохраняется между проектами.
         </Typography.Paragraph>
-        <Space style={{ marginBottom: 12 }} wrap>
-          <Button type="primary" onClick={applyFavDraft}>
-            Сохранить ({favDraft.size})
-          </Button>
-          <Button onClick={() => setFavModalOpen(false)}>Отмена</Button>
-          <Button danger onClick={() => setFavDraft(new Set())} disabled={favDraft.size === 0}>
-            Очистить всё
-          </Button>
+        <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <Input
             prefix={<SearchOutlined style={{ color: '#bbb' }} />}
             placeholder="Поиск параметра по коду или названию"
@@ -1059,7 +1052,16 @@ export default function ParamGroups({
             allowClear
             style={{ width: 320 }}
           />
-        </Space>
+          <Space wrap>
+            <Button type="primary" onClick={applyFavDraft}>
+              Сохранить ({favDraft.size})
+            </Button>
+            <Button onClick={() => setFavModalOpen(false)}>Отмена</Button>
+            <Button danger onClick={() => setFavDraft(new Set())} disabled={favDraft.size === 0}>
+              Очистить всё
+            </Button>
+          </Space>
+        </div>
         <div style={{ maxHeight: 420, overflowY: 'auto' }}>
           <Collapse
             items={device.groups.map(group => {
