@@ -121,7 +121,7 @@ Stop-Process -Name electron -Force
 **2. Запуск симулятора** (эмулирует "устройства" на одном конце пары):
 ```bash
 cd backend
-npm run simulate -- COM11 9600 1:pump,2:vl,3:vl,4:pump,5:pump,6:pump,7:pump
+npm run simulate -- COM11 9600 1:pump,2:vl,3:vl,4:pump,5:pump,6:pump,7:pump,8:pump
 ```
 Это поднимет на `COM8` три виртуальных устройства на шине: slaveId 1 отвечает как Pump, slaveId 2 — как VH (можно перечислить больше через запятую, напр. `1:pump,2:vh,5:pump`).
 
@@ -176,6 +176,57 @@ Modbus/
 ---
 
 ## Electron — сборка установщика
+
+### Коротко: как собрать самому
+
+Одна команда **из корня проекта** (`C:\Modbus\Modbus`), в обычном терминале / PowerShell:
+
+```bash
+npm run dist:win
+```
+
+Она делает всё сама: собирает фронтенд, собирает бэкенд, пересобирает нативный
+`serialport` под текущую версию Electron и упаковывает установщик. Занимает
+несколько минут.
+
+Результат появится здесь:
+
+| Что | Путь |
+|---|---|
+| **Установщик** (раздавать людям) | `C:\Modbus\Modbus\dist-electron\Modbus Controller Setup 1.0.0.exe` |
+| **Портативная версия** (проверить сразу, без установки) | `C:\Modbus\Modbus\dist-electron\win-unpacked\Modbus Controller.exe` |
+
+Перед сборкой стоит закрыть dev-серверы, иначе они держат порты и мешают
+проверить собранное приложение (см. «Порт занят» ниже).
+
+> **Где приложение хранит данные.** Проекты, настройки, журнал, шаблоны значений
+> и избранное лежат в папке **`data` рядом с `Modbus Controller.exe`** (куда
+> установили — туда и данные). Если писать туда нельзя (установка в
+> `Program Files` без прав администратора), приложение автоматически
+> откатывается на `%APPDATA%\modbus-controller`. Данные из `%APPDATA%`
+> переносятся в новую папку один раз, автоматически.
+
+### Порт занят (3000 или 5173)
+
+Мешает и dev-режиму, и запуску собранного приложения: если порт 3000 уже занят
+чужим процессом, окно приложения молча покажет данные ЧУЖОГО бэкенда.
+Освободить (PowerShell):
+
+```powershell
+# порт 3000 — backend
+$p=3000; $c=Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue; if(-not $c){Write-Host "Порт $p свободен"} else {$c | ForEach-Object { $n=(Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName; Write-Host "Закрываю PID $($_.OwningProcess) ($n) на порту $p"; Stop-Process -Id $_.OwningProcess -Force }}
+
+# порт 5173 — frontend (vite)
+$p=5173; $c=Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue; if(-not $c){Write-Host "Порт $p свободен"} else {$c | ForEach-Object { $n=(Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName; Write-Host "Закрываю PID $($_.OwningProcess) ($n) на порту $p"; Stop-Process -Id $_.OwningProcess -Force }}
+```
+
+Посмотреть, кто занимает, ничего не убивая:
+
+```powershell
+Get-NetTCPConnection -LocalPort 3000,5173 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { $pr=Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue; [PSCustomObject]@{ Порт=$_.LocalPort; PID=$_.OwningProcess; Процесс=$pr.ProcessName } } | Format-Table -AutoSize
+```
+
+---
 
 `electron-builder` кладёт результат сборки в папку **`dist-electron/`** — это обычная папка **внутри самого проекта** (`<где лежит клонированный репозиторий>\dist-electron\`, например `C:\Modbus\Modbus\dist-electron\`), появляется только после того как ты сам запустишь `npm run dist:win` (в `.gitignore`, поэтому в свежесклонированном репозитории её нет — не баг, а норма).
 
