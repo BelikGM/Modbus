@@ -21,6 +21,11 @@ export interface DeviceInstance {
   // Задаётся вручную: определить исполнение по шине нельзя — ELHART не
   // поддерживает стандартную Modbus-функцию идентификации устройства (43/MEI).
   model?: string;
+  // Версия прошивки ПЧ («v1.2» / «v2.0»). У ELHART на EMD-PUMP отдельные
+  // руководства для этих версий: отличаются набором параметров и форматом
+  // некоторых значений (например температура). Определить по шине нельзя —
+  // выбирается вручную.
+  firmware?: string;
   pendingWrites?: Record<string, any>;
   currentValues?: Record<string, any>;
   notes?: DeviceNote[];

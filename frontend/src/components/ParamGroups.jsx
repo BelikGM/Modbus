@@ -316,6 +316,25 @@ export default function ParamGroups({
     return () => { cancelled = true }
   }, [activeDeviceId])
 
+  // Любое групповое чтение (в том числе «Скачать все параметры в CSV», которое
+  // запускается из панели выше) сохраняет прочитанное на бэкенде. Здесь мы об
+  // этом узнаём и перечитываем «значение на устройстве» — иначе колонка
+  // оставалась пустой, хотя параметры только что были считаны.
+  useEffect(() => {
+    function onBulkDone(d) {
+      if (d?.kind !== 'read') return
+      api.get(`/devices/${displayDeviceId}/current-values`)
+        .then(({ data }) => {
+          const cv = data ?? {}
+          setCurrentValues(cv)
+          latestCurrentValues.current = cv
+        })
+        .catch(() => {})
+    }
+    socket.on('bulk:op:done', onBulkDone)
+    return () => socket.off('bulk:op:done', onBulkDone)
+  }, [displayDeviceId])
+
   // Подготовленные значения могли измениться в другом месте (применение
   // шаблона на вкладке «Шаблоны», массовая подготовка) — перечитываем их,
   // иначе поля показывали бы старое до перезагрузки страницы.

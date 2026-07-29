@@ -3,7 +3,7 @@ import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { FSWatcher } from 'chokidar';
-import { DeviceConfig, DeviceParam } from './device.types';
+import { DeviceConfig, DeviceParam, ParamGroup } from './device.types';
 import { ProjectsService } from '../projects/projects.service';
 import { DeviceInstance, DeviceNote } from '../projects/project.types';
 
@@ -112,6 +112,20 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     'Elhart-Emd-VH-Full': 'Elhart-Emd-VL-Full',
   };
 
+  // Возвращает группы параметров шаблона с наложенными правками выбранной
+  // прошивки. Если прошивка не выбрана или правок для неё нет — отдаём как есть
+  // (важно: НЕ угадываем версию, иначе можно молча исказить значения).
+  private applyFirmwareOverrides(template: DeviceConfig, firmware?: string): ParamGroup[] {
+    const overrides = firmware ? template.firmwareOverrides?.[firmware] : undefined;
+    if (!overrides) return template.groups;
+    return template.groups.map(group => ({
+      ...group,
+      params: group.params.map(param =>
+        overrides[param.id] ? { ...param, ...overrides[param.id] } : param,
+      ),
+    }));
+  }
+
   private merge(instance: DeviceInstance): DeviceConfig | null {
     const templateId =
       this.templates.has(instance.templateId)
@@ -126,6 +140,12 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
       template: false,
       templateId,
       model: instance.model,
+      firmware: instance.firmware,
+      // Правки под выбранную прошивку применяем прямо к параметрам: например у
+      // EMD-PUMP v2.0 температура отдаётся с десятыми (регистр 380 = 38.0 °C),
+      // а у v1.2 — целыми. Без этого одно и то же значение читалось бы как
+      // 380 °C и ложно срабатывал бы порог перегрева.
+      groups: this.applyFirmwareOverrides(template, instance.firmware),
       connection: { ...template.connection, ...instance.connection },
     };
   }
@@ -200,7 +220,7 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     return merged;
   }
 
-  updateDevice(id: string, patch: { name?: string; slaveId?: number; model?: string }): DeviceConfig {
+  updateDevice(id: string, patch: { name?: string; slaveId?: number; model?: string; firmware?: string }): DeviceConfig {
     const instance = this.instances.get(id);
     if (!instance) {
       if (this.templates.has(id)) throw new BadRequestException('Нельзя редактировать шаблон');
@@ -232,6 +252,7 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
       id: newId,
       ...(patch.name !== undefined && { name: patch.name }),
       ...(patch.model !== undefined && { model: patch.model }),
+      ...(patch.firmware !== undefined && { firmware: patch.firmware }),
       connection: {
         ...instance.connection,
         ...(patch.slaveId !== undefined && { slaveId: patch.slaveId }),

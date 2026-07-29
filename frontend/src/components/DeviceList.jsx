@@ -88,6 +88,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
       name:    device.name,
       slaveId: device.connection.slaveId,
       model:   device.model,
+      firmware: device.firmware,
     })
   }
 
@@ -242,6 +243,9 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
   // ПЧ без указанной модели — только те, у чьей модели вообще есть каталог
   // исполнений (иначе указывать нечего).
   const devicesWithoutModel = allDevices.filter(d => !d.model && (d.models?.length ?? 0) > 0)
+  // То же для прошивки: от неё зависит формат некоторых значений (температура),
+  // поэтому неуказанная версия — не мелочь.
+  const devicesWithoutFirmware = allDevices.filter(d => !d.firmware && (d.firmwares?.length ?? 0) > 0)
 
   function handleDragEnd(event) {
     const { active, over } = event
@@ -313,14 +317,34 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
       {/* Модель (мощность) по шине не определяется — её задают вручную. Пока
           хотя бы у одного ПЧ она не указана, заводские значения для таких
           параметров подставить нельзя, поэтому коротко предупреждаем. */}
-      {hasProject && !compact && devicesWithoutModel.length > 0 && (
+      {hasProject && !compact && (devicesWithoutModel.length > 0 || devicesWithoutFirmware.length > 0) && (
         <div style={{
           margin: '0 16px 8px', padding: '4px 8px', borderRadius: 4,
           background: '#fffbe6', border: '1px solid #ffe58f',
         }}>
-          <Tooltip title={`Не указана модель: ${devicesWithoutModel.map(d => d.name).join(', ')}. Откройте карточку ПЧ (кнопка «Изменить») и выберите модель — без неё нельзя подставить заводские значения параметров, которые зависят от мощности.`}>
+          <Tooltip title={
+            <>
+              {devicesWithoutModel.length > 0 && (
+                <div style={{ marginBottom: 6 }}>
+                  <b>Без модели:</b> {devicesWithoutModel.map(d => d.name).join(', ')}.
+                  {' '}Без неё нельзя подставить заводские значения параметров, зависящих от мощности.
+                </div>
+              )}
+              {devicesWithoutFirmware.length > 0 && (
+                <div>
+                  <b>Без прошивки:</b> {devicesWithoutFirmware.map(d => d.name).join(', ')}.
+                  {' '}От версии зависит формат значений — например температура: v2.0 отдаёт десятые доли
+                  (380 = 38.0 °C), v1.2 целые градусы. Без указания версия не подставляется, и температура
+                  может читаться в 10 раз больше.
+                </div>
+              )}
+              {' '}Откройте карточку ПЧ (кнопка «Изменить») и заполните поля.
+            </>
+          }>
             <Typography.Text style={{ fontSize: 11, color: '#ad6800', cursor: 'help' }}>
-              ⚠ Не указана модель у {devicesWithoutModel.length} ПЧ — задайте вручную
+              ⚠ Не указано{devicesWithoutModel.length > 0 ? ` — модель: ${devicesWithoutModel.length}` : ''}
+              {devicesWithoutFirmware.length > 0 ? `${devicesWithoutModel.length > 0 ? ',' : ' —'} прошивка: ${devicesWithoutFirmware.length}` : ''}
+              {' '}ПЧ, задайте вручную
             </Typography.Text>
           </Tooltip>
         </div>
@@ -656,6 +680,19 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
               }))}
             />
           </Form.Item>
+          {(editDevice?.firmwares?.length ?? 0) > 0 && (
+            <Form.Item
+              name="firmware"
+              label="Прошивка"
+              extra="Версии отличаются набором параметров и форматом значений (например температура: v2.0 отдаёт десятые доли, v1.2 — целые градусы). Смотрите на пульте ПЧ."
+            >
+              <Select
+                allowClear
+                placeholder="Не указана"
+                options={(editDevice?.firmwares ?? []).map(v => ({ value: v, label: v }))}
+              />
+            </Form.Item>
+          )}
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             Скорость, чётность, биты данных и стоп-биты — общие настройки порта для всей шины
             (не у каждого устройства свои), их можно изменить в панели «Подключение» в шапке приложения.
