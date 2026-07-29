@@ -37,6 +37,39 @@ export default function TemplateEditor({ open, onClose }) {
   const [baseId, setBaseId] = useState(null)   // тип-основа при создании
   const [picked, setPicked] = useState(new Set()) // выбранные paramId из основы
   const [saving, setSaving] = useState(false)
+  // Отдельный режим: каталог исполнений (моделей) и список прошивок. Для
+  // ШТАТНЫХ типов эти данные хранятся не в файле поставки, а в отдельном файле
+  // дополнений — так эталон остаётся нетронутым, а список переживает обновление.
+  const [extras, setExtras] = useState(null) // { type, models: [], firmwares: [] }
+
+  function startExtras(t) {
+    setExtras({
+      type: t,
+      models: [...(t.models ?? [])],
+      firmwares: [...(t.firmwares ?? [])],
+    })
+  }
+
+  async function saveExtras() {
+    setSaving(true)
+    try {
+      const bad = extras.models.find(m => !String(m.code ?? '').trim())
+      if (bad) { message.warning('У исполнения не заполнен артикул'); return }
+      await api.patch(`/devices/templates/${encodeURIComponent(extras.type.id)}/extras`, {
+        models: extras.models,
+        firmwares: extras.firmwares,
+      })
+      message.success('Модели и прошивки сохранены')
+      addLog('success', `Обновлён каталог исполнений типа «${extras.type.name ?? extras.type.id}»: моделей ${extras.models.length}, прошивок ${extras.firmwares.length}`)
+      setExtras(null)
+      load()
+    } catch (e) {
+      message.error(e?.response?.data?.message ?? 'Не удалось сохранить')
+    } finally {
+      setSaving(false)
+    }
+  }
+
 
   function load() {
     setLoading(true)
@@ -149,6 +182,88 @@ export default function TemplateEditor({ open, onClose }) {
     }
   }
 
+  // ─── Модели и прошивки ─────────────────────────────────────────────────────
+  if (extras) {
+    return (
+      <Modal
+        title={<Space><ApartmentOutlined />Модели и прошивки: {extras.type.name ?? extras.type.id}</Space>}
+        open={open}
+        onCancel={() => setExtras(null)}
+        width={780}
+        footer={[
+          <Button key="back" onClick={() => setExtras(null)}>Назад к списку</Button>,
+          <Button key="save" type="primary" loading={saving} onClick={saveExtras}>Сохранить</Button>,
+        ]}
+      >
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="Дополнять можно и штатные типы"
+          description="Эти списки хранятся отдельно от файла поставки, поэтому эталонный шаблон остаётся нетронутым, а ваши добавления переживают обновление программы. Модель влияет на подстановку заводских значений, прошивка — на формат некоторых величин (например температуры)."
+        />
+
+        <Typography.Text strong style={{ fontSize: 12 }}>Версии прошивки</Typography.Text>
+        <Select
+          mode="tags"
+          style={{ width: '100%', marginTop: 6, marginBottom: 14 }}
+          placeholder="Например: v1.2, v2.0 — введите и нажмите Enter"
+          value={extras.firmwares}
+          onChange={v => setExtras({ ...extras, firmwares: v })}
+        />
+
+        <Space style={{ marginBottom: 8 }}>
+          <Typography.Text strong style={{ fontSize: 12 }}>Исполнения (мощности)</Typography.Text>
+          <Button size="small" icon={<PlusOutlined />} onClick={() => setExtras({
+            ...extras, models: [...extras.models, { code: '', powerKw: 0, supply: '3~380В' }],
+          })}>Добавить</Button>
+        </Space>
+        <Table
+          size="small"
+          pagination={{ pageSize: 8, size: 'small' }}
+          rowKey={(_, i) => i}
+          dataSource={extras.models}
+          locale={{ emptyText: 'Исполнений пока нет' }}
+          columns={[
+            {
+              title: 'Артикул', render: (_, m, i) => (
+                <Input size="small" value={m.code} placeholder="EMD-PUMP-0037 T"
+                  onChange={e => setExtras({
+                    ...extras,
+                    models: extras.models.map((x, j) => j === i ? { ...x, code: e.target.value } : x),
+                  })} />
+              ),
+            },
+            {
+              title: 'Мощность, кВт', width: 140, render: (_, m, i) => (
+                <InputNumber size="small" step={0.1} value={m.powerKw} style={{ width: '100%' }}
+                  onChange={v => setExtras({
+                    ...extras,
+                    models: extras.models.map((x, j) => j === i ? { ...x, powerKw: v } : x),
+                  })} />
+              ),
+            },
+            {
+              title: 'Питание', width: 130, render: (_, m, i) => (
+                <Input size="small" value={m.supply ?? ''} placeholder="3~380В"
+                  onChange={e => setExtras({
+                    ...extras,
+                    models: extras.models.map((x, j) => j === i ? { ...x, supply: e.target.value } : x),
+                  })} />
+              ),
+            },
+            {
+              title: '', width: 40, render: (_, __, i) => (
+                <Button size="small" type="text" danger icon={<DeleteOutlined />}
+                  onClick={() => setExtras({ ...extras, models: extras.models.filter((_, j) => j !== i) })} />
+              ),
+            },
+          ]}
+        />
+      </Modal>
+    )
+  }
+
   // ─── Список типов ──────────────────────────────────────────────────────────
   if (!editing) {
     return (
@@ -192,6 +307,9 @@ export default function TemplateEditor({ open, onClose }) {
             {
               title: '', width: 250, render: (_, t) => (
                 <Space size={4}>
+                  <Tooltip title="Каталог исполнений и версии прошивки — можно дополнять и у штатных типов">
+                    <Button size="small" onClick={() => startExtras(t)}>Модели</Button>
+                  </Tooltip>
                   <Tooltip title="Создать свой тип на основе этого">
                     <Button size="small" icon={<CopyOutlined />} onClick={() => startNew(t.id)}>За основу</Button>
                   </Tooltip>

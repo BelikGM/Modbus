@@ -35,6 +35,13 @@ export class DevicesController {
     return this.devicesService.saveTemplate({ ...body, id }, { overwrite: true });
   }
 
+  // Дополнения к штатному типу (каталог исполнений, список прошивок) — файл
+  // поставки при этом не меняется
+  @Patch('templates/:id/extras')
+  updateTemplateExtras(@Param('id') id: string, @Body() body: { models?: any[]; firmwares?: string[] }) {
+    return this.devicesService.saveTemplateExtras(id, body ?? {});
+  }
+
   @Delete('templates/:id')
   deleteTemplate(@Param('id') id: string) {
     this.devicesService.deleteTemplate(id);

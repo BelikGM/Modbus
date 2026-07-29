@@ -192,8 +192,9 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
       this.templates.has(instance.templateId)
         ? instance.templateId
         : (DevicesService.TEMPLATE_ALIASES[instance.templateId] ?? instance.templateId);
-    const template = this.templates.get(templateId);
-    if (!template) return null;
+    const rawTemplate = this.templates.get(templateId);
+    if (!rawTemplate) return null;
+    const template = this.withExtras(rawTemplate);
     return {
       ...template,
       id: instance.id,
@@ -226,7 +227,8 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
   getById(id: string): DeviceConfig | null {
     const inst = this.instances.get(id);
     if (inst) return this.merge(inst);
-    return this.templates.get(id) ?? null;
+    const tpl = this.templates.get(id);
+    return tpl ? this.withExtras(tpl) : null;
   }
 
   findParam(deviceId: string, paramId: string): DeviceParam | null {
@@ -249,7 +251,7 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
   }
 
   getTemplates(): DeviceConfig[] {
-    return Array.from(this.templates.values());
+    return Array.from(this.templates.values()).map(t => this.withExtras(t));
   }
 
   createDevice(templateId: string, name: string, slaveId: number): DeviceConfig {
@@ -528,6 +530,47 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
   // удаления: пользовательские помечаются `custom: true`. Иначе правка «под
   // объект» испортила бы эталон, и восстановить его можно было бы только
   // переустановкой.
+
+  // ─── Дополнения к ШТАТНЫМ типам ────────────────────────────────────────────
+  //
+  // Штатный шаблон править нельзя (иначе эталон не восстановить), но каталог
+  // исполнений и список прошивок пользователю дополнять нужно — производитель
+  // выпускает новые. Такие дополнения храним ОТДЕЛЬНО в userData и подмешиваем
+  // при выдаче: файл поставки остаётся нетронутым, а данные переживают
+  // обновление программы.
+  private extrasPath(): string {
+    const userDataPath = process.env.USER_DATA_PATH ?? path.join(process.cwd(), '..');
+    return path.join(userDataPath, 'template-extras.json');
+  }
+
+  private loadExtras(): Record<string, { models?: any[]; firmwares?: string[] }> {
+    try {
+      const f = this.extrasPath();
+      if (fs.existsSync(f)) return JSON.parse(fs.readFileSync(f, 'utf-8')) ?? {};
+    } catch { /* повреждён — считаем, что дополнений нет */ }
+    return {};
+  }
+
+  private withExtras(tpl: DeviceConfig): DeviceConfig {
+    const extra = this.loadExtras()[tpl.id];
+    if (!extra) return tpl;
+    return {
+      ...tpl,
+      ...(extra.models ? { models: extra.models } : {}),
+      ...(extra.firmwares ? { firmwares: extra.firmwares } : {}),
+    };
+  }
+
+  saveTemplateExtras(id: string, patch: { models?: any[]; firmwares?: string[] }): DeviceConfig {
+    const tpl = this.templates.get(id);
+    if (!tpl) throw new NotFoundException(`Тип ПЧ '${id}' не найден`);
+    const all = this.loadExtras();
+    all[id] = { ...(all[id] ?? {}), ...patch };
+    fs.writeFileSync(this.extrasPath(), JSON.stringify(all, null, 2), 'utf-8');
+    const updated = this.withExtras(tpl);
+    this.events.emit('device:changed', updated);
+    return updated;
+  }
 
   private templateFilePath(id: string): string {
     // Имя файла = id, очищенный от всего, что ломает путь

@@ -19,8 +19,20 @@ import api from '../api'
 import { sortByDeviceOrder } from '../deviceOrder'
 import { ALL_DEVICES } from './ParamGroups'
 
+// Семейство ПЧ. Приоритет — явное поле family из шаблона: у своих типов оно
+// задаётся в редакторе. Для штатных шаблонов, где поля ещё нет, оставлен
+// прежний разбор по названию, чтобы старые проекты не поехали.
 function deviceType(device) {
+  if (device.family) return device.family
   return (device.templateId ?? device.id ?? '').toLowerCase().includes('vl') ? 'vl' : 'pump'
+}
+
+function familyLabel(device) {
+  if (device.familyLabel) return device.familyLabel
+  const f = deviceType(device)
+  if (f === 'vl') return 'VL'
+  if (f === 'pump') return 'Pump'
+  return f.charAt(0).toUpperCase() + f.slice(1)
 }
 
 function SortableDeviceRow({ id, compact, mirrored, children }) {
@@ -58,7 +70,8 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
   const [submitting, setSubmitting] = useState(false)
   const [addForm]                   = Form.useForm()
   const [editForm]                  = Form.useForm()
-  const [visibleTypes, setVisibleTypes] = useState(new Set(['pump', 'vl']))
+  // null = «показаны все» (в т.ч. семейства, появившиеся после создания типа)
+  const [visibleTypes, setVisibleTypes] = useState(null)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
   async function openAdd() {
@@ -184,7 +197,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
   // невидимыми выбранными ПЧ — путаница, идентичная той, что уже была
   // исправлена для отдельных чекбоксов Pump/VL.
   function setAllTypesVisible(checked) {
-    setVisibleTypes(checked ? new Set(['pump', 'vl']) : new Set())
+    setVisibleTypes(checked ? null : new Set())
     if (!checked && selectedIds.size > 0) {
       onSelectionChange(new Set())
     }
@@ -206,7 +219,9 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
     // обработчика, а не внутри апдейтера setVisibleTypes — вызов чужого setState
     // из апдейтера нарушает правила React ("Cannot update a component while
     // rendering a different component") и реально ронял приложение.
-    const next = new Set(visibleTypes)
+    // из «показаны все» разворачиваем в явный список, иначе снятие одной
+    // галочки не с чего было бы вычитать
+    const next = new Set(visibleTypes ?? families.map(f => f.id))
     if (checked) next.add(type)
     else next.delete(type)
     setVisibleTypes(next)
@@ -241,9 +256,19 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
   // App.jsx (единый источник, чтобы групповой просмотр наследовал тот же
   // порядок, см. deviceOrder.js).
   const allDevices = sortByDeviceOrder(rawDevices, deviceOrder)
-  const hasPump = allDevices.some(d => deviceType(d) === 'pump')
-  const hasVl   = allDevices.some(d => deviceType(d) === 'vl')
-  const visibleDevices = allDevices.filter(d => visibleTypes.has(deviceType(d)))
+  // Семейства собираем по фактическим устройствам проекта: их может быть больше
+  // двух, если созданы свои типы ПЧ.
+  const families = []
+  for (const d of allDevices) {
+    const f = deviceType(d)
+    if (!families.some(x => x.id === f)) families.push({ id: f, label: familyLabel(d) })
+  }
+  families.sort((a, b) => a.label.localeCompare(b.label, 'ru'))
+  // visibleTypes === null означает «показаны все» — так новое семейство,
+  // появившееся после создания типа, не оказывается скрытым по умолчанию.
+  const isFamilyVisible = f => visibleTypes === null || visibleTypes.has(f)
+  const allFamiliesVisible = visibleTypes === null || families.every(f => visibleTypes.has(f.id))
+  const visibleDevices = allDevices.filter(d => isFamilyVisible(deviceType(d)))
   // ПЧ без указанной модели — только те, у чьей модели вообще есть каталог
   // исполнений (иначе указывать нечего).
   const devicesWithoutModel = allDevices.filter(d => !d.model && (d.models?.length ?? 0) > 0)
@@ -259,7 +284,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
     const newVisibleOrder = arrayMove(visibleDevices, oldIndex, newIndex).map(d => d.id)
     // Устройства, скрытые сейчас фильтром типа, не участвовали в перетаскивании —
     // сохраняем их в конце в прежнем относительном порядке.
-    const hiddenIds = allDevices.filter(d => !visibleTypes.has(deviceType(d))).map(d => d.id)
+    const hiddenIds = allDevices.filter(d => !isFamilyVisible(deviceType(d))).map(d => d.id)
     const newOrder = [...newVisibleOrder, ...hiddenIds]
     onDeviceOrderChange(newOrder)
     if (activeProjectId) {
@@ -379,57 +404,56 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
       {hasProject && allDevices.length > 0 && !compact && (
         <div style={{ padding: '0 16px 8px', borderBottom: '1px solid #f5f5f5', marginBottom: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-            {/* Клик по квадратику — обычное вкл/выкл типа; клик по НАДПИСИ —
-                «показать только этот тип» (снимает остальные). Поэтому подпись
-                вынесена из <Checkbox> в отдельный span со своим обработчиком —
-                внутри antd-чекбокса она была бы частью <label> и всегда просто
-                переключала галочку. */}
-            <Space direction="vertical" size={4}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <Checkbox
-                  checked={visibleTypes.size === 2}
-                  onChange={e => setAllTypesVisible(e.target.checked)}
-                />
-                {/* «Все» — не «показать только эту группу», а обычный
-                    переключатель: клик по надписи делает то же, что клик по
-                    квадратику (снять всё / выбрать всё). */}
-                <span
-                  onClick={() => setAllTypesVisible(visibleTypes.size !== 2)}
-                  style={{ fontSize: 12, cursor: 'pointer' }}
-                  title={visibleTypes.size === 2 ? 'Снять все' : 'Показать все типы'}
-                >
-                  Все
+            {/* Фильтр семейств. До 6 семейств — привычные чекбоксы (клик по
+                квадратику включает/выключает, клик по названию оставляет только
+                его). Больше 6 — список превращается в выпадающее меню, иначе
+                колонка фильтров занимала бы весь сайдбар. */}
+            {families.length <= 6 ? (
+              <Space direction="vertical" size={4}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <Checkbox
+                    checked={allFamiliesVisible}
+                    indeterminate={!allFamiliesVisible && visibleTypes !== null && visibleTypes.size > 0}
+                    onChange={e => setAllTypesVisible(e.target.checked)}
+                  />
+                  <span
+                    onClick={() => setAllTypesVisible(!allFamiliesVisible)}
+                    style={{ fontSize: 12, cursor: 'pointer' }}
+                    title={allFamiliesVisible ? 'Снять все' : 'Показать все типы'}
+                  >
+                    Все
+                  </span>
                 </span>
-              </span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <Checkbox
-                  checked={visibleTypes.has('pump')}
-                  disabled={!hasPump}
-                  onChange={e => toggleType('pump', e.target.checked)}
-                />
-                <span
-                  onClick={() => hasPump && showOnlyType('pump')}
-                  style={{ fontSize: 12, cursor: hasPump ? 'pointer' : 'default', opacity: hasPump ? 1 : 0.4 }}
-                  title="Показать только Pump"
-                >
-                  Pump
-                </span>
-              </span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <Checkbox
-                  checked={visibleTypes.has('vl')}
-                  disabled={!hasVl}
-                  onChange={e => toggleType('vl', e.target.checked)}
-                />
-                <span
-                  onClick={() => hasVl && showOnlyType('vl')}
-                  style={{ fontSize: 12, cursor: hasVl ? 'pointer' : 'default', opacity: hasVl ? 1 : 0.4 }}
-                  title="Показать только VL"
-                >
-                  VL
-                </span>
-              </span>
-            </Space>
+                {families.map(f => (
+                  <span key={f.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <Checkbox
+                      checked={isFamilyVisible(f.id)}
+                      onChange={e => toggleType(f.id, e.target.checked)}
+                    />
+                    <span
+                      onClick={() => showOnlyType(f.id)}
+                      style={{ fontSize: 12, cursor: 'pointer' }}
+                      title={`Показать только ${f.label}`}
+                    >
+                      {f.label}
+                    </span>
+                  </span>
+                ))}
+              </Space>
+            ) : (
+              <Select
+                mode="multiple"
+                size="small"
+                style={{ minWidth: 160, maxWidth: 220 }}
+                placeholder="Типы ПЧ"
+                value={families.filter(f => isFamilyVisible(f.id)).map(f => f.id)}
+                onChange={vals => setVisibleTypes(new Set(vals))}
+                maxTagCount={1}
+                maxTagPlaceholder={omitted => `+${omitted.length}`}
+                options={families.map(f => ({ value: f.id, label: f.label }))}
+              />
+            )
+            }
             <Space direction="vertical" size={4} style={{ marginLeft: 'auto', alignItems: 'flex-end' }}>
               {visibleDevices.length > 0 && (
                 <Button
