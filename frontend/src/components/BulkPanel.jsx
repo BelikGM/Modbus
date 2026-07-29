@@ -121,12 +121,18 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
     function flush() {
       flushTimer = null
       if (Object.keys(acc).length === 0) return
+      // Копию накопителя снимаем ДО очистки: updater в setState вызывается
+      // отложенно (на рендере), и если очистить acc сразу, он увидит пустой
+      // объект — часть прочитанных значений просто исчезала из таблицы
+      // (те самые прочерки у одного ПЧ при заполненной колонке у другого).
+      const batch = {}
+      for (const [dId, vals] of Object.entries(acc)) batch[dId] = { ...vals }
+      for (const k of Object.keys(acc)) delete acc[k]
       setBulkReadResults(prev => {
         const next = { ...prev }
-        for (const [dId, vals] of Object.entries(acc)) next[dId] = { ...next[dId], ...vals }
+        for (const [dId, vals] of Object.entries(batch)) next[dId] = { ...next[dId], ...vals }
         return next
       })
-      for (const k of Object.keys(acc)) delete acc[k]
     }
     function schedule() { if (!flushTimer) flushTimer = setTimeout(flush, 80) }
     function onTotal(t) { setBulkOpBar({ kind: t.kind, done, total: t.total }) }

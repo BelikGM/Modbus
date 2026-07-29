@@ -137,8 +137,13 @@ function ParamRow({ device, param, modbusConnected, deviceRunning, injectedValue
   }
 
   const defaultFormatted = formatParamValue(param.type, param.default, param.unit, param.options)
-  // injectedValue (from group read) takes priority; cleared on individual read/write so value wins
-  const displayValue = injectedValue !== undefined ? injectedValue : value
+  // Приоритет: свежий результат группового чтения -> значение, прочитанное
+  // кнопкой в этой строке -> последнее сохранённое «значение на устройстве».
+  // Последнее нужно, чтобы колонка не пустела при переключении вкладки/ПЧ:
+  // прочитанные значения хранятся в проекте, и показывать их надо всегда.
+  const displayValue = injectedValue !== undefined
+    ? injectedValue
+    : (value !== null && value !== undefined ? value : (currentValue ?? null))
   const currentFormatted = formatParamValue(param.type, displayValue, param.unit, param.options)
 
   return (

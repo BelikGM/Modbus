@@ -581,6 +581,8 @@ export class ModbusGateway
     let ok = 0;
     // Накопитель прочитанного по устройствам — в конце разом сохраняем в проект
     const readByDevice: Record<string, Record<string, number>> = {};
+    // Не прочитавшиеся с первого раза — повторим одним проходом в конце
+    const failed: { deviceId: string; slaveId: number; param: DeviceParam; message: string }[] = [];
 
     outer:
     for (const deviceId of payload.deviceIds) {
@@ -613,11 +615,44 @@ export class ModbusGateway
           });
           ok++;
         } catch (e) {
-          client.emit('bulk:op:progress', {
-            kind: 'read', deviceId, paramId, name: param.name, error: (e as Error).message,
-          });
+          // Не рапортуем об ошибке сразу — соберём и попробуем ещё раз в конце,
+          // когда шина «успокоится» (см. финальный проход ниже).
+          failed.push({ deviceId, slaveId, param, message: (e as Error).message });
         }
         done++;
+      }
+    }
+
+    // Финальный проход по не прочитавшимся параметрам: единичные сбои на RS-485
+    // (таймаут, битый CRC, коллизия) обычно уже не повторяются, а повтор сразу
+    // на месте попадает в ту же «плохую» секунду. Событие прогресса по такому
+    // параметру отправляется ровно один раз — здесь, по итогу второй попытки.
+    if (failed.length && !this.bulkOpCancelled) {
+      for (const f of failed) {
+        if (this.bulkOpCancelled) break;
+        try {
+          const rawValue = await this.modbusService.readRegister(f.param.register, f.slaveId);
+          const value = rawValue * (f.param.scale ?? 1);
+          readByDevice[f.deviceId] = { ...(readByDevice[f.deviceId] ?? {}), [f.param.id]: value };
+          client.emit('bulk:op:progress', {
+            kind: 'read', deviceId: f.deviceId, paramId: f.param.id,
+            value, unit: f.param.unit, name: f.param.name,
+            type: f.param.type, options: f.param.options, bits: f.param.bits,
+          });
+          ok++;
+        } catch (e) {
+          client.emit('bulk:op:progress', {
+            kind: 'read', deviceId: f.deviceId, paramId: f.param.id,
+            name: f.param.name, error: (e as Error).message,
+          });
+        }
+      }
+    } else if (failed.length) {
+      // Операцию отменили — просто сообщаем об ошибках как есть.
+      for (const f of failed) {
+        client.emit('bulk:op:progress', {
+          kind: 'read', deviceId: f.deviceId, paramId: f.param.id, name: f.param.name, error: f.message,
+        });
       }
     }
 

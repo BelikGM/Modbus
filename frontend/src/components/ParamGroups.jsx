@@ -544,17 +544,26 @@ export default function ParamGroups({
       function flush() {
         flushTimer = null
         setOpProgress({ done, total })
+        // ВАЖНО: сначала СНИМАЕМ КОПИЮ накопителя и только потом очищаем его.
+        // Функция-updater в setState выполняется не в момент вызова, а позже
+        // (на этапе рендера), поэтому если очистить накопитель сразу после
+        // вызова, updater получит уже пустой объект и часть значений потеряется —
+        // именно из-за этого в таблице группового чтения появлялись прочерки, а
+        // у одиночного ПЧ колонка «Значение на устройстве» оставалась пустой.
         if (Object.keys(gvAcc).length) {
-          setGroupValues(prev => ({ ...prev, ...gvAcc }))
+          const gvBatch = { ...gvAcc }
           for (const k of Object.keys(gvAcc)) delete gvAcc[k]
+          setGroupValues(prev => ({ ...prev, ...gvBatch }))
         }
         if (Object.keys(brAcc).length) {
+          const brBatch = {}
+          for (const [dId, vals] of Object.entries(brAcc)) brBatch[dId] = { ...vals }
+          for (const k of Object.keys(brAcc)) delete brAcc[k]
           setBulkResults(prev => {
             const next = { ...prev }
-            for (const [dId, vals] of Object.entries(brAcc)) next[dId] = { ...next[dId], ...vals }
+            for (const [dId, vals] of Object.entries(brBatch)) next[dId] = { ...next[dId], ...vals }
             return next
           })
-          for (const k of Object.keys(brAcc)) delete brAcc[k]
         }
       }
       function schedule() { if (!flushTimer) flushTimer = setTimeout(flush, 80) }
