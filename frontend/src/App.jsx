@@ -10,8 +10,9 @@ import LogDrawer from './components/LogDrawer'
 import ProjectSelector from './components/ProjectSelector'
 import socket from './socket'
 import api from './api'
-import { useLog } from './log'
+import { useLog, setLogProject, addLog } from './log'
 import { sortByDeviceOrder } from './deviceOrder'
+import { ALL_DEVICES } from './components/ParamGroups'
 import 'antd/dist/reset.css'
 import './App.css'
 
@@ -96,6 +97,9 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    // Журнал ведётся пер-проект и хранится на бэкенде — подтягиваем историю
+    // выбранного проекта (переживает перезагрузку страницы).
+    setLogProject(activeProjectId)
     if (!activeProjectId) { setDeviceOrder(null); return }
     api.get('/settings').then(({ data }) => {
       setDeviceOrder(data.deviceOrders?.[activeProjectId] ?? null)
@@ -116,7 +120,9 @@ export default function App() {
     })
   }
 
-  const SIDER_MIN_WIDTH = 56
+  // Уже этого сайдбар не сжимается: должно оставаться место под галочку
+  // (в группе/нет) и номер адреса ПЧ — самое важное в списке.
+  const SIDER_MIN_WIDTH = 72
   const SIDER_MAX_WIDTH = 520
 
   const startResize = useCallback((e) => {
@@ -151,6 +157,10 @@ export default function App() {
   const [connectedPort, setConnectedPort] = useState(null) // { portPath, baudRate }
   const [waitingPort, setWaitingPort] = useState(null)     // portPath | null
   const [logOpen, setLogOpen] = useState(false)
+  // Идёт групповое чтение/запись. На это время блокируем смену выбора ПЧ и
+  // вкладок: иначе смена состава выборки на лету обнуляла уже накопленную
+  // таблицу результатов, и она начинала заполняться с середины чтения.
+  const [bulkBusy, setBulkBusy] = useState(false)
   const entries = useLog()
   const errorCount = entries.filter(e => e.level === 'error').length
 
@@ -181,6 +191,10 @@ export default function App() {
       // не дожидаясь следующего фонового цикла проверки на бэкенде.
       if (!status.connected) setLiveness({})
     })
+    socket.on('bulk:op:total', () => setBulkBusy(true))
+    socket.on('bulk:op:progress', () => setBulkBusy(true))
+    socket.on('bulk:op:done', () => setBulkBusy(false))
+    socket.on('bulk:op:error', () => setBulkBusy(false))
     socket.on('devices:liveness:snapshot', snapshot => setLiveness(snapshot ?? {}))
     socket.on('device:liveness', ({ deviceId, online }) => {
       setLiveness(prev => ({ ...prev, [deviceId]: online }))
@@ -193,6 +207,10 @@ export default function App() {
       socket.off('modbus:status')
       socket.off('devices:liveness:snapshot')
       socket.off('device:liveness')
+      socket.off('bulk:op:total')
+      socket.off('bulk:op:progress')
+      socket.off('bulk:op:done')
+      socket.off('bulk:op:error')
     }
   }, [])
 
@@ -304,9 +322,18 @@ export default function App() {
               sidebarWidth={siderWidth}
               deviceOrder={deviceOrder}
               onDeviceOrderChange={setDeviceOrder}
-              focusedDeviceId={focusedDeviceId}
-              onFocusDevice={setFocusedDeviceId}
+              // Подсветка просматриваемого ПЧ имеет смысл только на вкладке
+              // «Параметры» — на «Мониторинге» показания идут по всей группе,
+              // и выделять там один ПЧ нечего (вернётся при возврате назад).
+              focusedDeviceId={activeDeviceTab === 'params' ? focusedDeviceId : null}
+              onFocusDevice={id => {
+                setFocusedDeviceId(id)
+                // Одиночный клик по ПЧ = «покажи его параметры»: сразу
+                // переключаемся на нужную вкладку.
+                if (id !== ALL_DEVICES) setActiveDeviceTab('params')
+              }}
               mirrored={siderSide === 'right'}
+              locked={bulkBusy}
             />
           </div>
         </Sider>
@@ -317,6 +344,13 @@ export default function App() {
             // просмотр показывает устройства в порядке их обнаружения/создания
             // в проекте, даже если пользователь вручную переставил их слева.
             const selectedDevices = sortByDeviceOrder(devices, deviceOrder).filter(d => selectedIds.has(d.id))
+            // Просматриваемый ПЧ (одиночный клик) может НЕ входить в группу,
+            // отмеченную галочками, — это два независимых механизма: галочки
+            // собирают группу для массовых операций, одиночный клик выбирает,
+            // чьи параметры показать.
+            const focusedDevice = focusedDeviceId && focusedDeviceId !== ALL_DEVICES
+              ? devices.find(d => d.id === focusedDeviceId) ?? null
+              : null
             if (selectedIds.size > 1) {
               return (
                 <BulkPanel
@@ -327,16 +361,22 @@ export default function App() {
                   onActiveTabChange={setActiveDeviceTab}
                   focusedDeviceId={focusedDeviceId}
                   onFocusDevice={setFocusedDeviceId}
+                  focusedDevice={focusedDevice}
+                  locked={bulkBusy}
                 />
               )
             }
-            if (selectedIds.size === 1 && selectedDevices[0]) {
+            // Один ПЧ в группе (или ни одного) — показываем просматриваемый,
+            // а если его нет, единственный отмеченный галочкой.
+            const single = focusedDevice ?? selectedDevices[0]
+            if (single) {
               return (
                 <DeviceDetail
-                  device={selectedDevices[0]}
+                  device={single}
                   modbusConnected={connected}
                   activeTab={activeDeviceTab}
                   onActiveTabChange={setActiveDeviceTab}
+                  inGroup={selectedIds.has(single.id)}
                 />
               )
             }

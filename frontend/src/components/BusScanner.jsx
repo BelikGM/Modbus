@@ -418,7 +418,7 @@ export default function BusScanner({ connected }) {
                       <Tag color="blue" style={{ fontSize: 13, padding: '2px 8px' }}>
                         Slave ID {id}
                       </Tag>
-                      <Tooltip title="Сырая идентификация (MEI / FC17)">
+                      <Tooltip title="Диагностика: спросить у устройства его паспорт стандартными функциями Modbus (43/MEI «Read Device Identification» и 17/FC17 «Report Server ID»). ELHART их не поддерживает, поэтому обычно приходит ошибка — модель определяется по характерным регистрам. Нужно только для разбора нестандартных устройств.">
                         <Button
                           size="small"
                           type="text"

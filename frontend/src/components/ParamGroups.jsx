@@ -22,6 +22,7 @@ import { useDeviceSettings } from '../useDeviceSettings'
 import { isParamWritable } from '../access'
 import { downloadCsv, groupFileLabel } from '../csv'
 import { processStart, processUpdate, processDone, processInfo } from '../notify'
+import { addLog } from '../log'
 import OverwriteGuard, { collectOverwriteConflicts } from './OverwriteGuard'
 
 // Значение/запись специально не растянуты "с запасом" — короткие значения
@@ -122,7 +123,15 @@ export default function ParamGroups({
   device, devices, modbusConnected, deviceRunning, onWrite,
   visibleGroupIds: controlledVisibleGroupIds, onVisibleGroupIdsChange,
   focusedDeviceId, onFocusDevice,
+  // Просматриваемый ПЧ может быть ВНЕ группы (галочками отмечены одни, а
+  // одиночным кликом смотрим другой) — тогда его показываем в переключателе
+  // отдельным пунктом, а групповые операции блокируем.
+  focusedDevice,
+  // false — просматриваемый ПЧ не входит в группу (не отмечен галочкой):
+  // массовые операции по группе к нему не относятся и блокируются.
+  groupOpsEnabled = true,
 }) {
+  const outOfGroupHint = 'ПЧ не отмечен галочкой — групповые операции недоступны'
   // В одиночном режиме (DeviceDetail) `devices` не передаётся — работаем с одним
   // `device`. В групповом (BulkPanel) `devices` — полный список выбранных ПЧ
   // одного семейства; `device` при этом — "эталон" с самой полной картой
@@ -133,18 +142,25 @@ export default function ParamGroups({
   const isBulk = effectiveDevices.length > 1
   const [activeDeviceId, setActiveDeviceId] = useState(effectiveDeviceIds[0])
   const isAllMode = isBulk && activeDeviceId === ALL_DEVICES
+  // Просматриваемый ПЧ вне группы — его тоже можно выбрать в переключателе
+  // (пункт помечен «вне группы»), но групповые кнопки при этом заблокированы.
+  const outsideDevice = focusedDevice && !effectiveDeviceIds.includes(focusedDevice.id) ? focusedDevice : null
+  const selectableDevices = outsideDevice ? [...effectiveDevices, outsideDevice] : effectiveDevices
   useEffect(() => {
-    if (activeDeviceId !== ALL_DEVICES && !effectiveDeviceIds.includes(activeDeviceId)) setActiveDeviceId(effectiveDeviceIds[0])
+    if (activeDeviceId !== ALL_DEVICES && !selectableDevices.some(d => d.id === activeDeviceId)) {
+      setActiveDeviceId(effectiveDeviceIds[0])
+    }
     setBulkResults({}) // сменился состав выборки — старые групповые результаты не актуальны
   }, [effectiveDeviceIds.join(',')])
 
   // Клик по строке в сайдбаре делает ПЧ активным — переключатель ниже следует
   // за ним (и наоборот: выбор в переключателе подсвечивает строку слева).
   useEffect(() => {
-    if (focusedDeviceId && effectiveDeviceIds.includes(focusedDeviceId) && focusedDeviceId !== activeDeviceId) {
+    if (focusedDeviceId && focusedDeviceId !== activeDeviceId &&
+        (focusedDeviceId === ALL_DEVICES || selectableDevices.some(d => d.id === focusedDeviceId))) {
       setActiveDeviceId(focusedDeviceId)
     }
-  }, [focusedDeviceId])
+  }, [focusedDeviceId, outsideDevice?.id])
 
   function changeActiveDevice(id) {
     setActiveDeviceId(id)
@@ -155,8 +171,12 @@ export default function ParamGroups({
   }
   // В режиме «Все» показываем как образец эталонное устройство (с самой полной
   // картой), а правки пишем во все; в обычном — выбранное устройство.
-  const activeDevice = isAllMode ? device : (effectiveDevices.find(d => d.id === activeDeviceId) ?? effectiveDevices[0])
+  const activeDevice = isAllMode ? device : (selectableDevices.find(d => d.id === activeDeviceId) ?? effectiveDevices[0])
   const displayDeviceId = isAllMode ? device.id : activeDeviceId
+  // Групповые операции идут по отмеченной галочками группе — если сейчас
+  // просматривается ПЧ вне неё, кнопки «…все» блокируются.
+  const viewingOutsideGroup = !!outsideDevice && activeDeviceId === outsideDevice.id
+  const groupOpsAllowed = groupOpsEnabled && !viewingOutsideGroup
 
   const [readingGroup, setReadingGroup] = useState(null)
   const [groupValues, setGroupValues]   = useState({})
@@ -407,6 +427,11 @@ export default function ParamGroups({
     try {
       await api.post('/presets', { name, family: deviceFamilyId, values: presetValues })
       message.success(`Шаблон «${name}» создан из избранного (${Object.keys(presetValues).length} рег.)`)
+      addLog('success', `Создан шаблон «${name}» из избранного (${Object.keys(presetValues).length} параметров)`)
+      // Вкладка «Шаблоны» — отдельный компонент со своим списком, который
+      // грузится один раз; без этого события новый шаблон появлялся там только
+      // после перезагрузки страницы.
+      window.dispatchEvent(new CustomEvent('presets:changed'))
       setFavPresetOpen(false)
       setFavPresetName('')
     } catch (e) {
@@ -560,6 +585,7 @@ export default function ParamGroups({
       if (key) processInfo(key, `Группа «${group.name}» прочитана частично (${result.ok}/${result.total})`)
     } else {
       message.success(`Группа «${group.name}» прочитана (${result.ok}/${result.total})`)
+      addLog("success", `Прочитана группа «${group.name}»: ${result.ok} из ${result.total} параметров${isBulk ? `, ПЧ: ${effectiveDeviceIds.length}` : ""}`)
       if (key) processDone(key, `Группа «${group.name}» прочитана (${result.ok}/${result.total})`)
     }
     if (effectiveDeviceIds.length === 1) {
@@ -592,6 +618,7 @@ export default function ParamGroups({
       if (key) processInfo(key, `Группа «${group.name}» записана частично (${result.ok}/${result.total})`)
     } else {
       message.success(`Записано ${result.ok} из ${result.total} (группа «${group.name}»)`)
+      addLog("success", `Записана группа «${group.name}»: ${result.ok} из ${result.total} параметров${isBulk ? `, ПЧ: ${effectiveDeviceIds.length}` : ""}`)
       if (key) processDone(key, `Записано ${result.ok} из ${result.total} (группа «${group.name}»)`)
     }
     setPendingVersion(v => v + 1)
@@ -635,6 +662,7 @@ export default function ParamGroups({
           ? `Запись завершена — обработаны все отображаемые группы (${total})`
           : `Сброс завершён — все отображаемые группы (${total})`
       message.success(doneMsg)
+      addLog("success", doneMsg)
       processDone(key, doneMsg, `${verb} завершён`)
     }
   }
@@ -660,6 +688,7 @@ export default function ParamGroups({
       if (key) processInfo(key, `Группа «${group.name}» сброшена частично (${result.ok}/${result.total})`)
     } else {
       message.success(`Сброшено ${result.ok} из ${result.total} параметров группы ${group.name}`)
+      addLog("warning", `Сброс до заводских: группа «${group.name}», ${result.ok} из ${result.total} параметров`)
       if (key) processDone(key, `Сброшено ${result.ok} из ${result.total} (группа «${group.name}»)`)
     }
   }
@@ -843,21 +872,6 @@ export default function ParamGroups({
           allowClear
           style={{ width: searchFocused || search ? 320 : 110, transition: 'width 0.15s' }}
         />
-        {isBulk && (
-          <Select
-            value={activeDeviceId}
-            onChange={changeActiveDevice}
-            style={{ width: 240 }}
-            popupMatchSelectWidth={false}
-            options={[
-              { value: ALL_DEVICES, label: `★ Все выбранные ПЧ (${effectiveDeviceIds.length}) — править разом` },
-              ...effectiveDevices.map(d => ({
-                value: d.id,
-                label: `${d.name} · Адрес ${d.connection.slaveId}`,
-              })),
-            ]}
-          />
-        )}
         <Button
           icon={<FileTextOutlined />}
           onClick={openPresetModal}
@@ -881,20 +895,24 @@ export default function ParamGroups({
           </Button>
         ) : (
           <>
-            <Button
-              icon={<DownloadOutlined />}
-              disabled={!modbusConnected}
-              onClick={() => processAllGroups('read')}
-            >
-              Прочитать все
-            </Button>
-            <Button
-              icon={<UploadOutlined />}
-              disabled={!modbusConnected}
-              onClick={() => processAllGroups('write')}
-            >
-              Записать все
-            </Button>
+            <Tooltip title={groupOpsAllowed ? '' : outOfGroupHint}>
+              <Button
+                icon={<DownloadOutlined />}
+                disabled={!modbusConnected || !groupOpsAllowed}
+                onClick={() => processAllGroups('read')}
+              >
+                Прочитать все
+              </Button>
+            </Tooltip>
+            <Tooltip title={groupOpsAllowed ? '' : outOfGroupHint}>
+              <Button
+                icon={<UploadOutlined />}
+                disabled={!modbusConnected || !groupOpsAllowed}
+                onClick={() => processAllGroups('write')}
+              >
+                Записать все
+              </Button>
+            </Tooltip>
             <Popconfirm
               title="Сброс всех параметров"
               description="Записать заводские значения во все отображаемые параметры?"
@@ -903,13 +921,48 @@ export default function ParamGroups({
               okButtonProps={{ danger: true }}
               onConfirm={() => processAllGroups('reset')}
             >
-              <Button icon={<RollbackOutlined />} danger disabled={!modbusConnected}>
+              <Button icon={<RollbackOutlined />} danger disabled={!modbusConnected || !groupOpsAllowed}>
                 Сбросить все до заводских
               </Button>
             </Popconfirm>
           </>
         )}
       </Space>
+
+      {!groupOpsAllowed && (
+        <div style={{ marginBottom: 8, padding: '4px 10px', background: '#fff7e6', border: '1px solid #ffd591', borderRadius: 6 }}>
+          <Typography.Text style={{ fontSize: 12, color: '#d46b08' }}>
+            Этот ПЧ просматривается, но не отмечен галочкой для групповых операций — «Прочитать/Записать/Сбросить все» недоступны.
+            Отметьте его галочкой в списке слева, чтобы включить в группу.
+          </Typography.Text>
+        </div>
+      )}
+
+      {/* Переключатель «какой ПЧ смотрим/правим» — рядом с группами параметров,
+          а не в ряду с «Прочитать все»: те кнопки работают по ВСЕЙ группе, и
+          соседство путало (казалось, что читается только выбранный ПЧ). */}
+      {isBulk && (
+        <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>Показать значения ПЧ:</Typography.Text>
+          <Select
+            value={activeDeviceId}
+            onChange={changeActiveDevice}
+            style={{ width: 260 }}
+            popupMatchSelectWidth={false}
+            options={[
+              { value: ALL_DEVICES, label: `★ Все выбранные ПЧ (${effectiveDeviceIds.length}) — править разом` },
+              ...effectiveDevices.map(d => ({
+                value: d.id,
+                label: `${d.name} · Адрес ${d.connection.slaveId}`,
+              })),
+              ...(outsideDevice ? [{
+                value: outsideDevice.id,
+                label: `${outsideDevice.name} · Адрес ${outsideDevice.connection.slaveId} — вне группы`,
+              }] : []),
+            ]}
+          />
+        </div>
+      )}
 
       {isAllMode && (
         <div style={{ marginBottom: 8, padding: '4px 10px', background: '#fff7e6', border: '1px solid #ffd591', borderRadius: 6 }}>
@@ -943,14 +996,24 @@ export default function ParamGroups({
         <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 6 }}>
           Отображаемые группы параметров (влияет на «Прочитать/Записать/Сбросить все»)
         </Typography.Text>
-        <Checkbox
-          checked={visibleGroupIds.size === orderedGroups.length}
-          indeterminate={visibleGroupIds.size > 0 && visibleGroupIds.size < orderedGroups.length}
-          onChange={e => setAllGroupsVisible(e.target.checked)}
-          style={{ marginBottom: 6, display: 'inline-flex' }}
-        >
-          <span style={{ fontSize: 12, fontWeight: 600 }}>Все</span>
-        </Checkbox>
+        {/* Клик по квадратику — вкл/выкл группы; клик по НАЗВАНИЮ — «показать
+            только эту группу» (как у фильтра Pump/VL в сайдбаре). Поэтому
+            подпись вынесена из <Checkbox>: внутри неё она была бы частью
+            <label> и всегда просто переключала галочку. */}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+          <Checkbox
+            checked={visibleGroupIds.size === orderedGroups.length}
+            indeterminate={visibleGroupIds.size > 0 && visibleGroupIds.size < orderedGroups.length}
+            onChange={e => setAllGroupsVisible(e.target.checked)}
+          />
+          <span
+            onClick={() => setAllGroupsVisible(true)}
+            style={{ fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+            title="Показать все группы"
+          >
+            Все
+          </span>
+        </span>
         <div style={{
           display: 'grid',
           gridAutoFlow: 'column',
@@ -960,18 +1023,23 @@ export default function ParamGroups({
         }}>
           {orderedGroups.map(group => (
             // align-items:center — иначе у названий, занимающих 2–3 строки,
-            // квадратик прижимается к первой строке и «съезжает» вверх
-            // относительно текста.
-            <Checkbox
-              key={group.id}
-              checked={visibleGroupIds.has(group.id)}
-              onChange={e => toggleGroupVisible(group.id, e.target.checked)}
-              style={{ display: 'flex', alignItems: 'center', marginInlineStart: 0 }}
-            >
-              <span style={{ fontSize: 12, lineHeight: 1.3, display: 'block', fontWeight: group.id === FAV_GROUP_ID ? 600 : undefined }}>
+            // квадратик прижимается к первой строке и «съезжает» вверх.
+            <span key={group.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Checkbox
+                checked={visibleGroupIds.has(group.id)}
+                onChange={e => toggleGroupVisible(group.id, e.target.checked)}
+              />
+              <span
+                onClick={() => setVisibleGroups(new Set([group.id]))}
+                title="Показать только эту группу"
+                style={{
+                  fontSize: 12, lineHeight: 1.3, cursor: 'pointer',
+                  fontWeight: group.id === FAV_GROUP_ID ? 600 : undefined,
+                }}
+              >
                 {group.name}
               </span>
-            </Checkbox>
+            </span>
           ))}
         </div>
         {/* Управление составом избранного — рядом с чекбоксами групп */}
@@ -1078,10 +1146,32 @@ export default function ParamGroups({
                 : group.params
               if (params.length === 0) return null
               const countInFav = group.params.filter(p => favDraft.has(p.id)).length
+              // Галочка на самой группе: добавить/убрать разом все её параметры
+              // (в пределах текущего фильтра поиска). Отмечена, когда в избранном
+              // уже все они; частично — indeterminate.
+              const shownIds = params.map(p => p.id)
+              const shownInFav = shownIds.filter(id => favDraft.has(id)).length
+              const allShownInFav = shownInFav === shownIds.length && shownIds.length > 0
+              function toggleWholeGroup(checked) {
+                const next = new Set(favDraft)
+                if (checked) shownIds.forEach(id => next.add(id))
+                else shownIds.forEach(id => next.delete(id))
+                setFavDraft(next)
+              }
               return {
                 key: group.id,
                 label: (
                   <Space>
+                    {/* stopPropagation — иначе клик по галочке ещё и
+                        сворачивал/разворачивал саму секцию Collapse. */}
+                    <span onClick={e => { e.stopPropagation() }}>
+                      <Checkbox
+                        checked={allShownInFav}
+                        indeterminate={shownInFav > 0 && !allShownInFav}
+                        onChange={e => toggleWholeGroup(e.target.checked)}
+                        title="Добавить/убрать всю группу"
+                      />
+                    </span>
                     <span>{group.name}</span>
                     {countInFav > 0 && <Tag color="gold">{countInFav} в избранном</Tag>}
                   </Space>

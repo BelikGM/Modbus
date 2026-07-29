@@ -51,7 +51,7 @@ function SortableDeviceRow({ id, compact, mirrored, children }) {
   )
 }
 
-export default function DeviceList({ devices, selectedIds, onSelectionChange, connected, liveness = {}, hasProject, activeProjectId, sidebarWidth = 270, deviceOrder, onDeviceOrderChange, focusedDeviceId, onFocusDevice, mirrored = false }) {
+export default function DeviceList({ devices, selectedIds, onSelectionChange, connected, liveness = {}, hasProject, activeProjectId, sidebarWidth = 270, deviceOrder, onDeviceOrderChange, focusedDeviceId, onFocusDevice, mirrored = false, locked = false }) {
   const [addOpen, setAddOpen]       = useState(false)
   const [editDevice, setEditDevice] = useState(null)
   const [templates, setTemplates]   = useState([])
@@ -129,6 +129,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
   // Добавить/убрать устройство из группы выделения (мультивыбор). Вызывается
   // галочкой и двойным кликом по строке.
   function toggleSelection(device) {
+    if (locked) return // идёт групповое чтение/запись — состав группы не меняем
     const next = new Set(selectedIds)
     if (next.has(device.id)) next.delete(device.id)
     else next.add(device.id)
@@ -141,7 +142,9 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
   //  - ПЧ вне группы → показываем его одного (иначе клик по невыбранному
   //    устройству ни к чему бы не приводил).
   function focusDevice(device) {
-    if (!selectedIds.has(device.id)) onSelectionChange(new Set([device.id]))
+    if (locked) return // идёт групповая операция — не сбиваем текущий просмотр
+    // Просмотр ПЧ не меняет состав группы: галочки остаются как были, даже если
+    // просматриваемый ПЧ в группу не входит.
     onFocusDevice?.(device.id)
   }
 
@@ -172,6 +175,17 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
     setVisibleTypes(checked ? new Set(['pump', 'vl']) : new Set())
     if (!checked && selectedIds.size > 0) {
       onSelectionChange(new Set())
+    }
+  }
+
+  // Клик по названию типа — «показать только его»: остальные типы снимаются,
+  // а выделение с их устройств убирается (иначе в группе остались бы невидимые
+  // сейчас ПЧ, что потом путает в групповых операциях).
+  function showOnlyType(type) {
+    setVisibleTypes(new Set([type]))
+    const hiddenIds = new Set(allDevices.filter(d => deviceType(d) !== type).map(d => d.id))
+    if ([...selectedIds].some(id => hiddenIds.has(id))) {
+      onSelectionChange(new Set([...selectedIds].filter(id => !hiddenIds.has(id))))
     }
   }
 
@@ -243,13 +257,21 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
     onSelectionChange(next)
   }
 
-  // Responsive-режимы в зависимости от ширины сайдбара (тянется мышью в App.jsx):
-  // compact — только иконка/фото, без текста и кнопок (узкая полоса);
-  // narrow  — фото + имя, без описания и кнопок редактирования;
-  // иначе   — полный вид.
-  const compact = sidebarWidth < 100
-  const narrow  = sidebarWidth < 180
-  const avatarSize = compact ? Math.max(28, sidebarWidth - 20) : (narrow ? 32 : 44)
+  // Порядок «жертв» при сжатии сайдбара — от наименее важного к самому важному.
+  // Галочка (в группе/нет) и адрес ПЧ нужны всегда, поэтому уходят последними:
+  //   <180  — прячем метку модели (Pump/VL)
+  //   <150  — прячем название устройства (обычно самое длинное)
+  //   <110  — прячем фото
+  //    <76  — от «Адрес N» оставляем только номер
+  // Уже галочки+номера панель не сжимается (SIDER_MIN_WIDTH в App.jsx).
+  const showModelLabel = sidebarWidth >= 180
+  const showName       = sidebarWidth >= 150
+  const showAvatar     = sidebarWidth >= 110
+  const showAddrWord   = sidebarWidth >= 76
+  // Кнопки правки/удаления требуют места и появляются только в полном виде.
+  const showRowActions = sidebarWidth >= 180
+  const compact = !showAvatar && !showName
+  const avatarSize = showName ? (showModelLabel ? 44 : 32) : 32
   // Полный текст "Добавить устройство" не помещается рядом с иконкой на
   // промежуточных ширинах — короткий вариант между compact и narrow, полный
   // только когда панель уже достаточно широкая.
@@ -277,28 +299,53 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
       {hasProject && allDevices.length > 0 && !compact && (
         <div style={{ padding: '0 16px 8px', borderBottom: '1px solid #f5f5f5', marginBottom: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            {/* Клик по квадратику — обычное вкл/выкл типа; клик по НАДПИСИ —
+                «показать только этот тип» (снимает остальные). Поэтому подпись
+                вынесена из <Checkbox> в отдельный span со своим обработчиком —
+                внутри antd-чекбокса она была бы частью <label> и всегда просто
+                переключала галочку. */}
             <Space direction="vertical" size={4}>
-              <Checkbox
-                checked={visibleTypes.size === 2}
-                onChange={e => setAllTypesVisible(e.target.checked)}
-                style={{ fontSize: 12 }}
-              >
-                <span style={{ fontSize: 12 }}>Все</span>
-              </Checkbox>
-              <Checkbox
-                checked={visibleTypes.has('pump')}
-                disabled={!hasPump}
-                onChange={e => toggleType('pump', e.target.checked)}
-              >
-                <span style={{ fontSize: 12 }}>Pump</span>
-              </Checkbox>
-              <Checkbox
-                checked={visibleTypes.has('vl')}
-                disabled={!hasVl}
-                onChange={e => toggleType('vl', e.target.checked)}
-              >
-                <span style={{ fontSize: 12 }}>VL</span>
-              </Checkbox>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Checkbox
+                  checked={visibleTypes.size === 2}
+                  onChange={e => setAllTypesVisible(e.target.checked)}
+                />
+                <span
+                  onClick={() => setAllTypesVisible(true)}
+                  style={{ fontSize: 12, cursor: 'pointer' }}
+                  title="Показать все типы"
+                >
+                  Все
+                </span>
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Checkbox
+                  checked={visibleTypes.has('pump')}
+                  disabled={!hasPump}
+                  onChange={e => toggleType('pump', e.target.checked)}
+                />
+                <span
+                  onClick={() => hasPump && showOnlyType('pump')}
+                  style={{ fontSize: 12, cursor: hasPump ? 'pointer' : 'default', opacity: hasPump ? 1 : 0.4 }}
+                  title="Показать только Pump"
+                >
+                  Pump
+                </span>
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Checkbox
+                  checked={visibleTypes.has('vl')}
+                  disabled={!hasVl}
+                  onChange={e => toggleType('vl', e.target.checked)}
+                />
+                <span
+                  onClick={() => hasVl && showOnlyType('vl')}
+                  style={{ fontSize: 12, cursor: hasVl ? 'pointer' : 'default', opacity: hasVl ? 1 : 0.4 }}
+                  title="Показать только VL"
+                >
+                  VL
+                </span>
+              </span>
             </Space>
             <Space direction="vertical" size={4} style={{ marginLeft: 'auto', alignItems: 'flex-end' }}>
               {visibleDevices.length > 0 && (
@@ -349,12 +396,13 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
           <SortableContext items={visibleDevices.map(d => d.id)} strategy={verticalListSortingStrategy}>
             {visibleDevices.map(device => {
               const isSelected = selectedIds.has(device.id)
-              // Активный ПЧ внутри группы — тот, чьи значения показаны справа.
-              // В режиме "Все выбранные ПЧ — править разом" (ALL_DEVICES)
-              // активны сразу ВСЕ выбранные — ярче горит вся группа, а не
-              // случайно оставшийся с прошлого раза одиночный ПЧ.
-              const isFocused = isSelected && selectedIds.size > 1 &&
-                (focusedDeviceId === device.id || focusedDeviceId === ALL_DEVICES)
+              // Членство в группе (галочка) и «сейчас просматривается» — два
+              // независимых состояния. Группу показывает ТОЛЬКО галочка, без
+              // подсветки строки; подсвечивается лишь просматриваемый ПЧ (он
+              // может быть и вне группы). В режиме «Все выбранные ПЧ — править
+              // разом» (ALL_DEVICES) просматриваются сразу все отмеченные.
+              const isFocused = focusedDeviceId === device.id ||
+                (focusedDeviceId === ALL_DEVICES && isSelected && selectedIds.size > 1)
               const modelLabel = deviceType(device) === 'vl' ? 'VL' : 'Pump'
               const liveStatus = deviceLiveStatus(device)
               const avatar = device.images?.device
@@ -387,7 +435,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
               // выделения — всё меняется местами.
               const rowPadding = compact ? '8px 4px' : (mirrored ? '8px 20px 8px 12px' : '8px 12px 8px 20px')
               const accentSide = mirrored ? 'borderRight' : 'borderLeft'
-              const accentColor = isFocused ? '3px solid #0958d9' : (isSelected ? '3px solid #1677ff' : '3px solid transparent')
+              const accentColor = isFocused ? '3px solid #1677ff' : '3px solid transparent'
 
               return (
                 <SortableDeviceRow key={device.id} id={device.id} compact={compact} mirrored={mirrored}>
@@ -395,7 +443,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
                     <div
                       onClick={() => handleRowClick(device)}
                       onDoubleClick={() => handleRowDoubleClick(device)}
-                      className={isSelected ? 'device-row device-row-selected' : 'device-row'}
+                      className={isFocused ? 'device-row device-row-focused' : 'device-row'}
                       style={{
                         position: 'relative',
                         cursor: 'pointer',
@@ -405,70 +453,66 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
                         justifyContent: compact ? 'center' : 'flex-start',
                         flexDirection: mirrored ? 'row-reverse' : 'row',
                         gap: 8,
-                        background: isFocused ? '#bae0ff' : (isSelected ? '#e6f4ff' : 'transparent'),
+                        background: isFocused ? (mirrored ? '#bae0ff' : '#bae0ff') : 'transparent',
                         [accentSide]: accentColor,
                         borderBottom: '1px solid #f5f5f5',
                       }}
                     >
-                      {!compact && (
-                        // Увеличенная галочка и расширенная зона клика по ней —
-                        // проще попасть, отделено от «показать этот ПЧ».
-                        <span
-                          onClick={e => e.stopPropagation()}
-                          onDoubleClick={e => e.stopPropagation()}
-                          style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 6px', margin: '-4px 0' }}
-                          title="Добавить/убрать из группового выбора"
-                        >
-                          <Checkbox
-                            checked={isSelected}
-                            onChange={() => toggleSelection(device)}
-                            style={{ transform: 'scale(1.35)' }}
-                          />
-                        </span>
-                      )}
+                      {/* Галочка (членство в группе) не прячется никогда — вместе
+                          с адресом это последнее, что остаётся при сжатии. */}
+                      <span
+                        onClick={e => e.stopPropagation()}
+                        onDoubleClick={e => e.stopPropagation()}
+                        style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 6px', margin: '-4px 0', flexShrink: 0 }}
+                        title="Добавить/убрать из группового выбора"
+                      >
+                        <Checkbox
+                          checked={isSelected}
+                          onChange={() => toggleSelection(device)}
+                          style={{ transform: 'scale(1.35)' }}
+                        />
+                      </span>
 
-                      {avatar}
+                      {showAvatar && avatar}
 
-                      {!compact && (
-                        // На левой стороне flex:1 (растёт от нуля, flex-basis:0%)
-                        // тянет текстовый блок на всю оставшуюся ширину — там это
-                        // и нужно, текст читается сразу после картинки. В
-                        // зеркальном виде (справа) текст стоит ДО картинки в DOM-
-                        // потоке, и та же растяжка "от нуля" отодвигала бы его
-                        // название/адрес к дальнему левому краю сайдбара, оставляя
-                        // пустой разрыв между текстом и картинкой. flex:'0 1 auto'
-                        // (расти не может, только сжаться при нехватке места, а
-                        // без неё — естественная ширина по контенту) держит блок
-                        // вплотную к картинке, а свободное место уходит наружу.
-                        <div style={{ flex: mirrored ? '0 1 auto' : 1, minWidth: 0 }}>
+                      {/* Текстовый блок. Слева flex:1 (растёт от нуля) тянет его
+                          на всю оставшуюся ширину — текст идёт сразу после
+                          картинки. В зеркальном виде текст стоит ДО картинки, и
+                          такая растяжка отодвинула бы его к дальнему краю; там
+                          flex:'0 1 auto' + minWidth держит блок вплотную к
+                          картинке, а фиксированная minWidth выравнивает начало
+                          строк у разных моделей (EMD-PUMP-1 длиннее EMD-VL-2 —
+                          без неё текст начинался бы с разных позиций). */}
+                      <div style={{
+                        flex: mirrored ? '0 1 auto' : 1,
+                        minWidth: mirrored ? 112 : 0,
+                        textAlign: 'left',
+                      }}>
+                        {showName && (
                           <div style={{
                             fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                            // Отступ под кнопки редактирования/удаления нужен только
-                            // когда текст реально дотягивается до их угла (flex:1,
-                            // слева). В зеркальном виде блок больше не растянут до
-                            // края строки (см. выше) — кнопки всплывают в пустом
-                            // промежутке слева от текста, резервировать под них
-                            // место внутри самого текста не нужно.
-                            paddingRight: mirrored ? 0 : (narrow ? 0 : 48),
+                            // Резерв под кнопки правки/удаления нужен только там,
+                            // где текст реально дотягивается до их угла.
+                            paddingRight: (!mirrored && showRowActions) ? 48 : 0,
                           }}>
                             {device.name}
                           </div>
-                          {!narrow && (
-                            <span style={{ fontSize: 12 }}>
-                              <Tag style={{ fontSize: 11, padding: '0 4px', marginRight: 4 }}>
-                                Адрес {device.connection.slaveId ?? 1}
-                              </Tag>
-                              <Typography.Text type="secondary" style={{ fontSize: 11 }}>{modelLabel}</Typography.Text>
-                            </span>
+                        )}
+                        <span style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+                          <Tag style={{ fontSize: 11, padding: '0 4px', margin: 0 }}>
+                            {showAddrWord ? `Адрес ${device.connection.slaveId ?? 1}` : (device.connection.slaveId ?? 1)}
+                          </Tag>
+                          {showModelLabel && (
+                            <Typography.Text type="secondary" style={{ fontSize: 11 }}>{modelLabel}</Typography.Text>
                           )}
-                        </div>
-                      )}
+                        </span>
+                      </div>
 
-                      {!compact && !narrow && (
+                      {showRowActions && (
                         <div
                           onClick={e => e.stopPropagation()}
                           className="device-row-actions"
-                          style={{ position: 'absolute', top: 4, [mirrored ? 'left' : 'right']: 4, display: 'flex', gap: 2, background: isSelected ? '#e6f4ff' : '#fff' }}
+                          style={{ position: 'absolute', top: 4, [mirrored ? 'left' : 'right']: 4, display: 'flex', gap: 2, background: isFocused ? '#bae0ff' : '#fff' }}
                         >
                           <Tooltip title="Редактировать">
                             <Button

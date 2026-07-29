@@ -1,7 +1,7 @@
 {
   "id": "Elhart-Emd-Pump-Full",
   "name": "Elhart-Emd-Pump-Full",
-  "description": "Преобразователь частоты для насосов (FULL)",
+  "description": "Преобразователь частоты для насосов EMD-PUMP (FULL)",
   "template": true,
   "connection": {
     "slaveId": 1,

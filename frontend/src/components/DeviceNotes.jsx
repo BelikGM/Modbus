@@ -101,6 +101,7 @@ export default function DeviceNotes({ device }) {
           dataSource={[...notes].reverse()}
           renderItem={note => (
             <List.Item
+              className="device-note-item"
               style={{
                 alignItems: 'flex-start',
                 padding: '10px 12px',

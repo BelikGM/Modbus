@@ -41,16 +41,28 @@
   background: #16233a !important;
 }
 
-/* Выделенное устройство в списке слева — светло-голубой фон #e6f4ff нечитаем
-   на тёмном фоне сайдбара, меняем на контрастную тёмно-синюю подсветку. */
-[data-theme='dark'] .device-row-selected {
-  background: #14304d !important;
+/* Просматриваемый сейчас ПЧ (одиночный клик по строке). В светлой теме это
+   голубая заливка из инлайн-стиля; в тёмной она сливалась бы с фоном, поэтому
+   подсвечиваем светлым — строка должна быть явно заметна. Членство в группе
+   (галочка) строку НЕ подсвечивает: это два независимых состояния. */
+[data-theme='dark'] .device-row-focused {
+  background: #2b4a6f !important;
+}
+[data-theme='dark'] .device-row-focused .device-row-actions {
+  background: #2b4a6f !important;
 }
 [data-theme='dark'] .device-row:hover {
   background: #101c2c;
 }
 [data-theme='dark'] .device-row-actions {
   background: #0b1220 !important;
+}
+
+/* Записи на вкладке «Заметки»: фон карточки задан инлайном (#fafafa), и в
+   тёмной теме светлый текст оказывался на почти белом фоне — нечитаемо. */
+[data-theme='dark'] .device-note-item {
+  background: #1b1d24 !important;
+  border-color: #2e303a !important;
 }
 
 /* Кнопки редактировать/удалить в строке устройства — не висят постоянно,

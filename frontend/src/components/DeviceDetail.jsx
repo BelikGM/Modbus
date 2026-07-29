@@ -18,7 +18,7 @@ function findStatusParam(device) {
   return null
 }
 
-export default function DeviceDetail({ device, modbusConnected, activeTab, onActiveTabChange }) {
+export default function DeviceDetail({ device, modbusConnected, activeTab, onActiveTabChange, inGroup = true }) {
   const [deviceRunning, setDeviceRunning] = useState(null) // null=неизвестно, true=работает, false=остановлен
   const intervalRef = useRef(null)
 
@@ -45,7 +45,7 @@ export default function DeviceDetail({ device, modbusConnected, activeTab, onAct
     {
       key: 'params',
       label: 'Параметры',
-      children: <ParamGroups device={device} modbusConnected={modbusConnected} deviceRunning={deviceRunning} />,
+      children: <ParamGroups device={device} modbusConnected={modbusConnected} deviceRunning={deviceRunning} groupOpsEnabled={inGroup} />,
     },
     {
       key: 'monitor',
@@ -64,7 +64,7 @@ export default function DeviceDetail({ device, modbusConnected, activeTab, onAct
     },
     {
       key: 'notes',
-      label: 'Журнал',
+      label: 'Заметки',
       children: <DeviceNotes device={device} />,
     },
   ]

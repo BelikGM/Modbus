@@ -110,6 +110,16 @@ export default function Monitor({ device, modbusConnected }) {
     return paramId
   }
 
+  // Единица измерения параметра — чтобы порог показывался как «70 °C», а не
+  // просто «70» (по голому числу непонятно, градусы это, амперы или герцы).
+  function getParamUnit(paramId) {
+    for (const group of deviceRef.current.groups) {
+      const p = group.params.find(p => p.id === paramId)
+      if (p) return p.unit ?? ''
+    }
+    return ''
+  }
+
   function checkAlerts(incoming) {
     const alerts = deviceRef.current.alerts ?? []
     if (!alerts.length) return
@@ -132,7 +142,8 @@ export default function Monitor({ device, modbusConnected }) {
         addLog(alert.level, `Оповещение: ${msg}`)
       } else if (!fired && wasActive) {
         activeAlertsRef.current.delete(alert.id)
-        const label = `${getParamName(alert.paramId)} ${CONDITION_LABEL[alert.condition]} ${alert.threshold}`
+        const unit = getParamUnit(alert.paramId)
+        const label = `${getParamName(alert.paramId)} ${CONDITION_LABEL[alert.condition]} ${alert.threshold}${unit ? ` ${unit}` : ''}`
         addLog('info', `Оповещение снято: ${label}`)
       }
     }
@@ -286,19 +297,38 @@ export default function Monitor({ device, modbusConnected }) {
           Экспорт CSV
         </Button>
         {monitorParams.length > 0 && (
-          <Select
-            mode="multiple"
-            allowClear
-            placeholder="Показать графики"
-            suffixIcon={<EyeOutlined />}
-            value={activeVisible}
-            onChange={handleVisibleChange}
-            onClear={() => handleVisibleChange(monitorParams.map(p => p.id))}
-            maxTagCount="responsive"
-            popupMatchSelectWidth={false}
-            style={{ width: 220 }}
-            options={monitorParams.map(p => ({ value: p.id, label: p.name }))}
-          />
+          <>
+            <Select
+              mode="multiple"
+              allowClear
+              placeholder="Показать графики"
+              suffixIcon={<EyeOutlined />}
+              value={activeVisible}
+              onChange={handleVisibleChange}
+              onClear={() => handleVisibleChange([])}
+              maxTagCount={0}
+              // По умолчанию antd пишет «+N ...» — непонятно, что за «плюс».
+              // Показываем прямо, сколько параметров выбрано.
+              maxTagPlaceholder={() => `${activeVisible.length} из ${monitorParams.length} параметров`}
+              popupMatchSelectWidth={false}
+              style={{ width: 240 }}
+              options={monitorParams.map(p => ({ value: p.id, label: p.name }))}
+            />
+            <Button
+              size="small"
+              onClick={() => handleVisibleChange(monitorParams.map(p => p.id))}
+              disabled={activeVisible.length === monitorParams.length}
+            >
+              Выделить все
+            </Button>
+            <Button
+              size="small"
+              onClick={() => handleVisibleChange([])}
+              disabled={activeVisible.length === 0}
+            >
+              Снять все
+            </Button>
+          </>
         )}
         {!modbusConnected && (
           <Typography.Text type="secondary">Требуется подключение к порту</Typography.Text>
@@ -329,7 +359,7 @@ export default function Monitor({ device, modbusConnected }) {
               }
               return (
                 <Tag key={alert.id} color={color} style={{ fontSize: 12 }}>
-                  {paramName} {condLabel} {alert.threshold}
+                  {paramName} {condLabel} {alert.threshold}{getParamUnit(alert.paramId) ? ` ${getParamUnit(alert.paramId)}` : ''}
                 </Tag>
               )
             })}

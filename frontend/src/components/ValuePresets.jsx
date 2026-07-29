@@ -41,6 +41,15 @@ export default function ValuePresets({ device, devices }) {
 
   useEffect(() => { load() }, [family])
 
+  // Шаблон может быть создан из другого места (кнопка «Создать шаблон из
+  // избранного» на вкладке «Параметры») — перечитываем список по событию,
+  // иначе он появлялся здесь только после перезагрузки страницы.
+  useEffect(() => {
+    function onPresetsChanged() { load() }
+    window.addEventListener('presets:changed', onPresetsChanged)
+    return () => window.removeEventListener('presets:changed', onPresetsChanged)
+  }, [family])
+
   function startCreate() {
     setEditing({ id: null, name: '', family, values: {} })
     setNameInput('')

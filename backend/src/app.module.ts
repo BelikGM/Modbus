@@ -9,6 +9,7 @@ import { ProjectsModule } from './projects/projects.module';
 import { SettingsModule } from './settings/settings.module';
 import { PresetsModule } from './presets/presets.module';
 import { FavoritesModule } from './favorites/favorites.module';
+import { LogsModule } from './logs/logs.module';
 
 const staticPath = join(__dirname, '..', 'frontend-dist');
 const staticImports = existsSync(staticPath)
@@ -16,6 +17,6 @@ const staticImports = existsSync(staticPath)
   : [];
 
 @Module({
-  imports: [...staticImports, SettingsModule, ProjectsModule, DevicesModule, ModbusModule, GatewayModule, PresetsModule, FavoritesModule],
+  imports: [...staticImports, SettingsModule, ProjectsModule, DevicesModule, ModbusModule, GatewayModule, PresetsModule, FavoritesModule, LogsModule],
 })
 export class AppModule {}

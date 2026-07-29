@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Space, Typography, Tag, Alert, message, Tabs, Table, Button, Tooltip, Popconfirm, Progress } from 'antd'
 import { CloseOutlined, ClearOutlined, DownloadOutlined, UploadOutlined, LoadingOutlined } from '@ant-design/icons'
 import socket from '../socket'
@@ -35,7 +35,7 @@ function formatResult(entry) {
 
 const TAB_LABELS = { params: 'Параметры', templates: 'Шаблоны' }
 
-export default function BulkPanel({ devices, modbusConnected, onDeselect, activeTab, onActiveTabChange, focusedDeviceId, onFocusDevice }) {
+export default function BulkPanel({ devices, modbusConnected, onDeselect, activeTab, onActiveTabChange, focusedDeviceId, onFocusDevice, focusedDevice, locked = false }) {
   const templateIds = [...new Set(devices.map(d => d.templateId))]
   const families = [...new Set(devices.map(d => deviceFamily(d.templateId)))]
   const sameType = families.length === 1
@@ -50,6 +50,9 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
   const [visibleGroupIds, setVisibleGroupIds] = useState(new Set())
   const [bulkReadResults, setBulkReadResults] = useState({}) // { [deviceId]: { [paramId]: { value/error, unit, name } } }
   const [bulkOpBar, setBulkOpBar] = useState(null) // { kind:'read'|'write', done, total } — полоса прогресса НАД таблицей
+  // locked в ref — эффекты очистки читают актуальное значение, не перезапускаясь
+  const lockedRef = useRef(locked)
+  lockedRef.current = locked
   const [busy, setBusy] = useState(false) // идёт «Записать всё» / «Скачать всё» (для блокировки кнопок)
   const [guard, setGuard] = useState(null) // { conflicts, uncheckedCount } — предупреждение о перезаписи
 
@@ -72,6 +75,10 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
   }, [sameType])
 
   function handleTabChange(key) {
+    if (locked) {
+      message.warning('Идёт групповая операция — дождитесь завершения или нажмите «Остановить»')
+      return
+    }
     if (!sameType && key !== 'monitor') {
       message.warning('При выборе ПЧ разных типов доступен только мониторинг — параметры и шаблоны требуют устройств одного семейства (Pump или VL)')
       return
@@ -79,8 +86,11 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
     onActiveTabChange(key)
   }
 
-  // Сбрасываем накопленные результаты чтения при смене состава выбранных устройств
+  // Сбрасываем накопленные результаты чтения при смене состава выбранных
+  // устройств — но НЕ во время самой операции: иначе уже прочитанная часть
+  // таблицы обнулялась на лету и продолжала заполняться с середины.
   useEffect(() => {
+    if (lockedRef.current) return
     setBulkReadResults({})
   }, [deviceIds.join(',')])
 
@@ -457,6 +467,7 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
             onVisibleGroupIdsChange={handleVisibleGroupIdsChange}
             focusedDeviceId={focusedDeviceId}
             onFocusDevice={onFocusDevice}
+            focusedDevice={focusedDevice}
           />
         </Space>
       ),
@@ -492,9 +503,14 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
         </Space>
       </div>
 
-      {/* Главные кнопки сценария «на объекте» — работают и для смешанного выбора
-          Pump+VL: записать всё подготовленное / считать всё и скачать CSV. */}
-      <div style={{ marginBottom: 16 }}>
+      {/* Главные кнопки сценария «на объекте». Пояснение — НАД кнопками, а не
+          справа от них: справа оно оказывалось рядом с посторонними кнопками
+          (например «Прочитать все» для одного семейства) и читалось как их
+          описание. */}
+      <div style={{ marginBottom: 16, padding: '8px 10px', border: '1px solid #f0f0f0', borderRadius: 6 }}>
+        <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+          Операции по всем выбранным ПЧ сразу — работают и для смешанного выбора Pump + VL
+        </Typography.Text>
         <Space wrap>
           <Popconfirm
             title="Записать подготовленные значения"
@@ -521,16 +537,19 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
               loading={busy}
               onClick={downloadAllParams}
             >
-              Скачать все параметры ({devices.length})
+              Скачать все параметры в CSV ({devices.length})
             </Button>
           </Tooltip>
-          {(busy || bulkOpBar) && (
-            <Button danger onClick={() => socket.emit('bulk:op:cancel')}>Остановить</Button>
-          )}
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            Работает и для смешанного выбора Pump + VL
-          </Typography.Text>
         </Space>
+      </div>
+
+      {/* Прогресс и «Остановить» — отдельным блоком, чтобы пояснение про работу
+          с разными типами ПЧ не воспринималось как описание текущей операции
+          (групповое чтение идёт по ПЧ одного семейства). */}
+      <div style={{ marginBottom: 16 }}>
+        {(busy || bulkOpBar) && (
+          <Button danger onClick={() => socket.emit('bulk:op:cancel')}>Остановить</Button>
+        )}
         {/* Полоса прогресса — СВЕРХУ, выше таблицы с данными. */}
         {bulkOpBar && (
           bulkOpBar.total > 0 ? (

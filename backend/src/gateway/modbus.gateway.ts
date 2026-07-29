@@ -592,7 +592,16 @@ export class ModbusGateway
         const param = allParams.find(p => p.id === paramId);
         if (!param) { done++; continue; }
         try {
-          const rawValue = await this.modbusService.readRegister(param.register, slaveId, 1);
+          // Повтор при сбое делаем ЗДЕСЬ, а не внутри readRegister(retries=1):
+          // так между попытками проверяется отмена. Иначе «Остановить» ждало
+          // ещё один полный таймаут (до ~2 сек) на уже обречённом регистре.
+          let rawValue: number;
+          try {
+            rawValue = await this.modbusService.readRegister(param.register, slaveId);
+          } catch (firstErr) {
+            if (this.bulkOpCancelled) throw firstErr;
+            rawValue = await this.modbusService.readRegister(param.register, slaveId);
+          }
           client.emit('bulk:op:progress', {
             kind: 'read', deviceId, paramId,
             value: rawValue * (param.scale ?? 1), unit: param.unit, name: param.name,
@@ -684,7 +693,14 @@ export class ModbusGateway
         if (!param || !this.devicesService.isParamWritable(device, param)) { done++; continue; }
         const rawValue = Math.round(job.values[paramId] / (param.scale ?? 1));
         try {
-          await this.modbusService.writeRegister(param.register, rawValue, slaveId, 1);
+          // Повтор с проверкой отмены между попытками — см. комментарий в
+          // групповом чтении: иначе «Остановить» ждёт лишний таймаут.
+          try {
+            await this.modbusService.writeRegister(param.register, rawValue, slaveId);
+          } catch (firstErr) {
+            if (this.bulkOpCancelled) throw firstErr;
+            await this.modbusService.writeRegister(param.register, rawValue, slaveId);
+          }
           client.emit('bulk:op:progress', {
             kind: 'write', deviceId: job.deviceId, paramId,
             value: job.values[paramId], unit: param.unit, name: param.name,
