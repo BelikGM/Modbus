@@ -10,7 +10,8 @@ import LogDrawer from './components/LogDrawer'
 import ProjectSelector from './components/ProjectSelector'
 import socket from './socket'
 import api from './api'
-import { useLog, setLogProject, addLog } from './log'
+import { useLog, setLogProject } from './log'
+import { useBusy, setBusy } from './busy'
 import { sortByDeviceOrder } from './deviceOrder'
 import { ALL_DEVICES } from './components/ParamGroups'
 import 'antd/dist/reset.css'
@@ -157,10 +158,12 @@ export default function App() {
   const [connectedPort, setConnectedPort] = useState(null) // { portPath, baudRate }
   const [waitingPort, setWaitingPort] = useState(null)     // portPath | null
   const [logOpen, setLogOpen] = useState(false)
-  // Идёт групповое чтение/запись. На это время блокируем смену выбора ПЧ и
-  // вкладок: иначе смена состава выборки на лету обнуляла уже накопленную
-  // таблицу результатов, и она начинала заполняться с середины чтения.
-  const [bulkBusy, setBulkBusy] = useState(false)
+  // Идёт длительная операция (групповое чтение/запись, выгрузка CSV, мониторинг).
+  // На это время блокируем смену выбора ПЧ и вкладок: иначе операция продолжает
+  // идти в фоне, а её результаты уходят «не туда» — таблица обнуляется, монитор
+  // остаётся на прежнем устройстве.
+  const busy = useBusy()
+  const locked = busy.any
   const entries = useLog()
   const errorCount = entries.filter(e => e.level === 'error').length
 
@@ -191,10 +194,10 @@ export default function App() {
       // не дожидаясь следующего фонового цикла проверки на бэкенде.
       if (!status.connected) setLiveness({})
     })
-    socket.on('bulk:op:total', () => setBulkBusy(true))
-    socket.on('bulk:op:progress', () => setBulkBusy(true))
-    socket.on('bulk:op:done', () => setBulkBusy(false))
-    socket.on('bulk:op:error', () => setBulkBusy(false))
+    socket.on('bulk:op:total', () => setBusy('bulk', true))
+    socket.on('bulk:op:progress', () => setBusy('bulk', true))
+    socket.on('bulk:op:done', () => setBusy('bulk', false))
+    socket.on('bulk:op:error', () => setBusy('bulk', false))
     socket.on('devices:liveness:snapshot', snapshot => setLiveness(snapshot ?? {}))
     socket.on('device:liveness', ({ deviceId, online }) => {
       setLiveness(prev => ({ ...prev, [deviceId]: online }))
@@ -333,7 +336,7 @@ export default function App() {
                 if (id !== ALL_DEVICES) setActiveDeviceTab('params')
               }}
               mirrored={siderSide === 'right'}
-              locked={bulkBusy}
+              locked={locked}
             />
           </div>
         </Sider>
@@ -362,7 +365,7 @@ export default function App() {
                   focusedDeviceId={focusedDeviceId}
                   onFocusDevice={setFocusedDeviceId}
                   focusedDevice={focusedDevice}
-                  locked={bulkBusy}
+                  locked={locked}
                 />
               )
             }
@@ -377,6 +380,7 @@ export default function App() {
                   activeTab={activeDeviceTab}
                   onActiveTabChange={setActiveDeviceTab}
                   inGroup={selectedIds.has(single.id)}
+                  locked={locked}
                 />
               )
             }
@@ -385,7 +389,7 @@ export default function App() {
         </Content>
       </Layout>
 
-      <LogDrawer open={logOpen} onClose={() => setLogOpen(false)} />
+      <LogDrawer open={logOpen} onClose={() => setLogOpen(false)} projectName={activeProjectId} />
     </Layout>
     </ConfigProvider>
   )

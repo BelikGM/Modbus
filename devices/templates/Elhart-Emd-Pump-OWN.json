@@ -45,11 +45,12 @@
   "alerts": [
     {
       "id": "fault-active",
-      "paramId": "F0.10",
+      "paramId": "F0.27",
       "condition": "gt",
       "threshold": 0,
       "level": "error",
-      "message": "Авария E{{value}}"
+      "message": "Авария E{{value}}",
+      "label": "Авария ПЧ (текущий код ≠ 0)"
     },
     {
       "id": "temp-high",
@@ -57,7 +58,8 @@
       "condition": "gt",
       "threshold": 70,
       "level": "warning",
-      "message": "Перегрев радиатора: {{value}} °C"
+      "message": "Перегрев радиатора: {{value}} °C",
+      "label": "Перегрев"
     },
     {
       "id": "current-high",
@@ -65,7 +67,8 @@
       "condition": "gt",
       "threshold": 20,
       "level": "warning",
-      "message": "Высокий ток: {{value}} А"
+      "message": "Высокий ток: {{value}} А",
+      "label": "Высокий ток"
     }
   ],
   "groups": [
@@ -336,14 +339,70 @@
           "access": "read",
           "type": "bitmask",
           "bits": [
-            { "bit": 0, "name": "FWD", "options": { "0": "выкл", "1": "вкл" } },
-            { "bit": 1, "name": "REV", "options": { "0": "выкл", "1": "вкл" } },
-            { "bit": 2, "name": "S1",  "options": { "0": "выкл", "1": "вкл" } },
-            { "bit": 3, "name": "S2",  "options": { "0": "выкл", "1": "вкл" } },
-            { "bit": 4, "name": "S3",  "options": { "0": "выкл", "1": "вкл" } },
-            { "bit": 5, "name": "S4",  "options": { "0": "выкл", "1": "вкл" } },
-            { "bit": 6, "name": "S5",  "options": { "0": "выкл", "1": "вкл" } },
-            { "bit": 7, "name": "S6",  "options": { "0": "выкл", "1": "вкл" } }
+            {
+              "bit": 0,
+              "name": "FWD",
+              "options": {
+                "0": "выкл",
+                "1": "вкл"
+              }
+            },
+            {
+              "bit": 1,
+              "name": "REV",
+              "options": {
+                "0": "выкл",
+                "1": "вкл"
+              }
+            },
+            {
+              "bit": 2,
+              "name": "S1",
+              "options": {
+                "0": "выкл",
+                "1": "вкл"
+              }
+            },
+            {
+              "bit": 3,
+              "name": "S2",
+              "options": {
+                "0": "выкл",
+                "1": "вкл"
+              }
+            },
+            {
+              "bit": 4,
+              "name": "S3",
+              "options": {
+                "0": "выкл",
+                "1": "вкл"
+              }
+            },
+            {
+              "bit": 5,
+              "name": "S4",
+              "options": {
+                "0": "выкл",
+                "1": "вкл"
+              }
+            },
+            {
+              "bit": 6,
+              "name": "S5",
+              "options": {
+                "0": "выкл",
+                "1": "вкл"
+              }
+            },
+            {
+              "bit": 7,
+              "name": "S6",
+              "options": {
+                "0": "выкл",
+                "1": "вкл"
+              }
+            }
           ]
         },
         {
@@ -353,9 +412,30 @@
           "access": "read",
           "type": "bitmask",
           "bits": [
-            { "bit": 0,  "name": "M01", "options": { "0": "выкл", "1": "вкл" } },
-            { "bit": 1,  "name": "M02", "options": { "0": "выкл", "1": "вкл" } },
-            { "bit": 2,  "name": "YA/YC", "options": { "0": "выкл", "1": "вкл" } }
+            {
+              "bit": 0,
+              "name": "M01",
+              "options": {
+                "0": "выкл",
+                "1": "вкл"
+              }
+            },
+            {
+              "bit": 1,
+              "name": "M02",
+              "options": {
+                "0": "выкл",
+                "1": "вкл"
+              }
+            },
+            {
+              "bit": 2,
+              "name": "YA/YC",
+              "options": {
+                "0": "выкл",
+                "1": "вкл"
+              }
+            }
           ]
         },
         {
@@ -409,7 +489,7 @@
           "min": 0,
           "max_ref": "F1.05",
           "step": 0.01,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F1.01",
@@ -475,10 +555,10 @@
           "type": "float",
           "scale": 0.01,
           "unit": "Гц",
-          "min": 50.0,
-          "max": 400.0,
+          "min": 50,
+          "max": 400,
           "step": 0.01,
-          "default": 50.0
+          "default": 50
         },
         {
           "id": "F1.06",
@@ -491,7 +571,7 @@
           "min": 0,
           "max_ref": "F1.05",
           "step": 0.01,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F1.07",
@@ -502,7 +582,7 @@
           "scale": 0.1,
           "unit": "сек",
           "min": 0,
-          "max": 6000.0,
+          "max": 6000,
           "step": 0.1,
           "default": "Зависит от модели ПЧ"
         },
@@ -515,7 +595,7 @@
           "scale": 0.1,
           "unit": "сек",
           "min": 0,
-          "max": 6000.0,
+          "max": 6000,
           "step": 0.1,
           "default": "Зависит от модели ПЧ"
         }
@@ -558,10 +638,10 @@
           "type": "float",
           "scale": 0.01,
           "unit": "Гц",
-          "min": 0.10,
-          "max": 10.0,
+          "min": 0.1,
+          "max": 10,
           "step": 0.01,
-          "default": 0.50
+          "default": 0.5
         },
         {
           "id": "F2.03",
@@ -571,10 +651,10 @@
           "type": "float",
           "scale": 0.01,
           "unit": "Гц",
-          "min": 0.10,
-          "max": 10.0,
+          "min": 0.1,
+          "max": 10,
           "step": 0.01,
-          "default": 0.50
+          "default": 0.5
         },
         {
           "id": "F2.09",
@@ -585,8 +665,8 @@
           "scale": 0.1,
           "unit": "В",
           "min": 0,
-          "max": 500.0,
-          "default": 380.0
+          "max": 500,
+          "default": 380
         },
         {
           "id": "F2.10",
@@ -643,8 +723,8 @@
           "scale": 0.1,
           "unit": "Гц",
           "min": 0,
-          "max": 400.0,
-          "default": 50.0
+          "max": 400,
+          "default": 50
         }
       ]
     },
@@ -661,10 +741,10 @@
           "type": "float",
           "scale": 0.01,
           "unit": "В",
-          "min": 0.0,
+          "min": 0,
           "max_ref": "F3.01",
           "step": 0.01,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F3.01",
@@ -675,9 +755,9 @@
           "scale": 0.01,
           "unit": "В",
           "min_ref": "F3.00",
-          "max": 10.0,
+          "max": 10,
           "step": 0.01,
-          "default": 10.0
+          "default": 10
         },
         {
           "id": "F3.02",
@@ -687,8 +767,8 @@
           "type": "float",
           "scale": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 10.0,
+          "min": 0,
+          "max": 10,
           "step": 0.1,
           "default": 1.5
         },
@@ -700,10 +780,10 @@
           "type": "float",
           "scale": 0.01,
           "unit": "мА",
-          "min": 0.0,
+          "min": 0,
           "max_ref": "F3.04",
           "step": 0.01,
-          "default": 4.0
+          "default": 4
         },
         {
           "id": "F3.04",
@@ -714,9 +794,9 @@
           "scale": 0.01,
           "unit": "мА",
           "min_ref": "F3.03",
-          "max": 20.0,
+          "max": 20,
           "step": 0.01,
-          "default": 20.0
+          "default": 20
         },
         {
           "id": "F3.06",
@@ -726,10 +806,10 @@
           "type": "float",
           "scale": 0.01,
           "unit": "В",
-          "min": 0.0,
+          "min": 0,
           "max_ref": "F3.07",
           "step": 0.01,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F3.09",
@@ -740,9 +820,9 @@
           "scale": 0.01,
           "unit": "мА",
           "min_ref": "F3.08",
-          "max": 20.0,
+          "max": 20,
           "step": 0.01,
-          "default": 20.0
+          "default": 20
         },
         {
           "id": "F3.10",
@@ -752,10 +832,10 @@
           "type": "float",
           "scale": 0.01,
           "unit": "Гц",
-          "min": 0.0,
+          "min": 0,
           "max_ref": "F1.05",
           "step": 0.01,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F3.11",
@@ -777,10 +857,10 @@
           "type": "float",
           "scale": 0.01,
           "unit": "Гц",
-          "min": 0.0,
+          "min": 0,
           "max_ref": "F1.05",
           "step": 0.01,
-          "default": 50.0
+          "default": 50
         },
         {
           "id": "F3.13",
@@ -937,7 +1017,7 @@
           "scale": 0.1,
           "unit": "сек",
           "min": 0,
-          "max": 100.0,
+          "max": 100,
           "default": 0.2
         },
         {
@@ -962,10 +1042,10 @@
           "type": "float",
           "scale": 0.1,
           "unit": "% от F2.10",
-          "min": 0.0,
-          "max": 200.0,
+          "min": 0,
+          "max": 200,
           "step": 0.1,
-          "default": 175.0
+          "default": 175
         },
         {
           "id": "F4.24",
@@ -977,7 +1057,7 @@
           "unit": "сек",
           "min": 0,
           "max": 999.9,
-          "default": 0.0
+          "default": 0
         }
       ]
     },
@@ -1048,9 +1128,9 @@
           "scale": 0.1,
           "unit": "сек",
           "min": 0,
-          "max": 60.0,
+          "max": 60,
           "step": 0.1,
-          "default": 0.0
+          "default": 0
         }
       ]
     },

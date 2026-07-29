@@ -19,6 +19,7 @@ import socket from '../socket'
 import { addLog } from '../log'
 import { formatParamValue } from '../paramFormat'
 import { getMonitorParams } from '../monitorParams'
+import { setBusy } from '../busy'
 
 function deviceFamily(templateId) {
   return (templateId ?? '').toLowerCase().includes('vl') ? 'vl' : 'pump'
@@ -187,6 +188,7 @@ export default function BulkMonitor({ devices, modbusConnected, sameType }) {
   useEffect(() => {
     return () => {
       for (const d of devicesRef.current) socket.emit('monitor:stop', { deviceId: d.id })
+      setBusy('monitor', false)
     }
   }, [])
 
@@ -203,6 +205,7 @@ export default function BulkMonitor({ devices, modbusConnected, sameType }) {
     if (!runningRef.current) return
     for (const id of prevIds) socket.emit('monitor:stop', { deviceId: id })
     setRunning(false)
+    setBusy('monitor', false)
     setDataByDevice({})
     addLog('info', 'Групповой мониторинг остановлен: изменился состав выбранных устройств')
   }, [deviceIdsKey])
@@ -211,6 +214,7 @@ export default function BulkMonitor({ devices, modbusConnected, sameType }) {
     if (running) {
       for (const d of devices) socket.emit('monitor:stop', { deviceId: d.id })
       setRunning(false)
+      setBusy('monitor', false)
       setDataByDevice({})
       addLog('info', `Групповой мониторинг остановлен: ${devices.length} устройств`)
     } else {
@@ -219,6 +223,7 @@ export default function BulkMonitor({ devices, modbusConnected, sameType }) {
         for (const d of group.devices) socket.emit('monitor:start', { deviceId: d.id, paramIds })
       }
       setRunning(true)
+      setBusy('monitor', true)
       addLog('info', `Групповой мониторинг запущен: ${devices.length} устройств`)
     }
   }

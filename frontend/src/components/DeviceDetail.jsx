@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Tabs, Typography } from 'antd'
+import { Tabs, Typography, message } from 'antd'
 import ParamGroups from './ParamGroups'
 import Monitor from './Monitor'
 import DeviceInfo from './DeviceInfo'
@@ -18,7 +18,7 @@ function findStatusParam(device) {
   return null
 }
 
-export default function DeviceDetail({ device, modbusConnected, activeTab, onActiveTabChange, inGroup = true }) {
+export default function DeviceDetail({ device, modbusConnected, activeTab, onActiveTabChange, inGroup = true, locked = false }) {
   const [deviceRunning, setDeviceRunning] = useState(null) // null=неизвестно, true=работает, false=остановлен
   const intervalRef = useRef(null)
 
@@ -85,7 +85,20 @@ export default function DeviceDetail({ device, modbusConnected, activeTab, onAct
         {/*<BackupRestore device={device} modbusConnected={modbusConnected} />*/}
       </div>
       <ControlPanel device={device} modbusConnected={modbusConnected} />
-      <Tabs items={items} activeKey={activeTab} onChange={onActiveTabChange} />
+      <Tabs
+        items={items}
+        activeKey={activeTab}
+        onChange={key => {
+          // Пока идёт длительная операция (чтение/запись/мониторинг), уходить с
+          // вкладки нельзя — операция продолжится в фоне, а результаты уйдут
+          // «не туда». Разблокируется по завершении или кнопкой «Остановить».
+          if (locked) {
+            message.warning('Идёт операция — дождитесь завершения или нажмите «Остановить»')
+            return
+          }
+          onActiveTabChange(key)
+        }}
+      />
     </div>
   )
 }

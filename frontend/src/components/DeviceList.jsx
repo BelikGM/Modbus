@@ -358,22 +358,30 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
                   {allVisibleSelected ? 'Снять выделение' : `Выбрать все (${visibleDevices.length})`}
                 </Button>
               )}
-              {selectedIds.size > 0 && (
-                <Popconfirm
-                  title="Удалить выбранные устройства?"
-                  description={`Будет удалено устройств: ${selectedIds.size}. Файлы конфигов удаляются безвозвратно.`}
-                  okText="Удалить"
-                  cancelText="Отмена"
-                  okButtonProps={{ danger: true }}
-                  onConfirm={handleBulkDelete}
-                >
-                  <Button size="small" danger icon={<DeleteOutlined />}>
-                    Удалить ({selectedIds.size})
-                  </Button>
-                </Popconfirm>
-              )}
             </Space>
           </div>
+
+          {/* Удаление ПЧ вынесено ОТДЕЛЬНОЙ строкой под фильтрами и никогда не
+              появляется прямо под кнопкой «Выбрать все»: на медленной машине
+              кнопка срабатывала с задержкой, пользователь жал повторно — и
+              вторым кликом попадал уже по возникшей на этом месте «Удалить».
+              Здесь она в другом ряду, с отступом и подтверждением. */}
+          {selectedIds.size > 0 && (
+            <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px dashed #f0f0f0', display: 'flex', justifyContent: 'flex-start' }}>
+              <Popconfirm
+                title="Удалить выбранные устройства?"
+                description={`Будет удалено устройств: ${selectedIds.size}. Файлы конфигов удаляются безвозвратно.`}
+                okText="Удалить"
+                cancelText="Отмена"
+                okButtonProps={{ danger: true }}
+                onConfirm={handleBulkDelete}
+              >
+                <Button size="small" danger type="text" icon={<DeleteOutlined />}>
+                  Удалить выбранные ({selectedIds.size})
+                </Button>
+              </Popconfirm>
+            </div>
+          )}
         </div>
       )}
 

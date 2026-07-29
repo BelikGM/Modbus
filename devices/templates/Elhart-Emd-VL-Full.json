@@ -49,7 +49,8 @@
       "condition": "gt",
       "threshold": 0,
       "level": "error",
-      "message": "Авария ПЧ, код {{value}}"
+      "message": "Авария ПЧ, код {{value}}",
+      "label": "Авария ПЧ (код ≠ 0)"
     },
     {
       "id": "temp-high",
@@ -57,7 +58,8 @@
       "condition": "gt",
       "threshold": 70,
       "level": "warning",
-      "message": "Перегрев IGBT-модуля: {{value}} °C"
+      "message": "Перегрев IGBT-модуля: {{value}} °C",
+      "label": "Перегрев"
     },
     {
       "id": "current-high",
@@ -65,7 +67,8 @@
       "condition": "gt",
       "threshold": 20,
       "level": "warning",
-      "message": "Высокий ток: {{value}} А"
+      "message": "Высокий ток: {{value}} А",
+      "label": "Высокий ток"
     }
   ],
   "access_legend": {
@@ -109,8 +112,8 @@
           "registerHex": "1000h",
           "access": "read-write",
           "type": "signed_percent",
-          "min": -100.0,
-          "max": 100.0,
+          "min": -100,
+          "max": 100,
           "scale": 0.01,
           "unit": "%"
         },
@@ -184,8 +187,8 @@
           "registerHex": "2002h",
           "access": "write",
           "type": "integer",
-          "min": 0.0,
-          "max": 7.0,
+          "min": 0,
+          "max": 7,
           "unit": "0...100%"
         },
         {
@@ -196,8 +199,8 @@
           "registerHex": "2003h",
           "access": "write",
           "type": "integer",
-          "min": 0.0,
-          "max": 7.0,
+          "min": 0,
+          "max": 7,
           "unit": "0...100%"
         },
         {
@@ -208,8 +211,8 @@
           "registerHex": "2004h",
           "access": "write",
           "type": "integer",
-          "min": 0.0,
-          "max": 7.0,
+          "min": 0,
+          "max": 7,
           "unit": "0...100%"
         },
         {
@@ -613,9 +616,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 50.0
+          "min": 0,
+          "max": 590,
+          "default": 50
         },
         {
           "id": "P0.09",
@@ -648,9 +651,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 50.0,
-          "max": 590.0,
-          "default": 50.0
+          "min": 50,
+          "max": 590,
+          "default": 50
         },
         {
           "id": "P0.11",
@@ -700,9 +703,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 50.0
+          "min": 0,
+          "max": 590,
+          "default": 50
         },
         {
           "id": "P0.13",
@@ -716,9 +719,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 0.0
+          "min": 0,
+          "max": 590,
+          "default": 0
         },
         {
           "id": "P0.14",
@@ -732,9 +735,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 0.0
+          "min": 0,
+          "max": 590,
+          "default": 0
         },
         {
           "id": "P0.15",
@@ -748,7 +751,7 @@
           "step": 0.1,
           "unit": "кГц",
           "min": 0.5,
-          "max": 16.0,
+          "max": 16,
           "default": null
         },
         {
@@ -782,8 +785,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 65000.0,
+          "min": 0,
+          "max": 65000,
           "default": null
         },
         {
@@ -797,8 +800,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 65000.0,
+          "min": 0,
+          "max": 65000,
           "default": null
         },
         {
@@ -837,9 +840,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 0.0
+          "min": 0,
+          "max": 590,
+          "default": 0
         },
         {
           "id": "P0.23",
@@ -955,7 +958,7 @@
           "step": 0.1,
           "unit": "кВт",
           "min": 0.1,
-          "max": 1000.0,
+          "max": 1000,
           "default": null
         },
         {
@@ -1001,7 +1004,7 @@
           "step": 0.01,
           "unit": "Гц",
           "min": 0.01,
-          "max": 590.0,
+          "max": 590,
           "default": null
         },
         {
@@ -1095,7 +1098,7 @@
           "step": 0.01,
           "unit": "А",
           "min": 0.01,
-          "max": 590.0,
+          "max": 590,
           "default": null
         },
         {
@@ -1222,7 +1225,7 @@
           "step": 0.01,
           "unit": "сек",
           "min": 0.01,
-          "max": 10.0,
+          "max": 10,
           "default": 0.5
         },
         {
@@ -1237,9 +1240,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 5.0
+          "min": 0,
+          "max": 590,
+          "default": 5
         },
         {
           "id": "P2.03",
@@ -1265,7 +1268,7 @@
           "step": 0.01,
           "unit": "сек",
           "min": 0.01,
-          "max": 10.0,
+          "max": 10,
           "default": 0.5
         },
         {
@@ -1280,9 +1283,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 10.0
+          "min": 0,
+          "max": 590,
+          "default": 10
         },
         {
           "id": "P2.06",
@@ -1308,7 +1311,7 @@
           "scale": 0.001,
           "step": 0.001,
           "unit": "сек",
-          "min": 0.0,
+          "min": 0,
           "max": 0.1,
           "default": 0.015
         },
@@ -1379,8 +1382,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 200.0,
+          "min": 0,
+          "max": 200,
           "default": 150
         },
         {
@@ -1394,8 +1397,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 200.0,
+          "min": 0,
+          "max": 200,
           "default": 150
         },
         {
@@ -1409,8 +1412,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 200.0,
+          "min": 0,
+          "max": 200,
           "default": 150
         },
         {
@@ -1424,8 +1427,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 200.0,
+          "min": 0,
+          "max": 200,
           "default": 150
         },
         {
@@ -1439,8 +1442,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 200.0,
+          "min": 0,
+          "max": 200,
           "default": 150
         }
       ]
@@ -1490,8 +1493,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 30.0,
+          "min": 0,
+          "max": 30,
           "default": null
         },
         {
@@ -1506,8 +1509,8 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
+          "min": 0,
+          "max": 590,
           "default": 50
         },
         {
@@ -1522,8 +1525,8 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
+          "min": 0,
+          "max": 590,
           "default": 0
         },
         {
@@ -1537,8 +1540,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 100.0,
+          "min": 0,
+          "max": 100,
           "default": 0
         },
         {
@@ -1553,9 +1556,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 0.0
+          "min": 0,
+          "max": 590,
+          "default": 0
         },
         {
           "id": "P3.06",
@@ -1568,9 +1571,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": 0,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "P3.07",
@@ -1584,9 +1587,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 0.0
+          "min": 0,
+          "max": 590,
+          "default": 0
         },
         {
           "id": "P3.08",
@@ -1599,9 +1602,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": 0,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "P3.09",
@@ -1614,8 +1617,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 200.0,
+          "min": 0,
+          "max": 200,
           "default": 0
         },
         {
@@ -1629,8 +1632,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 200.0,
+          "min": 0,
+          "max": 200,
           "default": 0
         },
         {
@@ -1644,8 +1647,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 200.0,
+          "min": 0,
+          "max": 200,
           "default": null
         },
         {
@@ -1720,8 +1723,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 1000.0,
+          "min": 0,
+          "max": 1000,
           "default": null
         },
         {
@@ -1735,8 +1738,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 1000.0,
+          "min": 0,
+          "max": 1000,
           "default": null
         },
         {
@@ -2032,8 +2035,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 1.0,
+          "min": 0,
+          "max": 1,
           "default": 0.01
         },
         {
@@ -2077,7 +2080,7 @@
           "unit": "Гц/сек",
           "min": 0.01,
           "max": 65.535,
-          "default": 1.0
+          "default": 1
         },
         {
           "id": "P4.13",
@@ -2091,9 +2094,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "В",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 0.0
+          "min": 0,
+          "max": 590,
+          "default": 0
         },
         {
           "id": "P4.14",
@@ -2106,9 +2109,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": -100,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "P4.15",
@@ -2122,9 +2125,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "В",
-          "min": 0.0,
-          "max": 10.0,
-          "default": 10.0
+          "min": 0,
+          "max": 10,
+          "default": 10
         },
         {
           "id": "P4.16",
@@ -2137,9 +2140,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 100.0
+          "min": -100,
+          "max": 100,
+          "default": 100
         },
         {
           "id": "P4.17",
@@ -2152,8 +2155,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 10.0,
+          "min": 0,
+          "max": 10,
           "default": 0.1
         },
         {
@@ -2168,9 +2171,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "В",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 0.0
+          "min": 0,
+          "max": 590,
+          "default": 0
         },
         {
           "id": "P4.19",
@@ -2183,9 +2186,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": -100,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "P4.20",
@@ -2199,9 +2202,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "В",
-          "min": 0.0,
-          "max": 10.0,
-          "default": 10.0
+          "min": 0,
+          "max": 10,
+          "default": 10
         },
         {
           "id": "P4.21",
@@ -2214,9 +2217,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 100.0
+          "min": -100,
+          "max": 100,
+          "default": 100
         },
         {
           "id": "P4.22",
@@ -2229,8 +2232,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 10.0,
+          "min": 0,
+          "max": 10,
           "default": 0.1
         },
         {
@@ -2245,9 +2248,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "В",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 0.0
+          "min": 0,
+          "max": 590,
+          "default": 0
         },
         {
           "id": "P4.24",
@@ -2260,9 +2263,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": -100,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "P4.25",
@@ -2276,9 +2279,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "В",
-          "min": 0.0,
-          "max": 10.0,
-          "default": 10.0
+          "min": 0,
+          "max": 10,
+          "default": 10
         },
         {
           "id": "P4.26",
@@ -2291,9 +2294,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 100.0
+          "min": -100,
+          "max": 100,
+          "default": 100
         },
         {
           "id": "P4.27",
@@ -2306,8 +2309,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 10.0,
+          "min": 0,
+          "max": 10,
           "default": 0.1
         },
         {
@@ -2322,9 +2325,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "кГц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 0.0
+          "min": 0,
+          "max": 590,
+          "default": 0
         },
         {
           "id": "P4.29",
@@ -2337,9 +2340,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": -100,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "P4.30",
@@ -2353,9 +2356,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "кГц",
-          "min": 0.0,
-          "max": 100.0,
-          "default": 50.0
+          "min": 0,
+          "max": 100,
+          "default": 50
         },
         {
           "id": "P4.31",
@@ -2368,9 +2371,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 100.0
+          "min": -100,
+          "max": 100,
+          "default": 100
         },
         {
           "id": "P4.32",
@@ -2383,8 +2386,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 10.0,
+          "min": 0,
+          "max": 10,
           "default": 0.1
         },
         {
@@ -2420,9 +2423,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 3600.0,
-          "default": 0.0
+          "min": 0,
+          "max": 3600,
+          "default": 0
         },
         {
           "id": "P4.36",
@@ -2435,9 +2438,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 3600.0,
-          "default": 0.0
+          "min": 0,
+          "max": 3600,
+          "default": 0
         },
         {
           "id": "P4.37",
@@ -2450,9 +2453,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 3600.0,
-          "default": 0.0
+          "min": 0,
+          "max": 3600,
+          "default": 0
         },
         {
           "id": "P4.38",
@@ -2799,8 +2802,8 @@
           "step": 0.01,
           "unit": "кГц",
           "min": 0.01,
-          "max": 100.0,
-          "default": 50.0
+          "max": 100,
+          "default": 50
         },
         {
           "id": "P5.10",
@@ -2813,9 +2816,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": -100,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "P5.11",
@@ -2827,9 +2830,9 @@
           "type": "float",
           "scale": 0.01,
           "step": 0.01,
-          "min": -10.0,
-          "max": 10.0,
-          "default": 1.0
+          "min": -10,
+          "max": 10,
+          "default": 1
         },
         {
           "id": "P5.12",
@@ -2842,9 +2845,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": -100,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "P5.13",
@@ -2856,9 +2859,9 @@
           "type": "float",
           "scale": 0.01,
           "step": 0.01,
-          "min": -10.0,
-          "max": 10.0,
-          "default": 1.0
+          "min": -10,
+          "max": 10,
+          "default": 1
         },
         {
           "id": "P5.17",
@@ -2871,9 +2874,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 3600.0,
-          "default": 0.0
+          "min": 0,
+          "max": 3600,
+          "default": 0
         },
         {
           "id": "P5.18",
@@ -2886,9 +2889,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 3600.0,
-          "default": 0.0
+          "min": 0,
+          "max": 3600,
+          "default": 0
         },
         {
           "id": "P5.19",
@@ -2901,9 +2904,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 3600.0,
-          "default": 0.0
+          "min": 0,
+          "max": 3600,
+          "default": 0
         }
       ]
     },
@@ -2971,8 +2974,8 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 10.0,
+          "min": 0,
+          "max": 10,
           "default": 0
         },
         {
@@ -2986,9 +2989,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": 0,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "P6.05",
@@ -3014,9 +3017,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": 0,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "P6.07",
@@ -3054,9 +3057,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 30.0
+          "min": 0,
+          "max": 590,
+          "default": 30
         },
         {
           "id": "P6.09",
@@ -3070,9 +3073,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 30.0
+          "min": 0,
+          "max": 590,
+          "default": 30
         },
         {
           "id": "P6.10",
@@ -3106,8 +3109,8 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
+          "min": 0,
+          "max": 590,
           "default": 0
         },
         {
@@ -3121,8 +3124,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 100.0,
+          "min": 0,
+          "max": 100,
           "default": 0
         },
         {
@@ -3149,8 +3152,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 100.0,
+          "min": 0,
+          "max": 100,
           "default": 0
         },
         {
@@ -3239,7 +3242,7 @@
           "type": "float",
           "scale": 0.01,
           "step": 0.01,
-          "min": 1.0,
+          "min": 1,
           "max": 1.25,
           "default": 1.25
         }
@@ -3347,7 +3350,7 @@
           "step": 0.01,
           "min": 0.0001,
           "max": 6.5,
-          "default": 1.0
+          "default": 1
         },
         {
           "id": "P7.07",
@@ -3360,8 +3363,8 @@
           "scale": 1,
           "step": 1,
           "unit": "°C",
-          "min": 0.0,
-          "max": 120.0
+          "min": 0,
+          "max": 120
         }
       ]
     },
@@ -3382,9 +3385,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 2.0
+          "min": 0,
+          "max": 590,
+          "default": 2
         },
         {
           "id": "P8.01",
@@ -3397,9 +3400,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 6500.0,
-          "default": 20.0
+          "min": 0,
+          "max": 6500,
+          "default": 20
         },
         {
           "id": "P8.02",
@@ -3412,9 +3415,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 6500.0,
-          "default": 20.0
+          "min": 0,
+          "max": 6500,
+          "default": 20
         },
         {
           "id": "P8.03",
@@ -3427,8 +3430,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 6500.0,
+          "min": 0,
+          "max": 6500,
           "default": null
         },
         {
@@ -3442,8 +3445,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 6500.0,
+          "min": 0,
+          "max": 6500,
           "default": null
         },
         {
@@ -3457,8 +3460,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 6500.0,
+          "min": 0,
+          "max": 6500,
           "default": null
         },
         {
@@ -3472,8 +3475,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 6500.0,
+          "min": 0,
+          "max": 6500,
           "default": null
         },
         {
@@ -3487,8 +3490,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 6500.0,
+          "min": 0,
+          "max": 6500,
           "default": null
         },
         {
@@ -3502,8 +3505,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 6500.0,
+          "min": 0,
+          "max": 6500,
           "default": null
         },
         {
@@ -3518,9 +3521,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 1.0
+          "min": 0,
+          "max": 590,
+          "default": 1
         },
         {
           "id": "P8.10",
@@ -3534,9 +3537,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 0.0
+          "min": 0,
+          "max": 590,
+          "default": 0
         },
         {
           "id": "P8.11",
@@ -3550,8 +3553,8 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
+          "min": 0,
+          "max": 590,
           "default": 0.01
         },
         {
@@ -3565,9 +3568,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 3000.0,
-          "default": 0.0
+          "min": 0,
+          "max": 3000,
+          "default": 0
         },
         {
           "id": "P8.13",
@@ -3671,9 +3674,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 50.0
+          "min": 0,
+          "max": 590,
+          "default": 50
         },
         {
           "id": "P8.20",
@@ -3686,9 +3689,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 100.0,
-          "default": 5.0
+          "min": 0,
+          "max": 100,
+          "default": 5
         },
         {
           "id": "P8.21",
@@ -3701,9 +3704,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 100.0,
-          "default": 5.0
+          "min": 0,
+          "max": 100,
+          "default": 5
         },
         {
           "id": "P8.22",
@@ -3737,9 +3740,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 0.0
+          "min": 0,
+          "max": 590,
+          "default": 0
         },
         {
           "id": "P8.26",
@@ -3753,9 +3756,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 0.0
+          "min": 0,
+          "max": 590,
+          "default": 0
         },
         {
           "id": "P8.27",
@@ -3789,9 +3792,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 50.0
+          "min": 0,
+          "max": 590,
+          "default": 50
         },
         {
           "id": "P8.29",
@@ -3804,9 +3807,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 100.0,
-          "default": 5.0
+          "min": 0,
+          "max": 100,
+          "default": 5
         },
         {
           "id": "P8.30",
@@ -3820,9 +3823,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 50.0
+          "min": 0,
+          "max": 590,
+          "default": 50
         },
         {
           "id": "P8.31",
@@ -3835,8 +3838,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 100.0,
+          "min": 0,
+          "max": 100,
           "default": 5
         },
         {
@@ -3851,9 +3854,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 50.0
+          "min": 0,
+          "max": 590,
+          "default": 50
         },
         {
           "id": "P8.33",
@@ -3866,8 +3869,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 100.0,
+          "min": 0,
+          "max": 100,
           "default": 0
         },
         {
@@ -3881,9 +3884,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 300.0,
-          "default": 5.0
+          "min": 0,
+          "max": 300,
+          "default": 5
         },
         {
           "id": "P8.35",
@@ -3897,7 +3900,7 @@
           "step": 0.1,
           "unit": "сек",
           "min": 0.01,
-          "max": 600.0,
+          "max": 600,
           "default": 0.1
         },
         {
@@ -3911,9 +3914,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 300.0,
-          "default": 200.0
+          "min": 0,
+          "max": 300,
+          "default": 200
         },
         {
           "id": "P8.37",
@@ -3927,7 +3930,7 @@
           "step": 0.1,
           "unit": "сек",
           "min": 0.01,
-          "max": 600.0,
+          "max": 600,
           "default": 0.1
         },
         {
@@ -3941,9 +3944,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 300.0,
-          "default": 100.0
+          "min": 0,
+          "max": 300,
+          "default": 100
         },
         {
           "id": "P8.39",
@@ -3956,9 +3959,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 300.0,
-          "default": 0.0
+          "min": 0,
+          "max": 300,
+          "default": 0
         },
         {
           "id": "P8.40",
@@ -3971,9 +3974,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 300.0,
-          "default": 100.0
+          "min": 0,
+          "max": 300,
+          "default": 100
         },
         {
           "id": "P8.41",
@@ -3986,9 +3989,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 300.0,
-          "default": 0.0
+          "min": 0,
+          "max": 300,
+          "default": 0
         },
         {
           "id": "P8.42",
@@ -4045,9 +4048,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "мин",
-          "min": 0.0,
-          "max": 6500.0,
-          "default": 0.0
+          "min": 0,
+          "max": 6500,
+          "default": 0
         },
         {
           "id": "P8.45",
@@ -4061,8 +4064,8 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "В",
-          "min": 0.0,
-          "max": 590.0,
+          "min": 0,
+          "max": 590,
           "default": 3.1
         },
         {
@@ -4077,8 +4080,8 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "В",
-          "min": 0.0,
-          "max": 10.0,
+          "min": 0,
+          "max": 10,
           "default": 6.8
         },
         {
@@ -4126,9 +4129,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 0.0
+          "min": 0,
+          "max": 590,
+          "default": 0
         },
         {
           "id": "P8.50",
@@ -4141,9 +4144,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 6500.0,
-          "default": 0.0
+          "min": 0,
+          "max": 6500,
+          "default": 0
         },
         {
           "id": "P8.51",
@@ -4157,9 +4160,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 0.0
+          "min": 0,
+          "max": 590,
+          "default": 0
         },
         {
           "id": "P8.52",
@@ -4172,9 +4175,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 6500.0,
-          "default": 0.0
+          "min": 0,
+          "max": 6500,
+          "default": 0
         },
         {
           "id": "P8.53",
@@ -4187,9 +4190,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "мин",
-          "min": 0.0,
-          "max": 6500.0,
-          "default": 0.0
+          "min": 0,
+          "max": 6500,
+          "default": 0
         },
         {
           "id": "P8.55",
@@ -4202,7 +4205,7 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
+          "min": 0,
           "max": 6553.5,
           "default": null
         }
@@ -4244,8 +4247,8 @@
           "scale": 0.01,
           "step": 0.01,
           "min": 0.2,
-          "max": 10.0,
-          "default": 1.0
+          "max": 10,
+          "default": 1
         },
         {
           "id": "P9.02",
@@ -4324,8 +4327,8 @@
           "step": 0.1,
           "unit": "сек",
           "min": 0.1,
-          "max": 100.0,
-          "default": 1.0
+          "max": 100,
+          "default": 1
         },
         {
           "id": "P9.12",
@@ -4773,7 +4776,7 @@
           "type": "float",
           "scale": 0.1,
           "step": 0.1,
-          "default": 50.0
+          "default": 50
         },
         {
           "id": "PA.02",
@@ -4865,9 +4868,9 @@
           "type": "float",
           "scale": 0.01,
           "step": 0.01,
-          "min": 0.0,
-          "max": 100.0,
-          "default": 20.0
+          "min": 0,
+          "max": 100,
+          "default": 20
         },
         {
           "id": "PA.06",
@@ -4881,8 +4884,8 @@
           "step": 0.01,
           "unit": "сек",
           "min": 0.01,
-          "max": 10.0,
-          "default": 2.0
+          "max": 10,
+          "default": 2
         },
         {
           "id": "PA.07",
@@ -4895,9 +4898,9 @@
           "scale": 0.001,
           "step": 0.001,
           "unit": "сек",
-          "min": 0.0,
-          "max": 10.0,
-          "default": 0.0
+          "min": 0,
+          "max": 10,
+          "default": 0
         },
         {
           "id": "PA.08",
@@ -4911,9 +4914,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 2.0
+          "min": 0,
+          "max": 590,
+          "default": 2
         },
         {
           "id": "PA.09",
@@ -4926,9 +4929,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": 0,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "PA.10",
@@ -4941,8 +4944,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 100.0,
+          "min": 0,
+          "max": 100,
           "default": 0.1
         },
         {
@@ -4956,9 +4959,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 650.0,
-          "default": 0.0
+          "min": 0,
+          "max": 650,
+          "default": 0
         },
         {
           "id": "PA.12",
@@ -4971,9 +4974,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 60.0,
-          "default": 0.0
+          "min": 0,
+          "max": 60,
+          "default": 0
         },
         {
           "id": "PA.13",
@@ -4986,9 +4989,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 60.0,
-          "default": 0.0
+          "min": 0,
+          "max": 60,
+          "default": 0
         },
         {
           "id": "PA.15",
@@ -5000,9 +5003,9 @@
           "type": "float",
           "scale": 0.01,
           "step": 0.01,
-          "min": 0.0,
-          "max": 100.0,
-          "default": 20.0
+          "min": 0,
+          "max": 100,
+          "default": 20
         },
         {
           "id": "PA.16",
@@ -5016,8 +5019,8 @@
           "step": 0.01,
           "unit": "сек",
           "min": 0.01,
-          "max": 10.0,
-          "default": 2.0
+          "max": 10,
+          "default": 2
         },
         {
           "id": "PA.17",
@@ -5030,9 +5033,9 @@
           "scale": 0.001,
           "step": 0.001,
           "unit": "сек",
-          "min": 0.0,
-          "max": 10.0,
-          "default": 0.0
+          "min": 0,
+          "max": 10,
+          "default": 0
         },
         {
           "id": "PA.18",
@@ -5074,7 +5077,7 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "default": 20.0
+          "default": 20
         },
         {
           "id": "PA.20",
@@ -5088,7 +5091,7 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "default": 80.0
+          "default": 80
         },
         {
           "id": "PA.21",
@@ -5103,7 +5106,7 @@
           "unit": "%",
           "min": 0,
           "max": 100,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "PA.22",
@@ -5116,9 +5119,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 650.0,
-          "default": 0.0
+          "min": 0,
+          "max": 650,
+          "default": 0
         },
         {
           "id": "PA.25",
@@ -5142,9 +5145,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": 0,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "PA.27",
@@ -5157,9 +5160,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 20.0,
-          "default": 0.0
+          "min": 0,
+          "max": 20,
+          "default": 0
         },
         {
           "id": "PA.28",
@@ -5199,9 +5202,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": -100,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "PC.01",
@@ -5214,9 +5217,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": -100,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "PC.02",
@@ -5229,9 +5232,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": -100,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "PC.03",
@@ -5244,9 +5247,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": -100,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "PC.04",
@@ -5259,9 +5262,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": -100,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "PC.05",
@@ -5274,9 +5277,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": -100,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "PC.06",
@@ -5289,9 +5292,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": -100,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "PC.07",
@@ -5304,9 +5307,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": -100,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "PC.08",
@@ -5319,9 +5322,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": -100,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "PC.09",
@@ -5334,9 +5337,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": -100,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "PC.10",
@@ -5349,9 +5352,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": -100,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "PC.11",
@@ -5364,9 +5367,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": -100,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "PC.12",
@@ -5379,9 +5382,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": -100,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "PC.13",
@@ -5394,9 +5397,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": -100,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "PC.14",
@@ -5409,9 +5412,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": -100,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "PC.15",
@@ -5424,9 +5427,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0,
-          "default": 0.0
+          "min": -100,
+          "max": 100,
+          "default": 0
         },
         {
           "id": "PC.16",
@@ -5461,7 +5464,7 @@
           "paramCode": "PC.17",
           "access": "O",
           "type": "bitmask",
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "PC.18",
@@ -5474,9 +5477,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек (ч)",
-          "min": 0.0,
+          "min": 0,
           "max": 6553.5,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "PC.19",
@@ -5501,9 +5504,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек (ч)",
-          "min": 0.0,
+          "min": 0,
           "max": 6553.5,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "PC.21",
@@ -5528,9 +5531,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек (ч)",
-          "min": 0.0,
+          "min": 0,
           "max": 6553.5,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "PC.23",
@@ -5555,9 +5558,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек (ч)",
-          "min": 0.0,
+          "min": 0,
           "max": 6553.5,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "PC.25",
@@ -5582,9 +5585,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек (ч)",
-          "min": 0.0,
+          "min": 0,
           "max": 6553.5,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "PC.27",
@@ -5609,9 +5612,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек (ч)",
-          "min": 0.0,
+          "min": 0,
           "max": 6553.5,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "PC.29",
@@ -5636,9 +5639,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек (ч)",
-          "min": 0.0,
+          "min": 0,
           "max": 6553.5,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "PC.31",
@@ -5663,9 +5666,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек (ч)",
-          "min": 0.0,
+          "min": 0,
           "max": 6553.5,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "PC.33",
@@ -5690,9 +5693,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек (ч)",
-          "min": 0.0,
+          "min": 0,
           "max": 6553.5,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "PC.35",
@@ -5717,9 +5720,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек (ч)",
-          "min": 0.0,
+          "min": 0,
           "max": 6553.5,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "PC.37",
@@ -5744,9 +5747,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек (ч)",
-          "min": 0.0,
+          "min": 0,
           "max": 6553.5,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "PC.39",
@@ -5771,9 +5774,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек (ч)",
-          "min": 0.0,
+          "min": 0,
           "max": 6553.5,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "PC.41",
@@ -5798,9 +5801,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек (ч)",
-          "min": 0.0,
+          "min": 0,
           "max": 6553.5,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "PC.43",
@@ -5825,9 +5828,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек (ч)",
-          "min": 0.0,
+          "min": 0,
           "max": 6553.5,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "PC.45",
@@ -5852,9 +5855,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек (ч)",
-          "min": 0.0,
+          "min": 0,
           "max": 6553.5,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "PC.47",
@@ -5879,9 +5882,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек (ч)",
-          "min": 0.0,
+          "min": 0,
           "max": 6553.5,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "PC.49",
@@ -6078,9 +6081,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 60.0,
-          "default": 0.0
+          "min": 0,
+          "max": 60,
+          "default": 0
         },
         {
           "id": "PD.05",
@@ -6239,9 +6242,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": -200.0,
-          "max": 200.0,
-          "default": 150.0
+          "min": -200,
+          "max": 200,
+          "default": 150
         },
         {
           "id": "C0.05",
@@ -6255,9 +6258,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 50.0
+          "min": 0,
+          "max": 590,
+          "default": 50
         },
         {
           "id": "C0.06",
@@ -6271,9 +6274,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 50.0
+          "min": 0,
+          "max": 590,
+          "default": 50
         },
         {
           "id": "C0.07",
@@ -6286,9 +6289,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 65000.0,
-          "default": 0.0
+          "min": 0,
+          "max": 65000,
+          "default": 0
         },
         {
           "id": "C0.08",
@@ -6301,9 +6304,9 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 65000.0,
-          "default": 0.0
+          "min": 0,
+          "max": 65000,
+          "default": 0
         }
       ]
     },
@@ -6324,9 +6327,9 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 590.0,
-          "default": 8.0
+          "min": 0,
+          "max": 590,
+          "default": 8
         },
         {
           "id": "C5.01",
@@ -6453,8 +6456,8 @@
           "scale": 1,
           "step": 1,
           "unit": "В",
-          "min": 200.0,
-          "max": 820.0,
+          "min": 200,
+          "max": 820,
           "default": null
         }
       ]
@@ -6475,8 +6478,8 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 320.0
+          "min": 0,
+          "max": 320
         },
         {
           "id": "D0.01",
@@ -6489,8 +6492,8 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 320.0
+          "min": 0,
+          "max": 320
         },
         {
           "id": "D0.02",
@@ -6503,8 +6506,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "В",
-          "min": 0.0,
-          "max": 3000.0
+          "min": 0,
+          "max": 3000
         },
         {
           "id": "D0.03",
@@ -6530,7 +6533,7 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "А",
-          "min": 0.0,
+          "min": 0,
           "max": 655.35
         },
         {
@@ -6558,8 +6561,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": -200.0,
-          "max": 200.0
+          "min": -200,
+          "max": 200
         },
         {
           "id": "D0.07",
@@ -6634,7 +6637,7 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "В",
-          "min": 0.0,
+          "min": 0,
           "max": 10.57
         },
         {
@@ -6648,7 +6651,7 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "В",
-          "min": 0.0,
+          "min": 0,
           "max": 10.57
         },
         {
@@ -6704,8 +6707,8 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "кГц",
-          "min": 0.0,
-          "max": 100.0
+          "min": 0,
+          "max": 100
         },
         {
           "id": "D0.20",
@@ -6718,8 +6721,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "мин",
-          "min": 0.0,
-          "max": 6500.0
+          "min": 0,
+          "max": 6500
         },
         {
           "id": "D0.21",
@@ -6732,7 +6735,7 @@
           "scale": 0.001,
           "step": 0.001,
           "unit": "В",
-          "min": 0.0,
+          "min": 0,
           "max": 10.57
         },
         {
@@ -6746,7 +6749,7 @@
           "scale": 0.001,
           "step": 0.001,
           "unit": "В",
-          "min": 0.0,
+          "min": 0,
           "max": 10.57
         },
         {
@@ -6784,7 +6787,7 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "м",
-          "min": 0.0,
+          "min": 0,
           "max": 6553.5
         },
         {
@@ -6810,8 +6813,8 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0
+          "min": -100,
+          "max": 100
         },
         {
           "id": "D0.30",
@@ -6824,8 +6827,8 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 320.0
+          "min": 0,
+          "max": 320
         },
         {
           "id": "D0.31",
@@ -6838,8 +6841,8 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "Гц",
-          "min": 0.0,
-          "max": 320.0
+          "min": 0,
+          "max": 320
         },
         {
           "id": "D0.35",
@@ -6852,8 +6855,8 @@
           "scale": 0.1,
           "step": 0.1,
           "unit": "%",
-          "min": -200.0,
-          "max": 200.0
+          "min": -200,
+          "max": 200
         },
         {
           "id": "D0.37",
@@ -6934,8 +6937,8 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0
+          "min": -100,
+          "max": 100
         },
         {
           "id": "D0.60",
@@ -6948,8 +6951,8 @@
           "scale": 0.01,
           "step": 0.01,
           "unit": "%",
-          "min": -100.0,
-          "max": 100.0
+          "min": -100,
+          "max": 100
         },
         {
           "id": "D0.61",

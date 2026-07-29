@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Button, Card, Row, Col, Statistic, Space, Typography, Alert, Tag, notification, Select } from 'antd'
-import { PlayCircleOutlined, PauseCircleOutlined, DownloadOutlined, BellOutlined, EyeOutlined } from '@ant-design/icons'
+import { PlayCircleOutlined, PauseCircleOutlined, DownloadOutlined, BellOutlined, EyeOutlined, DeleteOutlined } from '@ant-design/icons'
 import { LineChart, Line, ResponsiveContainer, Tooltip, YAxis } from 'recharts'
 import {
   DndContext,
@@ -8,6 +8,8 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  useDroppable,
+  DragOverlay,
 } from '@dnd-kit/core'
 import {
   SortableContext,
@@ -20,6 +22,7 @@ import socket from '../socket'
 import { addLog } from '../log'
 import { useDeviceSettings } from '../useDeviceSettings'
 import { getMonitorParams } from '../monitorParams'
+import { setBusy } from '../busy'
 import { isGenericBitLabel } from '../paramFormat'
 
 const MAX_POINTS = 60
@@ -38,6 +41,33 @@ function evalCondition(value, condition, threshold) {
   }
 }
 
+
+// Зона удаления: появляется вверху экрана, как только начали тащить карточку.
+// Дотащил сюда и отпустил — параметр убирается из мониторинга (то же самое, что
+// снять с него галочку в списке «показать графики»), вернуть можно там же.
+const TRASH_ID = '__monitor-trash__'
+
+function TrashZone({ active }) {
+  const { setNodeRef, isOver } = useDroppable({ id: TRASH_ID })
+  if (!active) return null
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        position: 'fixed', top: 0, left: 0, right: 0, height: 64, zIndex: 1200,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+        background: isOver ? 'rgba(255,77,79,0.95)' : 'rgba(255,77,79,0.75)',
+        color: '#fff', fontSize: 14, fontWeight: 500,
+        borderBottom: isOver ? '2px solid #fff' : '2px solid transparent',
+        transition: 'background 0.15s',
+        pointerEvents: 'auto',
+      }}
+    >
+      <DeleteOutlined style={{ fontSize: 20 }} />
+      {isOver ? 'Отпустите — параметр будет убран из мониторинга' : 'Перетащите сюда, чтобы убрать параметр из мониторинга'}
+    </div>
+  )
+}
 
 function SortableCard({ id, children }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
@@ -187,6 +217,7 @@ export default function Monitor({ device, modbusConnected }) {
     return () => {
       socket.emit('monitor:stop', { deviceId: device.id })
       setRunning(false)
+      setBusy('monitor', false) // размонтировали компонент — блокировку снимаем
       setData({})
       setHistory({})
       clearAlerts()
@@ -197,6 +228,7 @@ export default function Monitor({ device, modbusConnected }) {
     if (running) {
       socket.emit('monitor:stop', { deviceId: device.id })
       setRunning(false)
+      setBusy('monitor', false)
       setData({})
       setHistory({})
       clearAlerts()
@@ -204,6 +236,9 @@ export default function Monitor({ device, modbusConnected }) {
     } else {
       socket.emit('monitor:start', { deviceId: device.id, paramIds: monitorParams.map(p => p.id) })
       setRunning(true)
+      // Пока идёт опрос, переключаться на другой ПЧ/вкладку нельзя — иначе
+      // мониторинг остаётся висеть на прежнем устройстве.
+      setBusy('monitor', true)
       addLog('info', `Мониторинг запущен: ${device.name}`)
     }
   }
@@ -238,11 +273,24 @@ export default function Monitor({ device, modbusConnected }) {
     addLog('success', `Экспорт CSV: ${rows.length} строк, ${params.length} параметров`)
   }
 
+  const [draggingId, setDraggingId] = useState(null)
+
   function handleDragEnd(event) {
     const { active, over } = event
-    if (!over || active.id === over.id) return
+    setDraggingId(null)
+    if (!over) return
+    // Бросили в зону удаления вверху — убираем параметр из мониторинга
+    // (эквивалент снятия галочки, значение сохраняется и возвращается).
+    if (over.id === TRASH_ID) {
+      const removed = monitorParams.find(p => p.id === active.id)
+      handleVisibleChange(activeVisible.filter(id => id !== active.id))
+      addLog('info', `Параметр убран из мониторинга: ${removed?.name ?? active.id}`)
+      return
+    }
+    if (active.id === over.id) return
     const oldIndex = orderedParams.findIndex(p => p.id === active.id)
     const newIndex = orderedParams.findIndex(p => p.id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
     const newOrder = arrayMove(orderedParams, oldIndex, newIndex).map(p => p.id)
     setCardOrder(newOrder)
     saveDeviceSettings({ monitorOrder: newOrder })
@@ -351,6 +399,7 @@ export default function Monitor({ device, modbusConnected }) {
             {configuredAlerts.map(alert => {
               const triggered = alertStatus[alert.id]
               const paramName = getParamName(alert.paramId)
+              const unit = getParamUnit(alert.paramId)
               const condLabel = CONDITION_LABEL[alert.condition] ?? alert.condition
               let color = 'default'
               if (running) {
@@ -358,9 +407,20 @@ export default function Monitor({ device, modbusConnected }) {
                 else if (triggered === false) color = 'success'
               }
               return (
-                <Tag key={alert.id} color={color} style={{ fontSize: 12 }}>
-                  {paramName} {condLabel} {alert.threshold}{getParamUnit(alert.paramId) ? ` ${getParamUnit(alert.paramId)}` : ''}
-                </Tag>
+                // label из шаблона — человеческое имя правила («Перегрев»,
+                // «Авария ПЧ»). Само условие показываем в подсказке: для кодов
+                // аварий строка вида «Последняя запись об аварии > 0» оператору
+                // ничего не говорит.
+                <Tooltip
+                  key={alert.id}
+                  title={`Условие: ${paramName} ${condLabel} ${alert.threshold}${unit ? ` ${unit}` : ''}`}
+                >
+                  <Tag color={color} style={{ fontSize: 12, cursor: 'help' }}>
+                    {alert.label
+                      ? `${alert.label}${unit ? `: ${condLabel} ${alert.threshold} ${unit}` : ''}`
+                      : `${paramName} ${condLabel} ${alert.threshold}${unit ? ` ${unit}` : ''}`}
+                  </Tag>
+                </Tooltip>
               )
             })}
           </Space>
@@ -389,7 +449,14 @@ export default function Monitor({ device, modbusConnected }) {
         />
       )}
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={e => setDraggingId(e.active.id)}
+        onDragCancel={() => setDraggingId(null)}
+        onDragEnd={handleDragEnd}
+      >
+        <TrashZone active={!!draggingId} />
         <SortableContext items={visibleOrdered.map(p => p.id)} strategy={rectSortingStrategy}>
           <Row gutter={[16, 16]}>
             {visibleOrdered.map((param, idx) => {
@@ -397,7 +464,11 @@ export default function Monitor({ device, modbusConnected }) {
               const hist  = history[param.id] ?? []
               const colorIdx = monitorParams.findIndex(p => p.id === param.id)
               const color = COLORS[colorIdx % COLORS.length]
-              const isError = param.id === 'F0.10' && entry?.value
+              // Подсвечиваем ТЕКУЩИЙ код аварии: у Pump это F0.27, у VL —
+              // FAULT_CODE/D0.45. F0.10 — это архивная «последняя запись об
+              // аварии», она остаётся ненулевой и после устранения аварии,
+              // поэтому подсветка по ней горела бы вечно.
+              const isError = ['F0.27', 'FAULT_CODE', 'D0.45'].includes(param.id) && entry?.value
               const errText = isError ? getErrorText(entry.value) : null
 
               const hasTriggeredAlert = configuredAlerts.some(

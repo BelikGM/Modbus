@@ -5,8 +5,10 @@ import {
   InfoCircleOutlined,
   WarningOutlined,
   DeleteOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons'
 import { useLog, clearLog } from '../log'
+import { downloadCsv } from '../csv'
 
 const ICONS = {
   success: <CheckCircleOutlined style={{ color: '#52c41a', marginTop: 2 }} />,
@@ -15,9 +17,33 @@ const ICONS = {
   info:    <InfoCircleOutlined   style={{ color: '#1677ff', marginTop: 2 }} />,
 }
 
-export default function LogDrawer({ open, onClose }) {
+const LEVEL_LABEL = { success: 'Успех', error: 'Ошибка', warning: 'Предупреждение', info: 'Информация' }
+
+export default function LogDrawer({ open, onClose, projectName }) {
   const entries = useLog()
   const errorCount = entries.filter(e => e.level === 'error').length
+
+  // Выгрузка журнала в CSV: имя файла — «<проект>-журнал-<дата>.csv».
+  // Записи идут в хронологическом порядке (в списке — новые сверху, в файле
+  // удобнее читать сверху вниз по времени).
+  function exportLogCsv() {
+    const rows = [...entries].reverse().map(e => {
+      const d = e.ts ? new Date(e.ts) : null
+      return [
+        d ? d.toLocaleDateString('ru-RU') : '',
+        e.time ?? (d ? d.toLocaleTimeString('ru-RU') : ''),
+        LEVEL_LABEL[e.level] ?? e.level,
+        e.message,
+      ]
+    })
+    const safeProject = String(projectName || 'проект').replace(/[^\p{L}\p{N}_-]+/gu, '_')
+    const today = new Date().toISOString().slice(0, 10)
+    downloadCsv(
+      `${safeProject}-журнал-${today}.csv`,
+      ['Дата', 'Время', 'Уровень', 'Событие'],
+      rows,
+    )
+  }
 
   return (
     <Drawer
@@ -32,9 +58,14 @@ export default function LogDrawer({ open, onClose }) {
       onClose={onClose}
       size={460}
       extra={
-        <Button size="small" icon={<DeleteOutlined />} onClick={clearLog} disabled={!entries.length}>
-          Очистить
-        </Button>
+        <Space>
+          <Button size="small" icon={<DownloadOutlined />} onClick={exportLogCsv} disabled={!entries.length}>
+            Скачать CSV
+          </Button>
+          <Button size="small" icon={<DeleteOutlined />} onClick={clearLog} disabled={!entries.length}>
+            Очистить
+          </Button>
+        </Space>
       }
       styles={{ body: { padding: '8px 16px' } }}
     >

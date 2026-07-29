@@ -45,11 +45,12 @@
   "alerts": [
     {
       "id": "fault-active",
-      "paramId": "F0.10",
+      "paramId": "F0.27",
       "condition": "gt",
       "threshold": 0,
       "level": "error",
-      "message": "Авария E{{value}}"
+      "message": "Авария E{{value}}",
+      "label": "Авария ПЧ (текущий код ≠ 0)"
     },
     {
       "id": "temp-high",
@@ -57,7 +58,8 @@
       "condition": "gt",
       "threshold": 70,
       "level": "warning",
-      "message": "Перегрев радиатора: {{value}} °C"
+      "message": "Перегрев радиатора: {{value}} °C",
+      "label": "Перегрев"
     },
     {
       "id": "current-high",
@@ -65,7 +67,8 @@
       "condition": "gt",
       "threshold": 20,
       "level": "warning",
-      "message": "Высокий ток: {{value}} А"
+      "message": "Высокий ток: {{value}} А",
+      "label": "Высокий ток"
     }
   ],
   "groups": [
@@ -336,14 +339,70 @@
           "access": "read",
           "type": "bitmask",
           "bits": [
-            { "bit": 0, "name": "FWD", "options": { "0": "выкл", "1": "вкл" } },
-            { "bit": 1, "name": "REV", "options": { "0": "выкл", "1": "вкл" } },
-            { "bit": 2, "name": "S1",  "options": { "0": "выкл", "1": "вкл" } },
-            { "bit": 3, "name": "S2",  "options": { "0": "выкл", "1": "вкл" } },
-            { "bit": 4, "name": "S3",  "options": { "0": "выкл", "1": "вкл" } },
-            { "bit": 5, "name": "S4",  "options": { "0": "выкл", "1": "вкл" } },
-            { "bit": 6, "name": "S5",  "options": { "0": "выкл", "1": "вкл" } },
-            { "bit": 7, "name": "S6",  "options": { "0": "выкл", "1": "вкл" } }
+            {
+              "bit": 0,
+              "name": "FWD",
+              "options": {
+                "0": "выкл",
+                "1": "вкл"
+              }
+            },
+            {
+              "bit": 1,
+              "name": "REV",
+              "options": {
+                "0": "выкл",
+                "1": "вкл"
+              }
+            },
+            {
+              "bit": 2,
+              "name": "S1",
+              "options": {
+                "0": "выкл",
+                "1": "вкл"
+              }
+            },
+            {
+              "bit": 3,
+              "name": "S2",
+              "options": {
+                "0": "выкл",
+                "1": "вкл"
+              }
+            },
+            {
+              "bit": 4,
+              "name": "S3",
+              "options": {
+                "0": "выкл",
+                "1": "вкл"
+              }
+            },
+            {
+              "bit": 5,
+              "name": "S4",
+              "options": {
+                "0": "выкл",
+                "1": "вкл"
+              }
+            },
+            {
+              "bit": 6,
+              "name": "S5",
+              "options": {
+                "0": "выкл",
+                "1": "вкл"
+              }
+            },
+            {
+              "bit": 7,
+              "name": "S6",
+              "options": {
+                "0": "выкл",
+                "1": "вкл"
+              }
+            }
           ]
         },
         {
@@ -353,9 +412,30 @@
           "access": "read",
           "type": "bitmask",
           "bits": [
-            { "bit": 0,  "name": "M01", "options": { "0": "выкл", "1": "вкл" } },
-            { "bit": 1,  "name": "M02", "options": { "0": "выкл", "1": "вкл" } },
-            { "bit": 2,  "name": "YA/YC", "options": { "0": "выкл", "1": "вкл" } }
+            {
+              "bit": 0,
+              "name": "M01",
+              "options": {
+                "0": "выкл",
+                "1": "вкл"
+              }
+            },
+            {
+              "bit": 1,
+              "name": "M02",
+              "options": {
+                "0": "выкл",
+                "1": "вкл"
+              }
+            },
+            {
+              "bit": 2,
+              "name": "YA/YC",
+              "options": {
+                "0": "выкл",
+                "1": "вкл"
+              }
+            }
           ]
         },
         {
@@ -409,7 +489,7 @@
           "min": 0,
           "max_ref": "F1.05",
           "step": 0.01,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F1.01",
@@ -475,10 +555,10 @@
           "type": "float",
           "scale": 0.01,
           "unit": "Гц",
-          "min": 50.0,
-          "max": 400.0,
+          "min": 50,
+          "max": 400,
           "step": 0.01,
-          "default": 50.0
+          "default": 50
         },
         {
           "id": "F1.06",
@@ -491,7 +571,7 @@
           "min": 0,
           "max_ref": "F1.05",
           "step": 0.01,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F1.07",
@@ -502,7 +582,7 @@
           "scale": 0.1,
           "unit": "сек",
           "min": 0,
-          "max": 6000.0,
+          "max": 6000,
           "step": 0.1,
           "default": "Зависит от модели ПЧ"
         },
@@ -515,7 +595,7 @@
           "scale": 0.1,
           "unit": "сек",
           "min": 0,
-          "max": 6000.0,
+          "max": 6000,
           "step": 0.1,
           "default": "Зависит от модели ПЧ"
         },
@@ -528,9 +608,9 @@
           "scale": 0.1,
           "unit": "В",
           "min_ref": "F1.11",
-          "max": 500.0,
+          "max": 500,
           "step": 0.1,
-          "default": 380.0
+          "default": 380
         },
         {
           "id": "F1.10",
@@ -543,7 +623,7 @@
           "min_ref": "F1.12",
           "max_ref": "F1.05",
           "step": 0.01,
-          "default": 50.0
+          "default": 50
         },
         {
           "id": "F1.11",
@@ -605,8 +685,8 @@
           "type": "float",
           "scale": 0.1,
           "unit": "кГц",
-          "min": 1.0,
-          "max": 15.0,
+          "min": 1,
+          "max": 15,
           "step": 0.1,
           "default": "Зависит от модели ПЧ"
         },
@@ -679,9 +759,9 @@
           "type": "float",
           "scale": 0.01,
           "unit": "Гц",
-          "min": 0.0,
+          "min": 0,
           "max_ref": "F1.05",
-          "default": 50.0
+          "default": 50
         },
         {
           "id": "F1.22",
@@ -812,10 +892,10 @@
           "type": "float",
           "scale": 0.01,
           "unit": "Гц",
-          "min": 0.10,
-          "max": 10.0,
+          "min": 0.1,
+          "max": 10,
           "step": 0.01,
-          "default": 0.50
+          "default": 0.5
         },
         {
           "id": "F2.03",
@@ -825,10 +905,10 @@
           "type": "float",
           "scale": 0.01,
           "unit": "Гц",
-          "min": 0.10,
-          "max": 10.0,
+          "min": 0.1,
+          "max": 10,
           "step": 0.01,
-          "default": 0.50
+          "default": 0.5
         },
         {
           "id": "F2.04",
@@ -851,9 +931,9 @@
           "scale": 0.1,
           "unit": "сек",
           "min": 0,
-          "max": 100.0,
+          "max": 100,
           "step": 0.1,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F2.06",
@@ -876,9 +956,9 @@
           "scale": 0.1,
           "unit": "сек",
           "min": 0,
-          "max": 100.0,
+          "max": 100,
           "step": 0.1,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F2.08",
@@ -889,9 +969,9 @@
           "scale": 0.1,
           "unit": "%",
           "min": 0,
-          "max": 20.0,
+          "max": 20,
           "step": 0.1,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F2.09",
@@ -902,8 +982,8 @@
           "scale": 0.1,
           "unit": "В",
           "min": 0,
-          "max": 500.0,
-          "default": 380.0
+          "max": 500,
+          "default": 380
         },
         {
           "id": "F2.10",
@@ -960,7 +1040,7 @@
           "scale": 0.01,
           "unit": "%",
           "min": 0,
-          "max": 10.0,
+          "max": 10,
           "step": 0.01,
           "default": 2.5
         },
@@ -973,8 +1053,8 @@
           "scale": 0.1,
           "unit": "Гц",
           "min": 0,
-          "max": 400.0,
-          "default": 50.0
+          "max": 400,
+          "default": 50
         }
       ]
     },
@@ -991,10 +1071,10 @@
           "type": "float",
           "scale": 0.01,
           "unit": "В",
-          "min": 0.0,
+          "min": 0,
           "max_ref": "F3.01",
           "step": 0.01,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F3.01",
@@ -1005,9 +1085,9 @@
           "scale": 0.01,
           "unit": "В",
           "min_ref": "F3.00",
-          "max": 10.0,
+          "max": 10,
           "step": 0.01,
-          "default": 10.0
+          "default": 10
         },
         {
           "id": "F3.02",
@@ -1017,8 +1097,8 @@
           "type": "float",
           "scale": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 10.0,
+          "min": 0,
+          "max": 10,
           "step": 0.1,
           "default": 1.5
         },
@@ -1030,10 +1110,10 @@
           "type": "float",
           "scale": 0.01,
           "unit": "мА",
-          "min": 0.0,
+          "min": 0,
           "max_ref": "F3.04",
           "step": 0.01,
-          "default": 4.0
+          "default": 4
         },
         {
           "id": "F3.04",
@@ -1044,9 +1124,9 @@
           "scale": 0.01,
           "unit": "мА",
           "min_ref": "F3.03",
-          "max": 20.0,
+          "max": 20,
           "step": 0.01,
-          "default": 20.0
+          "default": 20
         },
         {
           "id": "F3.05",
@@ -1056,8 +1136,8 @@
           "type": "float",
           "scale": 0.1,
           "unit": "сек",
-          "min": 0.0,
-          "max": 10.0,
+          "min": 0,
+          "max": 10,
           "step": 0.1,
           "default": 1.5
         },
@@ -1069,10 +1149,10 @@
           "type": "float",
           "scale": 0.01,
           "unit": "В",
-          "min": 0.0,
+          "min": 0,
           "max_ref": "F3.07",
           "step": 0.01,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F3.07",
@@ -1083,9 +1163,9 @@
           "scale": 0.01,
           "unit": "В",
           "min_ref": "F3.06",
-          "max": 10.0,
+          "max": 10,
           "step": 0.01,
-          "default": 10.0
+          "default": 10
         },
         {
           "id": "F3.08",
@@ -1095,10 +1175,10 @@
           "type": "float",
           "scale": 0.01,
           "unit": "мА",
-          "min": 0.0,
+          "min": 0,
           "max_ref": "F3.09",
           "step": 0.01,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F3.09",
@@ -1109,9 +1189,9 @@
           "scale": 0.01,
           "unit": "мА",
           "min_ref": "F3.08",
-          "max": 20.0,
+          "max": 20,
           "step": 0.01,
-          "default": 20.0
+          "default": 20
         },
         {
           "id": "F3.10",
@@ -1121,10 +1201,10 @@
           "type": "float",
           "scale": 0.01,
           "unit": "Гц",
-          "min": 0.0,
+          "min": 0,
           "max_ref": "F1.05",
           "step": 0.01,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F3.11",
@@ -1146,10 +1226,10 @@
           "type": "float",
           "scale": 0.01,
           "unit": "Гц",
-          "min": 0.0,
+          "min": 0,
           "max_ref": "F1.05",
           "step": 0.01,
-          "default": 50.0
+          "default": 50
         },
         {
           "id": "F3.13",
@@ -1347,10 +1427,10 @@
           "type": "float",
           "scale": 0.001,
           "unit": "сек",
-          "min": 0.0,
-          "max": 1.0,
+          "min": 0,
+          "max": 1,
           "step": 0.001,
-          "default": 0.010
+          "default": 0.01
         },
         {
           "id": "F3.30",
@@ -1377,7 +1457,7 @@
           "min": 0.001,
           "max": 65.535,
           "step": 0.01,
-          "default": 1.0
+          "default": 1
         },
         {
           "id": "F3.32",
@@ -1402,7 +1482,7 @@
           "min": 0,
           "max": 999.9,
           "step": 0.1,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F3.34",
@@ -1415,7 +1495,7 @@
           "min": 0,
           "max": 999.9,
           "step": 0.1,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F3.35",
@@ -1428,7 +1508,7 @@
           "min": 0,
           "max": 999.9,
           "step": 0.1,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F3.36",
@@ -1463,10 +1543,10 @@
           "type": "float",
           "scale": 0.01,
           "unit": "Гц",
-          "min": 0.0,
+          "min": 0,
           "max_ref": "F1.05",
           "step": 0.01,
-          "default": 5.0
+          "default": 5
         },
         {
           "id": "F4.01",
@@ -1477,7 +1557,7 @@
           "scale": 0.1,
           "unit": "сек",
           "min": 0,
-          "max": 6000.0,
+          "max": 6000,
           "step": 0.1,
           "default": "Зависит от модели ПЧ"
         },
@@ -1490,7 +1570,7 @@
           "scale": 0.1,
           "unit": "сек",
           "min": 0,
-          "max": 6000.0,
+          "max": 6000,
           "step": 0.1,
           "default": "Зависит от модели ПЧ"
         },
@@ -1503,7 +1583,7 @@
           "scale": 0.1,
           "unit": "сек",
           "min": 0,
-          "max": 6000.0,
+          "max": 6000,
           "step": 0.1,
           "default": "Зависит от модели ПЧ"
         },
@@ -1516,7 +1596,7 @@
           "scale": 0.1,
           "unit": "сек",
           "min": 0,
-          "max": 6000.0,
+          "max": 6000,
           "step": 0.1,
           "default": "Зависит от модели ПЧ"
         },
@@ -1529,7 +1609,7 @@
           "scale": 0.1,
           "unit": "сек",
           "min": 0,
-          "max": 6000.0,
+          "max": 6000,
           "step": 0.1,
           "default": "Зависит от модели ПЧ"
         },
@@ -1542,7 +1622,7 @@
           "scale": 0.1,
           "unit": "сек",
           "min": 0,
-          "max": 6000.0,
+          "max": 6000,
           "step": 0.1,
           "default": "Зависит от модели ПЧ"
         },
@@ -1621,7 +1701,7 @@
           "scale": 0.1,
           "unit": "В",
           "min": 350,
-          "max": 800.0,
+          "max": 800,
           "default": 690
         },
         {
@@ -1632,9 +1712,9 @@
           "type": "float",
           "scale": 0.1,
           "unit": "В",
-          "min": 200.0,
-          "max": 800.0,
-          "default": 710.0
+          "min": 200,
+          "max": 800,
+          "default": 710
         },
         {
           "id": "F4.16",
@@ -1680,7 +1760,7 @@
           "scale": 0.1,
           "unit": "сек",
           "min": 0,
-          "max": 100.0,
+          "max": 100,
           "default": 0.2
         },
         {
@@ -1705,10 +1785,10 @@
           "type": "float",
           "scale": 0.1,
           "unit": "% от F2.10",
-          "min": 0.0,
-          "max": 200.0,
+          "min": 0,
+          "max": 200,
           "step": 0.1,
-          "default": 175.0
+          "default": 175
         },
         {
           "id": "F4.24",
@@ -1720,7 +1800,7 @@
           "unit": "сек",
           "min": 0,
           "max": 999.9,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F4.25",
@@ -1730,10 +1810,10 @@
           "type": "float",
           "scale": 0.01,
           "unit": "Гц",
-          "min": 0.0,
+          "min": 0,
           "max_ref": "F1.05",
           "step": 0.01,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F4.26",
@@ -1743,10 +1823,10 @@
           "type": "float",
           "scale": 0.01,
           "unit": "Гц",
-          "min": 0.0,
+          "min": 0,
           "max_ref": "F1.05",
           "step": 0.01,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F4.27",
@@ -1759,7 +1839,7 @@
           "min": 0,
           "max": 999.9,
           "step": 0.1,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F4.28",
@@ -1781,8 +1861,8 @@
           "type": "float",
           "scale": 0.1,
           "unit": "%",
-          "min": 0.0,
-          "max": 100.0,
+          "min": 0,
+          "max": 100,
           "default": 0.5
         },
         {
@@ -1793,10 +1873,10 @@
           "type": "float",
           "scale": 0.01,
           "unit": "Гц",
-          "min": 0.0,
+          "min": 0,
           "max_ref": "F1.05",
           "step": 0.01,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F4.32",
@@ -1806,10 +1886,10 @@
           "type": "float",
           "scale": 0.01,
           "unit": "Гц",
-          "min": 0.0,
+          "min": 0,
           "max_ref": "F1.05",
           "step": 0.01,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F4.33",
@@ -1819,7 +1899,7 @@
           "type": "float",
           "scale": 0.01,
           "unit": "Гц",
-          "min": 0.0,
+          "min": 0,
           "max_ref": "F1.05",
           "step": 0.01,
           "default": 0.5
@@ -1868,65 +1948,380 @@
           "default": 0
         },
         {
-          "id": "F5.03", "name": "Частота на шаге 1",  "register": 503, "access": "read-write", "type": "float", "scale": 0.01, "unit": "Гц", "min": 0.0, "max_ref": "F1.05", "step": 0.01, "default": 20.0 },
+          "id": "F5.03",
+          "name": "Частота на шаге 1",
+          "register": 503,
+          "access": "read-write",
+          "type": "float",
+          "scale": 0.01,
+          "unit": "Гц",
+          "min": 0,
+          "max_ref": "F1.05",
+          "step": 0.01,
+          "default": 20
+        },
         {
-          "id": "F5.04", "name": "Частота на шаге 2",  "register": 504, "access": "read-write", "type": "float", "scale": 0.01, "unit": "Гц", "min": 0.0, "max_ref": "F1.05", "step": 0.01, "default": 10.0 },
+          "id": "F5.04",
+          "name": "Частота на шаге 2",
+          "register": 504,
+          "access": "read-write",
+          "type": "float",
+          "scale": 0.01,
+          "unit": "Гц",
+          "min": 0,
+          "max_ref": "F1.05",
+          "step": 0.01,
+          "default": 10
+        },
         {
-          "id": "F5.05", "name": "Частота на шаге 3",  "register": 505, "access": "read-write", "type": "float", "scale": 0.01, "unit": "Гц", "min": 0.0, "max_ref": "F1.05", "step": 0.01, "default": 20.0 },
+          "id": "F5.05",
+          "name": "Частота на шаге 3",
+          "register": 505,
+          "access": "read-write",
+          "type": "float",
+          "scale": 0.01,
+          "unit": "Гц",
+          "min": 0,
+          "max_ref": "F1.05",
+          "step": 0.01,
+          "default": 20
+        },
         {
-          "id": "F5.06", "name": "Частота на шаге 4",  "register": 506, "access": "read-write", "type": "float", "scale": 0.01, "unit": "Гц", "min": 0.0, "max_ref": "F1.05", "step": 0.01, "default": 25.0 },
+          "id": "F5.06",
+          "name": "Частота на шаге 4",
+          "register": 506,
+          "access": "read-write",
+          "type": "float",
+          "scale": 0.01,
+          "unit": "Гц",
+          "min": 0,
+          "max_ref": "F1.05",
+          "step": 0.01,
+          "default": 25
+        },
         {
-          "id": "F5.07", "name": "Частота на шаге 5",  "register": 507, "access": "read-write", "type": "float", "scale": 0.01, "unit": "Гц", "min": 0.0, "max_ref": "F1.05", "step": 0.01, "default": 30.0 },
+          "id": "F5.07",
+          "name": "Частота на шаге 5",
+          "register": 507,
+          "access": "read-write",
+          "type": "float",
+          "scale": 0.01,
+          "unit": "Гц",
+          "min": 0,
+          "max_ref": "F1.05",
+          "step": 0.01,
+          "default": 30
+        },
         {
-          "id": "F5.08", "name": "Частота на шаге 6",  "register": 508, "access": "read-write", "type": "float", "scale": 0.01, "unit": "Гц", "min": 0.0, "max_ref": "F1.05", "step": 0.01, "default": 35.0 },
+          "id": "F5.08",
+          "name": "Частота на шаге 6",
+          "register": 508,
+          "access": "read-write",
+          "type": "float",
+          "scale": 0.01,
+          "unit": "Гц",
+          "min": 0,
+          "max_ref": "F1.05",
+          "step": 0.01,
+          "default": 35
+        },
         {
-          "id": "F5.09", "name": "Частота на шаге 7",  "register": 509, "access": "read-write", "type": "float", "scale": 0.01, "unit": "Гц", "min": 0.0, "max_ref": "F1.05", "step": 0.01, "default": 40.0 },
+          "id": "F5.09",
+          "name": "Частота на шаге 7",
+          "register": 509,
+          "access": "read-write",
+          "type": "float",
+          "scale": 0.01,
+          "unit": "Гц",
+          "min": 0,
+          "max_ref": "F1.05",
+          "step": 0.01,
+          "default": 40
+        },
         {
-          "id": "F5.10", "name": "Частота на шаге 8",  "register": 510, "access": "read-write", "type": "float", "scale": 0.01, "unit": "Гц", "min": 0.0, "max_ref": "F1.05", "step": 0.01, "default": 45.0 },
+          "id": "F5.10",
+          "name": "Частота на шаге 8",
+          "register": 510,
+          "access": "read-write",
+          "type": "float",
+          "scale": 0.01,
+          "unit": "Гц",
+          "min": 0,
+          "max_ref": "F1.05",
+          "step": 0.01,
+          "default": 45
+        },
         {
-          "id": "F5.11", "name": "Частота на шаге 9",  "register": 511, "access": "read-write", "type": "float", "scale": 0.01, "unit": "Гц", "min": 0.0, "max_ref": "F1.05", "step": 0.01, "default": 50.0 },
+          "id": "F5.11",
+          "name": "Частота на шаге 9",
+          "register": 511,
+          "access": "read-write",
+          "type": "float",
+          "scale": 0.01,
+          "unit": "Гц",
+          "min": 0,
+          "max_ref": "F1.05",
+          "step": 0.01,
+          "default": 50
+        },
         {
-          "id": "F5.12", "name": "Частота на шаге 10", "register": 512, "access": "read-write", "type": "float", "scale": 0.01, "unit": "Гц", "min": 0.0, "max_ref": "F1.05", "step": 0.01, "default": 10.0 },
+          "id": "F5.12",
+          "name": "Частота на шаге 10",
+          "register": 512,
+          "access": "read-write",
+          "type": "float",
+          "scale": 0.01,
+          "unit": "Гц",
+          "min": 0,
+          "max_ref": "F1.05",
+          "step": 0.01,
+          "default": 10
+        },
         {
-          "id": "F5.13", "name": "Частота на шаге 11", "register": 513, "access": "read-write", "type": "float", "scale": 0.01, "unit": "Гц", "min": 0.0, "max_ref": "F1.05", "step": 0.01, "default": 10.0 },
+          "id": "F5.13",
+          "name": "Частота на шаге 11",
+          "register": 513,
+          "access": "read-write",
+          "type": "float",
+          "scale": 0.01,
+          "unit": "Гц",
+          "min": 0,
+          "max_ref": "F1.05",
+          "step": 0.01,
+          "default": 10
+        },
         {
-          "id": "F5.14", "name": "Частота на шаге 12", "register": 514, "access": "read-write", "type": "float", "scale": 0.01, "unit": "Гц", "min": 0.0, "max_ref": "F1.05", "step": 0.01, "default": 10.0 },
+          "id": "F5.14",
+          "name": "Частота на шаге 12",
+          "register": 514,
+          "access": "read-write",
+          "type": "float",
+          "scale": 0.01,
+          "unit": "Гц",
+          "min": 0,
+          "max_ref": "F1.05",
+          "step": 0.01,
+          "default": 10
+        },
         {
-          "id": "F5.15", "name": "Частота на шаге 13", "register": 515, "access": "read-write", "type": "float", "scale": 0.01, "unit": "Гц", "min": 0.0, "max_ref": "F1.05", "step": 0.01, "default": 10.0 },
+          "id": "F5.15",
+          "name": "Частота на шаге 13",
+          "register": 515,
+          "access": "read-write",
+          "type": "float",
+          "scale": 0.01,
+          "unit": "Гц",
+          "min": 0,
+          "max_ref": "F1.05",
+          "step": 0.01,
+          "default": 10
+        },
         {
-          "id": "F5.16", "name": "Частота на шаге 14", "register": 516, "access": "read-write", "type": "float", "scale": 0.01, "unit": "Гц", "min": 0.0, "max_ref": "F1.05", "step": 0.01, "default": 10.0 },
+          "id": "F5.16",
+          "name": "Частота на шаге 14",
+          "register": 516,
+          "access": "read-write",
+          "type": "float",
+          "scale": 0.01,
+          "unit": "Гц",
+          "min": 0,
+          "max_ref": "F1.05",
+          "step": 0.01,
+          "default": 10
+        },
         {
-          "id": "F5.17", "name": "Частота на шаге 15", "register": 517, "access": "read-write", "type": "float", "scale": 0.01, "unit": "Гц", "min": 0.0, "max_ref": "F1.05", "step": 0.01, "default": 10.0 },
+          "id": "F5.17",
+          "name": "Частота на шаге 15",
+          "register": 517,
+          "access": "read-write",
+          "type": "float",
+          "scale": 0.01,
+          "unit": "Гц",
+          "min": 0,
+          "max_ref": "F1.05",
+          "step": 0.01,
+          "default": 10
+        },
         {
-          "id": "F5.18", "name": "Время работы на шаге 1",  "register": 518, "access": "read-write", "type": "integer", "unit": "сек", "min": 0, "max": 65000, "step": 1, "default": 100 },
+          "id": "F5.18",
+          "name": "Время работы на шаге 1",
+          "register": 518,
+          "access": "read-write",
+          "type": "integer",
+          "unit": "сек",
+          "min": 0,
+          "max": 65000,
+          "step": 1,
+          "default": 100
+        },
         {
-          "id": "F5.19", "name": "Время работы на шаге 2",  "register": 519, "access": "read-write", "type": "integer", "unit": "сек", "min": 0, "max": 65000, "step": 1, "default": 100 },
+          "id": "F5.19",
+          "name": "Время работы на шаге 2",
+          "register": 519,
+          "access": "read-write",
+          "type": "integer",
+          "unit": "сек",
+          "min": 0,
+          "max": 65000,
+          "step": 1,
+          "default": 100
+        },
         {
-          "id": "F5.20", "name": "Время работы на шаге 3",  "register": 520, "access": "read-write", "type": "integer", "unit": "сек", "min": 0, "max": 65000, "step": 1, "default": 100 },
+          "id": "F5.20",
+          "name": "Время работы на шаге 3",
+          "register": 520,
+          "access": "read-write",
+          "type": "integer",
+          "unit": "сек",
+          "min": 0,
+          "max": 65000,
+          "step": 1,
+          "default": 100
+        },
         {
-          "id": "F5.21", "name": "Время работы на шаге 4",  "register": 521, "access": "read-write", "type": "integer", "unit": "сек", "min": 0, "max": 65000, "step": 1, "default": 100 },
+          "id": "F5.21",
+          "name": "Время работы на шаге 4",
+          "register": 521,
+          "access": "read-write",
+          "type": "integer",
+          "unit": "сек",
+          "min": 0,
+          "max": 65000,
+          "step": 1,
+          "default": 100
+        },
         {
-          "id": "F5.22", "name": "Время работы на шаге 5",  "register": 522, "access": "read-write", "type": "integer", "unit": "сек", "min": 0, "max": 65000, "step": 1, "default": 0 },
+          "id": "F5.22",
+          "name": "Время работы на шаге 5",
+          "register": 522,
+          "access": "read-write",
+          "type": "integer",
+          "unit": "сек",
+          "min": 0,
+          "max": 65000,
+          "step": 1,
+          "default": 0
+        },
         {
-          "id": "F5.23", "name": "Время работы на шаге 6",  "register": 523, "access": "read-write", "type": "integer", "unit": "сек", "min": 0, "max": 65000, "step": 1, "default": 0 },
+          "id": "F5.23",
+          "name": "Время работы на шаге 6",
+          "register": 523,
+          "access": "read-write",
+          "type": "integer",
+          "unit": "сек",
+          "min": 0,
+          "max": 65000,
+          "step": 1,
+          "default": 0
+        },
         {
-          "id": "F5.24", "name": "Время работы на шаге 7",  "register": 524, "access": "read-write", "type": "integer", "unit": "сек", "min": 0, "max": 65000, "step": 1, "default": 0 },
+          "id": "F5.24",
+          "name": "Время работы на шаге 7",
+          "register": 524,
+          "access": "read-write",
+          "type": "integer",
+          "unit": "сек",
+          "min": 0,
+          "max": 65000,
+          "step": 1,
+          "default": 0
+        },
         {
-          "id": "F5.25", "name": "Время работы на шаге 8",  "register": 525, "access": "read-write", "type": "integer", "unit": "сек", "min": 0, "max": 65000, "step": 1, "default": 0 },
+          "id": "F5.25",
+          "name": "Время работы на шаге 8",
+          "register": 525,
+          "access": "read-write",
+          "type": "integer",
+          "unit": "сек",
+          "min": 0,
+          "max": 65000,
+          "step": 1,
+          "default": 0
+        },
         {
-          "id": "F5.26", "name": "Время работы на шаге 9",  "register": 526, "access": "read-write", "type": "integer", "unit": "сек", "min": 0, "max": 65000, "step": 1, "default": 0 },
+          "id": "F5.26",
+          "name": "Время работы на шаге 9",
+          "register": 526,
+          "access": "read-write",
+          "type": "integer",
+          "unit": "сек",
+          "min": 0,
+          "max": 65000,
+          "step": 1,
+          "default": 0
+        },
         {
-          "id": "F5.27", "name": "Время работы на шаге 10", "register": 527, "access": "read-write", "type": "integer", "unit": "сек", "min": 0, "max": 65000, "step": 1, "default": 0 },
+          "id": "F5.27",
+          "name": "Время работы на шаге 10",
+          "register": 527,
+          "access": "read-write",
+          "type": "integer",
+          "unit": "сек",
+          "min": 0,
+          "max": 65000,
+          "step": 1,
+          "default": 0
+        },
         {
-          "id": "F5.28", "name": "Время работы на шаге 11", "register": 528, "access": "read-write", "type": "integer", "unit": "сек", "min": 0, "max": 65000, "step": 1, "default": 0 },
+          "id": "F5.28",
+          "name": "Время работы на шаге 11",
+          "register": 528,
+          "access": "read-write",
+          "type": "integer",
+          "unit": "сек",
+          "min": 0,
+          "max": 65000,
+          "step": 1,
+          "default": 0
+        },
         {
-          "id": "F5.29", "name": "Время работы на шаге 12", "register": 529, "access": "read-write", "type": "integer", "unit": "сек", "min": 0, "max": 65000, "step": 1, "default": 0 },
+          "id": "F5.29",
+          "name": "Время работы на шаге 12",
+          "register": 529,
+          "access": "read-write",
+          "type": "integer",
+          "unit": "сек",
+          "min": 0,
+          "max": 65000,
+          "step": 1,
+          "default": 0
+        },
         {
-          "id": "F5.30", "name": "Время работы на шаге 13", "register": 530, "access": "read-write", "type": "integer", "unit": "сек", "min": 0, "max": 65000, "step": 1, "default": 0 },
+          "id": "F5.30",
+          "name": "Время работы на шаге 13",
+          "register": 530,
+          "access": "read-write",
+          "type": "integer",
+          "unit": "сек",
+          "min": 0,
+          "max": 65000,
+          "step": 1,
+          "default": 0
+        },
         {
-          "id": "F5.31", "name": "Время работы на шаге 14", "register": 531, "access": "read-write", "type": "integer", "unit": "сек", "min": 0, "max": 65000, "step": 1, "default": 0 },
+          "id": "F5.31",
+          "name": "Время работы на шаге 14",
+          "register": 531,
+          "access": "read-write",
+          "type": "integer",
+          "unit": "сек",
+          "min": 0,
+          "max": 65000,
+          "step": 1,
+          "default": 0
+        },
         {
-          "id": "F5.32", "name": "Время работы на шаге 15", "register": 532, "access": "read-write", "type": "integer", "unit": "сек", "min": 0, "max": 65000, "step": 1, "default": 0 },
+          "id": "F5.32",
+          "name": "Время работы на шаге 15",
+          "register": 532,
+          "access": "read-write",
+          "type": "integer",
+          "unit": "сек",
+          "min": 0,
+          "max": 65000,
+          "step": 1,
+          "default": 0
+        },
         {
           "id": "F5.33",
           "name": "Направление вращения на каждом шаге",
@@ -1951,35 +2346,145 @@
           "default": 0
         },
         {
-          "id": "F5.39", "name": "Выбор времени ускорения/замедления для шага 1",  "register": 539, "access": "read-write", "type": "enum", "options": { "0": "F1.07/F1.08", "1": "F4.01/F4.02", "2": "F4.03/F4.04", "3": "F4.05/F4.06" }, "default": 0 },
+          "id": "F5.39",
+          "name": "Выбор времени ускорения/замедления для шага 1",
+          "register": 539,
+          "access": "read-write",
+          "type": "enum",
+          "options": {
+            "0": "F1.07/F1.08",
+            "1": "F4.01/F4.02",
+            "2": "F4.03/F4.04",
+            "3": "F4.05/F4.06"
+          },
+          "default": 0
+        },
         {
-          "id": "F5.40", "name": "Выбор времени ускорения/замедления для шага 2",  "register": 540, "access": "read-write", "type": "enum", "options_ref": "F5.39", "default": 0 },
+          "id": "F5.40",
+          "name": "Выбор времени ускорения/замедления для шага 2",
+          "register": 540,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F5.39",
+          "default": 0
+        },
         {
-          "id": "F5.41", "name": "Выбор времени ускорения/замедления для шага 3",  "register": 541, "access": "read-write", "type": "enum", "options_ref": "F5.39", "default": 0 },
+          "id": "F5.41",
+          "name": "Выбор времени ускорения/замедления для шага 3",
+          "register": 541,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F5.39",
+          "default": 0
+        },
         {
-          "id": "F5.42", "name": "Выбор времени ускорения/замедления для шага 4",  "register": 542, "access": "read-write", "type": "enum", "options_ref": "F5.39", "default": 0 },
+          "id": "F5.42",
+          "name": "Выбор времени ускорения/замедления для шага 4",
+          "register": 542,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F5.39",
+          "default": 0
+        },
         {
-          "id": "F5.43", "name": "Выбор времени ускорения/замедления для шага 5",  "register": 543, "access": "read-write", "type": "enum", "options_ref": "F5.39", "default": 0 },
+          "id": "F5.43",
+          "name": "Выбор времени ускорения/замедления для шага 5",
+          "register": 543,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F5.39",
+          "default": 0
+        },
         {
-          "id": "F5.44", "name": "Выбор времени ускорения/замедления для шага 6",  "register": 544, "access": "read-write", "type": "enum", "options_ref": "F5.39", "default": 0 },
+          "id": "F5.44",
+          "name": "Выбор времени ускорения/замедления для шага 6",
+          "register": 544,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F5.39",
+          "default": 0
+        },
         {
-          "id": "F5.45", "name": "Выбор времени ускорения/замедления для шага 7",  "register": 545, "access": "read-write", "type": "enum", "options_ref": "F5.39", "default": 0 },
+          "id": "F5.45",
+          "name": "Выбор времени ускорения/замедления для шага 7",
+          "register": 545,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F5.39",
+          "default": 0
+        },
         {
-          "id": "F5.46", "name": "Выбор времени ускорения/замедления для шага 8",  "register": 546, "access": "read-write", "type": "enum", "options_ref": "F5.39", "default": 0 },
+          "id": "F5.46",
+          "name": "Выбор времени ускорения/замедления для шага 8",
+          "register": 546,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F5.39",
+          "default": 0
+        },
         {
-          "id": "F5.47", "name": "Выбор времени ускорения/замедления для шага 9",  "register": 547, "access": "read-write", "type": "enum", "options_ref": "F5.39", "default": 0 },
+          "id": "F5.47",
+          "name": "Выбор времени ускорения/замедления для шага 9",
+          "register": 547,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F5.39",
+          "default": 0
+        },
         {
-          "id": "F5.48", "name": "Выбор времени ускорения/замедления для шага 10", "register": 548, "access": "read-write", "type": "enum", "options_ref": "F5.39", "default": 0 },
+          "id": "F5.48",
+          "name": "Выбор времени ускорения/замедления для шага 10",
+          "register": 548,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F5.39",
+          "default": 0
+        },
         {
-          "id": "F5.49", "name": "Выбор времени ускорения/замедления для шага 11", "register": 549, "access": "read-write", "type": "enum", "options_ref": "F5.39", "default": 0 },
+          "id": "F5.49",
+          "name": "Выбор времени ускорения/замедления для шага 11",
+          "register": 549,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F5.39",
+          "default": 0
+        },
         {
-          "id": "F5.50", "name": "Выбор времени ускорения/замедления для шага 12", "register": 550, "access": "read-write", "type": "enum", "options_ref": "F5.39", "default": 0 },
+          "id": "F5.50",
+          "name": "Выбор времени ускорения/замедления для шага 12",
+          "register": 550,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F5.39",
+          "default": 0
+        },
         {
-          "id": "F5.51", "name": "Выбор времени ускорения/замедления для шага 13", "register": 551, "access": "read-write", "type": "enum", "options_ref": "F5.39", "default": 0 },
+          "id": "F5.51",
+          "name": "Выбор времени ускорения/замедления для шага 13",
+          "register": 551,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F5.39",
+          "default": 0
+        },
         {
-          "id": "F5.52", "name": "Выбор времени ускорения/замедления для шага 14", "register": 552, "access": "read-write", "type": "enum", "options_ref": "F5.39", "default": 0 },
+          "id": "F5.52",
+          "name": "Выбор времени ускорения/замедления для шага 14",
+          "register": 552,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F5.39",
+          "default": 0
+        },
         {
-          "id": "F5.53", "name": "Выбор времени ускорения/замедления для шага 15", "register": 553, "access": "read-write", "type": "enum", "options_ref": "F5.39", "default": 0 }
+          "id": "F5.53",
+          "name": "Выбор времени ускорения/замедления для шага 15",
+          "register": 553,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F5.39",
+          "default": 0
+        }
       ]
     },
     {
@@ -1993,7 +2498,11 @@
           "register": 600,
           "access": "read-write",
           "type": "enum",
-          "options": { "0": "Выключен", "1": "Включен", "2": "Включение по условию" },
+          "options": {
+            "0": "Выключен",
+            "1": "Включен",
+            "2": "Включение по условию"
+          },
           "default": 0
         },
         {
@@ -2002,7 +2511,10 @@
           "register": 601,
           "access": "read-write",
           "type": "enum",
-          "options": { "0": "Отрицательная обратная связь", "1": "Положительная обратная связь" },
+          "options": {
+            "0": "Отрицательная обратная связь",
+            "1": "Положительная обратная связь"
+          },
           "default": 0
         },
         {
@@ -2043,7 +2555,7 @@
           "scale": 0.01,
           "min": 0,
           "max_ref": "F6.14",
-          "default": 50.0
+          "default": 50
         },
         {
           "id": "F6.05",
@@ -2054,7 +2566,7 @@
           "scale": 0.1,
           "min": 0,
           "max_ref": "F6.14",
-          "default": 10.0
+          "default": 10
         },
         {
           "id": "F6.06",
@@ -2065,7 +2577,7 @@
           "scale": 0.1,
           "min": 0,
           "max_ref": "F6.05",
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F6.07",
@@ -2075,8 +2587,8 @@
           "type": "float",
           "scale": 0.1,
           "min": 0,
-          "max": 500.0,
-          "default": 100.0
+          "max": 500,
+          "default": 100
         },
         {
           "id": "F6.08",
@@ -2087,8 +2599,8 @@
           "scale": 0.1,
           "unit": "сек",
           "min": 0,
-          "max": 200.0,
-          "default": 1.0
+          "max": 200,
+          "default": 1
         },
         {
           "id": "F6.09",
@@ -2099,8 +2611,8 @@
           "scale": 0.1,
           "unit": "сек",
           "min": 0,
-          "max": 200.0,
-          "default": 0.0
+          "max": 200,
+          "default": 0
         },
         {
           "id": "F6.10",
@@ -2111,9 +2623,9 @@
           "scale": 0.1,
           "unit": "%",
           "min": 0,
-          "max": 100.0,
+          "max": 100,
           "step": 0.1,
-          "default": 2.0
+          "default": 2
         },
         {
           "id": "F6.11",
@@ -2126,7 +2638,7 @@
           "min": 0,
           "max_ref": "F1.05",
           "step": 0.1,
-          "default": 25.0
+          "default": 25
         },
         {
           "id": "F6.12",
@@ -2149,9 +2661,9 @@
           "scale": 0.1,
           "unit": "%",
           "min": 0,
-          "max": 200.0,
+          "max": 200,
           "step": 0.1,
-          "default": 90.0
+          "default": 90
         },
         {
           "id": "F6.14",
@@ -2195,7 +2707,7 @@
           "unit": "Гц",
           "min": 0,
           "max_ref": "F1.05",
-          "default": 48.0
+          "default": 48
         },
         {
           "id": "F6.18",
@@ -2207,7 +2719,7 @@
           "unit": "Гц",
           "min_ref": "F1.06",
           "max_ref": "F6.17",
-          "default": 20.0
+          "default": 20
         },
         {
           "id": "F6.20",
@@ -2234,13 +2746,69 @@
           },
           "default": 2
         },
-        { "id": "F6.21", "name": "Релейный выход KA2, KB2", "register": 621, "access": "read-write", "type": "enum", "options_ref": "F6.20", "default": 1 },
-        { "id": "F6.22", "name": "Релейный выход KA3, KB3", "register": 622, "access": "read-write", "type": "enum", "options_ref": "F6.20", "default": 4 },
-        { "id": "F6.23", "name": "Релейный выход KA4, KB4", "register": 623, "access": "read-write", "type": "enum", "options_ref": "F6.20", "default": 3 },
-        { "id": "F6.24", "name": "Релейный выход KA5, KB5", "register": 624, "access": "read-write", "type": "enum", "options_ref": "F6.20", "default": 6 },
-        { "id": "F6.25", "name": "Релейный выход KA6, KB6", "register": 625, "access": "read-write", "type": "enum", "options_ref": "F6.20", "default": 5 },
-        { "id": "F6.26", "name": "Релейный выход KA7, KB7", "register": 626, "access": "read-write", "type": "enum", "options_ref": "F6.20", "default": 8 },
-        { "id": "F6.27", "name": "Релейный выход KA8, KB8", "register": 627, "access": "read-write", "type": "enum", "options_ref": "F6.20", "default": 7 },
+        {
+          "id": "F6.21",
+          "name": "Релейный выход KA2, KB2",
+          "register": 621,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F6.20",
+          "default": 1
+        },
+        {
+          "id": "F6.22",
+          "name": "Релейный выход KA3, KB3",
+          "register": 622,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F6.20",
+          "default": 4
+        },
+        {
+          "id": "F6.23",
+          "name": "Релейный выход KA4, KB4",
+          "register": 623,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F6.20",
+          "default": 3
+        },
+        {
+          "id": "F6.24",
+          "name": "Релейный выход KA5, KB5",
+          "register": 624,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F6.20",
+          "default": 6
+        },
+        {
+          "id": "F6.25",
+          "name": "Релейный выход KA6, KB6",
+          "register": 625,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F6.20",
+          "default": 5
+        },
+        {
+          "id": "F6.26",
+          "name": "Релейный выход KA7, KB7",
+          "register": 626,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F6.20",
+          "default": 8
+        },
+        {
+          "id": "F6.27",
+          "name": "Релейный выход KA8, KB8",
+          "register": 627,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F6.20",
+          "default": 7
+        },
         {
           "id": "F6.28",
           "name": "Установка времени, секунды",
@@ -2299,13 +2867,72 @@
           "max": 99
         },
         {
-          "id": "F6.34", "name": "Режим работы двигателя 1", "register": 634, "access": "read-write", "type": "enum", "options": { "0": "Не используется", "1": "Работа от ПЧ", "2": "Работа от сети" }, "default": 1 },
-        { "id": "F6.35", "name": "Режим работы двигателя 2", "register": 635, "access": "read-write", "type": "enum", "options_ref": "F6.34", "default": 1 },
-        { "id": "F6.36", "name": "Режим работы двигателя 3", "register": 636, "access": "read-write", "type": "enum", "options_ref": "F6.34", "default": 1 },
-        { "id": "F6.37", "name": "Режим работы двигателя 4", "register": 637, "access": "read-write", "type": "enum", "options_ref": "F6.34", "default": 1 },
-        { "id": "F6.38", "name": "Режим работы двигателя 5", "register": 638, "access": "read-write", "type": "enum", "options_ref": "F6.34", "default": 0 },
-        { "id": "F6.39", "name": "Режим работы двигателя 6", "register": 639, "access": "read-write", "type": "enum", "options_ref": "F6.34", "default": 0 },
-        { "id": "F6.40", "name": "Режим работы двигателя 7", "register": 640, "access": "read-write", "type": "enum", "options_ref": "F6.34", "default": 0 },
+          "id": "F6.34",
+          "name": "Режим работы двигателя 1",
+          "register": 634,
+          "access": "read-write",
+          "type": "enum",
+          "options": {
+            "0": "Не используется",
+            "1": "Работа от ПЧ",
+            "2": "Работа от сети"
+          },
+          "default": 1
+        },
+        {
+          "id": "F6.35",
+          "name": "Режим работы двигателя 2",
+          "register": 635,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F6.34",
+          "default": 1
+        },
+        {
+          "id": "F6.36",
+          "name": "Режим работы двигателя 3",
+          "register": 636,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F6.34",
+          "default": 1
+        },
+        {
+          "id": "F6.37",
+          "name": "Режим работы двигателя 4",
+          "register": 637,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F6.34",
+          "default": 1
+        },
+        {
+          "id": "F6.38",
+          "name": "Режим работы двигателя 5",
+          "register": 638,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F6.34",
+          "default": 0
+        },
+        {
+          "id": "F6.39",
+          "name": "Режим работы двигателя 6",
+          "register": 639,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F6.34",
+          "default": 0
+        },
+        {
+          "id": "F6.40",
+          "name": "Режим работы двигателя 7",
+          "register": 640,
+          "access": "read-write",
+          "type": "enum",
+          "options_ref": "F6.34",
+          "default": 0
+        },
         {
           "id": "F6.41",
           "name": "Допустимое отклонение сигнала обратной связи от уставки для включения следующего двигателя в каскадном режиме",
@@ -2316,7 +2943,7 @@
           "unit": "%",
           "min": 0,
           "max": 25,
-          "default": 5.0
+          "default": 5
         },
         {
           "id": "F6.42",
@@ -2328,7 +2955,7 @@
           "unit": "Гц",
           "min": 0,
           "max_ref": "F1.05",
-          "default": 49.0
+          "default": 49
         },
         {
           "id": "F6.43",
@@ -2340,7 +2967,7 @@
           "unit": "сек",
           "min": 0,
           "max": 6553.5,
-          "default": 10.0
+          "default": 10
         },
         {
           "id": "F6.45",
@@ -2352,7 +2979,7 @@
           "unit": "%",
           "min": 0,
           "max": 25,
-          "default": 0.0
+          "default": 0
         },
         {
           "id": "F6.46",
@@ -2364,7 +2991,7 @@
           "unit": "Гц",
           "min": 0,
           "max_ref": "F1.05",
-          "default": 20.0
+          "default": 20
         },
         {
           "id": "F6.47",
@@ -2375,8 +3002,8 @@
           "scale": 0.1,
           "unit": "сек",
           "min": 0,
-          "max": 3600.0,
-          "default": 30.0
+          "max": 3600,
+          "default": 30
         },
         {
           "id": "F6.49",
@@ -2387,8 +3014,8 @@
           "scale": 0.1,
           "unit": "сек",
           "min": 0,
-          "max": 10.0,
-          "default": 2.0
+          "max": 10,
+          "default": 2
         },
         {
           "id": "F6.50",
@@ -2399,8 +3026,8 @@
           "scale": 0.1,
           "unit": "сек",
           "min": 0,
-          "max": 10.0,
-          "default": 2.0
+          "max": 10,
+          "default": 2
         },
         {
           "id": "F6.51",
@@ -2415,30 +3042,189 @@
           "default": 0
         },
         {
-          "id": "F6.52", "name": "Время включения уставки 1", "register": 652, "access": "read-write", "type": "time", "format": "HH:MM", "min": "00:00", "max": "23:59", "default": "00:00" },
+          "id": "F6.52",
+          "name": "Время включения уставки 1",
+          "register": 652,
+          "access": "read-write",
+          "type": "time",
+          "format": "HH:MM",
+          "min": "00:00",
+          "max": "23:59",
+          "default": "00:00"
+        },
         {
-          "id": "F6.53", "name": "Время включения уставки 2", "register": 653, "access": "read-write", "type": "time", "format": "HH:MM", "min": "00:00", "max": "23:59", "default": "00:00" },
+          "id": "F6.53",
+          "name": "Время включения уставки 2",
+          "register": 653,
+          "access": "read-write",
+          "type": "time",
+          "format": "HH:MM",
+          "min": "00:00",
+          "max": "23:59",
+          "default": "00:00"
+        },
         {
-          "id": "F6.54", "name": "Время включения уставки 3", "register": 654, "access": "read-write", "type": "time", "format": "HH:MM", "min": "00:00", "max": "23:59", "default": "00:00" },
+          "id": "F6.54",
+          "name": "Время включения уставки 3",
+          "register": 654,
+          "access": "read-write",
+          "type": "time",
+          "format": "HH:MM",
+          "min": "00:00",
+          "max": "23:59",
+          "default": "00:00"
+        },
         {
-          "id": "F6.55", "name": "Время включения уставки 4", "register": 655, "access": "read-write", "type": "time", "format": "HH:MM", "min": "00:00", "max": "23:59", "default": "00:00" },
+          "id": "F6.55",
+          "name": "Время включения уставки 4",
+          "register": 655,
+          "access": "read-write",
+          "type": "time",
+          "format": "HH:MM",
+          "min": "00:00",
+          "max": "23:59",
+          "default": "00:00"
+        },
         {
-          "id": "F6.56", "name": "Время включения уставки 5", "register": 656, "access": "read-write", "type": "time", "format": "HH:MM", "min": "00:00", "max": "23:59", "default": "00:00" },
+          "id": "F6.56",
+          "name": "Время включения уставки 5",
+          "register": 656,
+          "access": "read-write",
+          "type": "time",
+          "format": "HH:MM",
+          "min": "00:00",
+          "max": "23:59",
+          "default": "00:00"
+        },
         {
-          "id": "F6.57", "name": "Время включения уставки 6", "register": 657, "access": "read-write", "type": "time", "format": "HH:MM", "min": "00:00", "max": "23:59", "default": "00:00" },
+          "id": "F6.57",
+          "name": "Время включения уставки 6",
+          "register": 657,
+          "access": "read-write",
+          "type": "time",
+          "format": "HH:MM",
+          "min": "00:00",
+          "max": "23:59",
+          "default": "00:00"
+        },
         {
-          "id": "F6.58", "name": "Время включения уставки 7", "register": 658, "access": "read-write", "type": "time", "format": "HH:MM", "min": "00:00", "max": "23:59", "default": "00:00" },
+          "id": "F6.58",
+          "name": "Время включения уставки 7",
+          "register": 658,
+          "access": "read-write",
+          "type": "time",
+          "format": "HH:MM",
+          "min": "00:00",
+          "max": "23:59",
+          "default": "00:00"
+        },
         {
-          "id": "F6.59", "name": "Время включения уставки 8", "register": 659, "access": "read-write", "type": "time", "format": "HH:MM", "min": "00:00", "max": "23:59", "default": "00:00" },
+          "id": "F6.59",
+          "name": "Время включения уставки 8",
+          "register": 659,
+          "access": "read-write",
+          "type": "time",
+          "format": "HH:MM",
+          "min": "00:00",
+          "max": "23:59",
+          "default": "00:00"
+        },
         {
-          "id": "F6.60", "name": "Уставка 1", "register": 660, "access": "read-write", "type": "float", "scale": 0.01, "unit": "бар", "min": 0, "max_ref": "F6.14", "default": 2.5 },
-        { "id": "F6.61", "name": "Уставка 2", "register": 661, "access": "read-write", "type": "float", "scale": 0.01, "unit": "бар", "min": 0, "max_ref": "F6.14", "default": 2.5 },
-        { "id": "F6.62", "name": "Уставка 3", "register": 662, "access": "read-write", "type": "float", "scale": 0.01, "unit": "бар", "min": 0, "max_ref": "F6.14", "default": 2.5 },
-        { "id": "F6.63", "name": "Уставка 4", "register": 663, "access": "read-write", "type": "float", "scale": 0.01, "unit": "бар", "min": 0, "max_ref": "F6.14", "default": 2.5 },
-        { "id": "F6.64", "name": "Уставка 5", "register": 664, "access": "read-write", "type": "float", "scale": 0.01, "unit": "бар", "min": 0, "max_ref": "F6.14", "default": 2.5 },
-        { "id": "F6.65", "name": "Уставка 6", "register": 665, "access": "read-write", "type": "float", "scale": 0.01, "unit": "бар", "min": 0, "max_ref": "F6.14", "default": 2.5 },
-        { "id": "F6.66", "name": "Уставка 7", "register": 666, "access": "read-write", "type": "float", "scale": 0.01, "unit": "бар", "min": 0, "max_ref": "F6.14", "default": 2.5 },
-        { "id": "F6.67", "name": "Уставка 8", "register": 667, "access": "read-write", "type": "float", "scale": 0.01, "unit": "бар", "min": 0, "max_ref": "F6.14", "default": 2.5 },
+          "id": "F6.60",
+          "name": "Уставка 1",
+          "register": 660,
+          "access": "read-write",
+          "type": "float",
+          "scale": 0.01,
+          "unit": "бар",
+          "min": 0,
+          "max_ref": "F6.14",
+          "default": 2.5
+        },
+        {
+          "id": "F6.61",
+          "name": "Уставка 2",
+          "register": 661,
+          "access": "read-write",
+          "type": "float",
+          "scale": 0.01,
+          "unit": "бар",
+          "min": 0,
+          "max_ref": "F6.14",
+          "default": 2.5
+        },
+        {
+          "id": "F6.62",
+          "name": "Уставка 3",
+          "register": 662,
+          "access": "read-write",
+          "type": "float",
+          "scale": 0.01,
+          "unit": "бар",
+          "min": 0,
+          "max_ref": "F6.14",
+          "default": 2.5
+        },
+        {
+          "id": "F6.63",
+          "name": "Уставка 4",
+          "register": 663,
+          "access": "read-write",
+          "type": "float",
+          "scale": 0.01,
+          "unit": "бар",
+          "min": 0,
+          "max_ref": "F6.14",
+          "default": 2.5
+        },
+        {
+          "id": "F6.64",
+          "name": "Уставка 5",
+          "register": 664,
+          "access": "read-write",
+          "type": "float",
+          "scale": 0.01,
+          "unit": "бар",
+          "min": 0,
+          "max_ref": "F6.14",
+          "default": 2.5
+        },
+        {
+          "id": "F6.65",
+          "name": "Уставка 6",
+          "register": 665,
+          "access": "read-write",
+          "type": "float",
+          "scale": 0.01,
+          "unit": "бар",
+          "min": 0,
+          "max_ref": "F6.14",
+          "default": 2.5
+        },
+        {
+          "id": "F6.66",
+          "name": "Уставка 7",
+          "register": 666,
+          "access": "read-write",
+          "type": "float",
+          "scale": 0.01,
+          "unit": "бар",
+          "min": 0,
+          "max_ref": "F6.14",
+          "default": 2.5
+        },
+        {
+          "id": "F6.67",
+          "name": "Уставка 8",
+          "register": 667,
+          "access": "read-write",
+          "type": "float",
+          "scale": 0.01,
+          "unit": "бар",
+          "min": 0,
+          "max_ref": "F6.14",
+          "default": 2.5
+        },
         {
           "id": "F6.68",
           "name": "Выбор времени перехода в спящий режим",
@@ -2460,7 +3246,7 @@
           "unit": "%",
           "min": 0,
           "max": 25,
-          "default": 10.0
+          "default": 10
         },
         {
           "id": "F6.77",
@@ -2485,7 +3271,7 @@
           "unit": "В",
           "description": "4 мА соответствуют 1,0 В; 20 мА соответствуют 5,0 В",
           "min": 0,
-          "max": 10.0,
+          "max": 10,
           "step": 0.01,
           "default": 0.5
         },
@@ -2498,8 +3284,8 @@
           "scale": 0.1,
           "unit": "сек",
           "min": 0,
-          "max": 25.0,
-          "default": 0.0
+          "max": 25,
+          "default": 0
         },
         {
           "id": "F6.80",
@@ -2604,9 +3390,9 @@
           "scale": 0.1,
           "unit": "сек",
           "min": 0,
-          "max": 60.0,
+          "max": 60,
           "step": 0.1,
-          "default": 0.0
+          "default": 0
         }
       ]
     },
@@ -2650,7 +3436,7 @@
           "min": 760,
           "max": 820,
           "step": 0.1,
-          "default": 800.0
+          "default": 800
         },
         {
           "id": "F8.04",
@@ -2660,10 +3446,10 @@
           "type": "float",
           "scale": 0.1,
           "unit": "В",
-          "min": 100.0,
-          "max": 500.0,
+          "min": 100,
+          "max": 500,
           "step": 0.1,
-          "default": 300.0
+          "default": 300
         },
         {
           "id": "F8.05",

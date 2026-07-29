@@ -933,7 +933,7 @@ export default function ParamGroups({
         <div style={{ marginBottom: 8, padding: '4px 10px', background: '#fff7e6', border: '1px solid #ffd591', borderRadius: 6 }}>
           <Typography.Text style={{ fontSize: 12, color: '#d46b08' }}>
             Этот ПЧ просматривается, но не отмечен галочкой для групповых операций — «Прочитать/Записать/Сбросить все» недоступны.
-            Отметьте его галочкой в списке слева, чтобы включить в группу.
+            Отметьте его галочкой в списке слева, чтобы включить в группу отладки.
           </Typography.Text>
         </div>
       )}
