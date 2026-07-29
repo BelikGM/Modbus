@@ -35,7 +35,7 @@ function formatResult(entry) {
 
 const TAB_LABELS = { params: 'Параметры', templates: 'Шаблоны' }
 
-export default function BulkPanel({ devices, modbusConnected, onDeselect, activeTab, onActiveTabChange, focusedDeviceId, onFocusDevice, focusedDevice, locked = false }) {
+export default function BulkPanel({ devices, modbusConnected, onDeselect, activeTab, onActiveTabChange, focusedDeviceId, onFocusDevice, focusedDevice, locked = false, lockLabel = '' }) {
   const templateIds = [...new Set(devices.map(d => d.templateId))]
   const families = [...new Set(devices.map(d => deviceFamily(d.templateId)))]
   const sameType = families.length === 1
@@ -71,16 +71,19 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
   // (разные карты регистров), но мониторинг каждого по своей карте — вполне
   // безопасен и полезен, поэтому доступна только вкладка "Мониторинг".
   useEffect(() => {
-    if (!sameType && activeTab !== 'monitor') onActiveTabChange('monitor')
+    // Смешанный выбор: уводим на мониторинг только с «Шаблонов» (они реально
+    // невозможны). «Параметры» остаются — там показывается ПЧ, выбранный
+    // одиночным кликом.
+    if (!sameType && activeTab === 'templates') onActiveTabChange('monitor')
   }, [sameType])
 
   function handleTabChange(key) {
     if (locked) {
-      message.warning('Идёт групповая операция — дождитесь завершения или нажмите «Остановить»')
+      message.warning(`Идёт ${lockLabel || 'операция'} — дождитесь завершения или нажмите «Остановить»`)
       return
     }
-    if (!sameType && key !== 'monitor') {
-      message.warning('При выборе ПЧ разных типов доступен только мониторинг — параметры и шаблоны требуют устройств одного семейства (Pump или VL)')
+    if (!sameType && key === 'templates') {
+      message.warning('Шаблоны требуют устройств одного семейства (Pump или VL) — при смешанном выборе они недоступны')
       return
     }
     onActiveTabChange(key)
@@ -416,13 +419,43 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
   // BulkPanel не имеет вкладок "Устройство"/"Журнал" (это данные конкретного
   // ПЧ, не группы) — если пришли сюда из одиночного просмотра, откатываемся на
   // "Параметры".
-  const tabKey = ['params', 'monitor', 'templates'].includes(activeTab) ? activeTab : 'params'
+  let tabKey = ['params', 'monitor', 'templates'].includes(activeTab) ? activeTab : 'params'
+  // «Шаблоны» при смешанном выборе невозможны — подстраховка на случай, если
+  // вкладка осталась активной с прошлого (однотипного) выбора.
+  if (!sameType && tabKey === 'templates') tabKey = 'monitor'
 
   const items = [
     {
       key: 'params',
-      label: <span style={{ opacity: sameType ? 1 : 0.4 }}>{TAB_LABELS.params}</span>,
-      children: !sameType ? null : (
+      // При смешанном выборе групповые операции невозможны (разные карты
+      // регистров), но ПОСМОТРЕТЬ параметры конкретного ПЧ можно — вкладка
+      // остаётся доступной, если одиночным кликом выбран конкретный ПЧ.
+      label: <span style={{ opacity: (sameType || focusedDevice) ? 1 : 0.4 }}>{TAB_LABELS.params}</span>,
+      children: !sameType ? (
+        focusedDevice ? (
+          <Space direction="vertical" style={{ width: '100%' }} size="middle">
+            <Alert
+              type="info"
+              showIcon
+              message={`Просмотр параметров: ${focusedDevice.name} · Адрес ${focusedDevice.connection.slaveId}`}
+              description="Выбраны ПЧ разных типов, поэтому групповые чтение/запись недоступны — показаны параметры одного устройства, отмеченного одиночным кликом. Значения можно читать и писать по отдельным строкам."
+            />
+            <ParamGroups
+              key={focusedDevice.id}
+              device={focusedDevice}
+              modbusConnected={modbusConnected}
+              groupOpsEnabled={false}
+            />
+          </Space>
+        ) : (
+          <Alert
+            type="warning"
+            showIcon
+            message="Выбраны ПЧ разных типов"
+            description="Групповые операции с параметрами недоступны — у Pump и VL разные карты регистров. Нажмите одиночным кликом на нужный ПЧ в списке слева, чтобы посмотреть и править его параметры по отдельности."
+          />
+        )
+      ) : (
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
           {readResultRows.length > 0 && (
             <div>
@@ -568,13 +601,15 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
         )}
       </div>
 
-      {!sameType && tabKey !== 'monitor' && (
+      {/* Общее предупреждение о смешанном выборе показываем только там, где оно
+          к месту: на «Параметрах» своё, более конкретное (см. вкладку). */}
+      {!sameType && tabKey === 'monitor' && (
         <Alert
           style={{ marginBottom: 16 }}
           type="warning"
           showIcon
-          message="Выбраны ПЧ разных типов — доступен только мониторинг"
-          description={`Выбраны устройства разных семейств (${templateIds.join(', ')}) — у них разные карты регистров, групповое чтение/запись параметров и шаблоны для них не имеют смысла и могут записать не те значения не в те регистры. Мониторинг при этом доступен — на вкладке «Мониторинг» показания каждого семейства выводятся отдельным блоком по своей карте параметров. Pump-Full и Pump-OWN между собой совместимы — это один и тот же ПЧ с урезанным набором параметров.`}
+          message="Выбраны ПЧ разных типов"
+          description={`Выбраны устройства разных семейств (${templateIds.join(', ')}) — у них разные карты регистров, поэтому ГРУППОВЫЕ чтение/запись параметров и шаблоны недоступны. Мониторинг работает: показания каждого семейства выводятся отдельным блоком по своей карте параметров. Параметры отдельного ПЧ можно посмотреть на вкладке «Параметры», выбрав его одиночным кликом в списке слева. Pump-Full и Pump-OWN между собой совместимы — это один и тот же ПЧ с урезанным набором параметров.`}
         />
       )}
 

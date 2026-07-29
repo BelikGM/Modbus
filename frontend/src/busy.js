@@ -9,21 +9,33 @@ import { useState, useEffect } from 'react'
 // Отдельный модуль, а не проп через полдерева: занятость поднимают глубоко
 // вложенные компоненты (Monitor, BulkMonitor), а читает её корневой App.
 const _flags = { bulk: false, monitor: false }
+// Человеческое название текущего процесса — показывается в подсказке при
+// попытке нажать заблокированный элемент («Идёт чтение параметров…»).
+const _labels = { bulk: '', monitor: '' }
 const _listeners = new Set()
 
 function snapshot() {
-  return { ..._flags, any: _flags.bulk || _flags.monitor }
+  const any = _flags.bulk || _flags.monitor
+  const label = _flags.bulk ? (_labels.bulk || 'групповая операция')
+    : _flags.monitor ? (_labels.monitor || 'мониторинг')
+    : ''
+  return { ..._flags, any, label }
 }
 
-export function setBusy(key, value) {
-  if (_flags[key] === value) return
+export function setBusy(key, value, label = '') {
+  if (_flags[key] === value && _labels[key] === label) return
   _flags[key] = value
+  _labels[key] = value ? label : ''
   const s = snapshot()
   _listeners.forEach(fn => fn(s))
 }
 
 export function isBusy() {
   return snapshot().any
+}
+
+export function busyLabel() {
+  return snapshot().label
 }
 
 export function useBusy() {

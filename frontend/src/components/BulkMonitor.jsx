@@ -223,7 +223,7 @@ export default function BulkMonitor({ devices, modbusConnected, sameType }) {
         for (const d of group.devices) socket.emit('monitor:start', { deviceId: d.id, paramIds })
       }
       setRunning(true)
-      setBusy('monitor', true)
+      setBusy('monitor', true, 'групповой мониторинг')
       addLog('info', `Групповой мониторинг запущен: ${devices.length} устройств`)
     }
   }

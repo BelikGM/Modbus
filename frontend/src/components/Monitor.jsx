@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { Button, Card, Row, Col, Statistic, Space, Typography, Alert, Tag, notification, Select } from 'antd'
+// ВНИМАНИЕ: Tooltip здесь ДВА разных — у recharts (подсказка на графике) и у
+// antd (подсказка при наведении на элемент). Импортируем antd-версию под
+// псевдонимом, иначе recharts-Tooltip вне графика молча рендерит пустоту.
+import { Button, Card, Row, Col, Statistic, Space, Typography, Alert, Tag, notification, Select, Tooltip as AntTooltip } from 'antd'
 import { PlayCircleOutlined, PauseCircleOutlined, DownloadOutlined, BellOutlined, EyeOutlined, DeleteOutlined } from '@ant-design/icons'
 import { LineChart, Line, ResponsiveContainer, Tooltip, YAxis } from 'recharts'
 import {
@@ -9,7 +12,6 @@ import {
   useSensor,
   useSensors,
   useDroppable,
-  DragOverlay,
 } from '@dnd-kit/core'
 import {
   SortableContext,
@@ -47,6 +49,23 @@ function evalCondition(value, condition, threshold) {
 // снять с него галочку в списке «показать графики»), вернуть можно там же.
 const TRASH_ID = '__monitor-trash__'
 
+// Корзина: закрытая крышка — пока карточку только тащат, открытая — когда её
+// уже поднесли к зоне и можно отпускать.
+function TrashIcon({ open }) {
+  return (
+    <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#ff4d4f" strokeWidth="1.8"
+      strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'transform 0.15s' }}>
+      {/* крышка: при открытии приподнята и повёрнута */}
+      <g style={{ transform: open ? 'translateY(-3px) rotate(-18deg)' : 'none', transformOrigin: '6px 6px', transition: 'transform 0.15s' }}>
+        <path d="M3 6h18" />
+        <path d="M9 6V4h6v2" />
+      </g>
+      <path d="M6 8v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V8" />
+      <path d="M10 11v7M14 11v7" />
+    </svg>
+  )
+}
+
 function TrashZone({ active }) {
   const { setNodeRef, isOver } = useDroppable({ id: TRASH_ID })
   if (!active) return null
@@ -54,17 +73,21 @@ function TrashZone({ active }) {
     <div
       ref={setNodeRef}
       style={{
-        position: 'fixed', top: 0, left: 0, right: 0, height: 64, zIndex: 1200,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-        background: isOver ? 'rgba(255,77,79,0.95)' : 'rgba(255,77,79,0.75)',
-        color: '#fff', fontSize: 14, fontWeight: 500,
-        borderBottom: isOver ? '2px solid #fff' : '2px solid transparent',
+        position: 'fixed', top: 0, left: 0, right: 0, height: 132, zIndex: 1200,
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start',
+        gap: 6, paddingTop: 10,
+        // Серая заливка: вверху плотная, книзу растворяется — так зона не
+        // перекрывает интерфейс глухой панелью и видно, куда именно тянуть.
+        background: isOver
+          ? 'linear-gradient(to bottom, rgba(90,90,95,0.97) 0%, rgba(90,90,95,0.75) 45%, rgba(90,90,95,0) 100%)'
+          : 'linear-gradient(to bottom, rgba(120,120,125,0.92) 0%, rgba(120,120,125,0.55) 45%, rgba(120,120,125,0) 100%)',
+        color: '#fff', fontSize: 14, fontWeight: 500, textShadow: '0 1px 2px rgba(0,0,0,0.45)',
         transition: 'background 0.15s',
         pointerEvents: 'auto',
       }}
     >
-      <DeleteOutlined style={{ fontSize: 20 }} />
-      {isOver ? 'Отпустите — параметр будет убран из мониторинга' : 'Перетащите сюда, чтобы убрать параметр из мониторинга'}
+      <span>{isOver ? 'Отпустите — параметр будет убран из мониторинга' : 'Перетащите сюда, чтобы убрать параметр из мониторинга'}</span>
+      <TrashIcon open={isOver} />
     </div>
   )
 }
@@ -238,7 +261,7 @@ export default function Monitor({ device, modbusConnected }) {
       setRunning(true)
       // Пока идёт опрос, переключаться на другой ПЧ/вкладку нельзя — иначе
       // мониторинг остаётся висеть на прежнем устройстве.
-      setBusy('monitor', true)
+      setBusy('monitor', true, 'мониторинг')
       addLog('info', `Мониторинг запущен: ${device.name}`)
     }
   }
@@ -401,26 +424,29 @@ export default function Monitor({ device, modbusConnected }) {
               const paramName = getParamName(alert.paramId)
               const unit = getParamUnit(alert.paramId)
               const condLabel = CONDITION_LABEL[alert.condition] ?? alert.condition
-              let color = 'default'
+              // Пока мониторинг не запущен, правило всё равно показываем —
+              // спокойным синим, чтобы было видно, ЧТО и по какому порогу
+              // отслеживается (раньше неактивные правила выглядели пусто).
+              let color = 'processing'
               if (running) {
                 if (triggered) color = alert.level === 'error' ? 'error' : 'warning'
                 else if (triggered === false) color = 'success'
               }
+              // Всегда показываем и параметр, и порог: «Перегрев · Температура
+              // ПЧ > 70 °C». Одного имени правила мало (непонятно, по какому
+              // параметру и с какой границей оно сработает).
+              const condText = `${paramName} ${condLabel} ${alert.threshold}${unit ? ` ${unit}` : ''}`
               return (
-                // label из шаблона — человеческое имя правила («Перегрев»,
-                // «Авария ПЧ»). Само условие показываем в подсказке: для кодов
-                // аварий строка вида «Последняя запись об аварии > 0» оператору
-                // ничего не говорит.
-                <Tooltip
+                <AntTooltip
                   key={alert.id}
-                  title={`Условие: ${paramName} ${condLabel} ${alert.threshold}${unit ? ` ${unit}` : ''}`}
+                  title={running
+                    ? (triggered ? 'Сейчас сработало' : 'Отслеживается, порог не превышен')
+                    : 'Оповещение сработает после запуска мониторинга'}
                 >
                   <Tag color={color} style={{ fontSize: 12, cursor: 'help' }}>
-                    {alert.label
-                      ? `${alert.label}${unit ? `: ${condLabel} ${alert.threshold} ${unit}` : ''}`
-                      : `${paramName} ${condLabel} ${alert.threshold}${unit ? ` ${unit}` : ''}`}
+                    {alert.label ? `${alert.label} · ${condText}` : condText}
                   </Tag>
-                </Tooltip>
+                </AntTooltip>
               )
             })}
           </Space>

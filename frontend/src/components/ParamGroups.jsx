@@ -1006,10 +1006,13 @@ export default function ParamGroups({
             indeterminate={visibleGroupIds.size > 0 && visibleGroupIds.size < orderedGroups.length}
             onChange={e => setAllGroupsVisible(e.target.checked)}
           />
+          {/* «Все» — обычный переключатель: клик по надписи делает то же, что
+              клик по квадратику (снять всё / выбрать всё). У отдельных групп
+              логика другая — там клик по названию оставляет только эту группу. */}
           <span
-            onClick={() => setAllGroupsVisible(true)}
+            onClick={() => setAllGroupsVisible(visibleGroupIds.size !== orderedGroups.length)}
             style={{ fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-            title="Показать все группы"
+            title={visibleGroupIds.size === orderedGroups.length ? 'Снять все' : 'Показать все группы'}
           >
             Все
           </span>

@@ -18,7 +18,7 @@ function findStatusParam(device) {
   return null
 }
 
-export default function DeviceDetail({ device, modbusConnected, activeTab, onActiveTabChange, inGroup = true, locked = false }) {
+export default function DeviceDetail({ device, modbusConnected, activeTab, onActiveTabChange, inGroup = true, locked = false, lockLabel = '' }) {
   const [deviceRunning, setDeviceRunning] = useState(null) // null=неизвестно, true=работает, false=остановлен
   const intervalRef = useRef(null)
 
@@ -93,7 +93,7 @@ export default function DeviceDetail({ device, modbusConnected, activeTab, onAct
           // вкладки нельзя — операция продолжится в фоне, а результаты уйдут
           // «не туда». Разблокируется по завершении или кнопкой «Остановить».
           if (locked) {
-            message.warning('Идёт операция — дождитесь завершения или нажмите «Остановить»')
+            message.warning(`Идёт ${lockLabel || 'операция'} — дождитесь завершения или нажмите «Остановить»`)
             return
           }
           onActiveTabChange(key)

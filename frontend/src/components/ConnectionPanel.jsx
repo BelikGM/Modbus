@@ -195,7 +195,12 @@ export default function ConnectionPanel({ connected, reconnecting, reconnectAtte
         title="Подключение к устройству"
         open={open}
         onCancel={() => { if (detecting) cancelDetect(); setOpen(false) }}
-        footer={[
+        // Кнопки в футере обёрнуты в Tooltip, из-за чего antd теряет свои
+        // отступы между ними и «Подключить» прилипала к соседке/краю —
+        // расставляем сами flex-строкой с gap.
+        footer={(
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+            {[
           <Tooltip key="scan" title="Находит USB→RS-485 адаптер по идентификатору производителя (Silicon Labs, FTDI, CH340 и др.)">
             <Button
               icon={<ScanOutlined />}
@@ -221,7 +226,9 @@ export default function ConnectionPanel({ connected, reconnecting, reconnectAtte
           <Button key="connect" type="primary" loading={connecting} onClick={() => form.submit()} disabled={detecting}>
             Подключить
           </Button>,
-        ]}
+            ]}
+          </div>
+        )}
       >
         {detecting && (
           <Alert

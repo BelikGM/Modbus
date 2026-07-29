@@ -47,18 +47,20 @@ export default function LogDrawer({ open, onClose, projectName }) {
 
   return (
     <Drawer
+      // Счётчики — в заголовке, но с отступом от кнопок справа: раньше «23» и
+      // «Скачать CSV» сливались в одну строку без промежутка.
       title={
-        <Space>
-          Журнал операций
-          <Tag>{entries.length}</Tag>
-          {errorCount > 0 && <Tag color="error">{errorCount} ошибок</Tag>}
+        <Space size={8} style={{ paddingRight: 12 }}>
+          <span>Журнал операций</span>
+          <Tag style={{ margin: 0 }}>{entries.length}</Tag>
+          {errorCount > 0 && <Tag color="error" style={{ margin: 0 }}>{errorCount} ошибок</Tag>}
         </Space>
       }
       open={open}
       onClose={onClose}
       size={460}
       extra={
-        <Space>
+        <Space size={8} style={{ marginLeft: 12 }}>
           <Button size="small" icon={<DownloadOutlined />} onClick={exportLogCsv} disabled={!entries.length}>
             Скачать CSV
           </Button>

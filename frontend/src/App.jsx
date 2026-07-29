@@ -194,8 +194,8 @@ export default function App() {
       // не дожидаясь следующего фонового цикла проверки на бэкенде.
       if (!status.connected) setLiveness({})
     })
-    socket.on('bulk:op:total', () => setBusy('bulk', true))
-    socket.on('bulk:op:progress', () => setBusy('bulk', true))
+    socket.on('bulk:op:total', t => setBusy('bulk', true, t?.kind === 'write' ? 'запись параметров' : 'чтение параметров'))
+    socket.on('bulk:op:progress', p => setBusy('bulk', true, p?.kind === 'write' ? 'запись параметров' : 'чтение параметров'))
     socket.on('bulk:op:done', () => setBusy('bulk', false))
     socket.on('bulk:op:error', () => setBusy('bulk', false))
     socket.on('devices:liveness:snapshot', snapshot => setLiveness(snapshot ?? {}))
@@ -337,6 +337,7 @@ export default function App() {
               }}
               mirrored={siderSide === 'right'}
               locked={locked}
+              lockLabel={busy.label}
             />
           </div>
         </Sider>
@@ -366,6 +367,7 @@ export default function App() {
                   onFocusDevice={setFocusedDeviceId}
                   focusedDevice={focusedDevice}
                   locked={locked}
+                  lockLabel={busy.label}
                 />
               )
             }
@@ -381,6 +383,7 @@ export default function App() {
                   onActiveTabChange={setActiveDeviceTab}
                   inGroup={selectedIds.has(single.id)}
                   locked={locked}
+                  lockLabel={busy.label}
                 />
               )
             }

@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { Typography, Badge, Avatar, Tag, Button, Modal, Form, Input, InputNumber, Select, Popconfirm, Tooltip, Checkbox, Space } from 'antd'
+import { Typography, Badge, Avatar, Tag, Button, Modal, Form, Input, InputNumber, Select, Popconfirm, Tooltip, Checkbox, Space, message } from 'antd'
 import { LinkOutlined, DisconnectOutlined, PlusOutlined, DeleteOutlined, EditOutlined, HolderOutlined } from '@ant-design/icons'
 import {
   DndContext,
@@ -51,7 +51,7 @@ function SortableDeviceRow({ id, compact, mirrored, children }) {
   )
 }
 
-export default function DeviceList({ devices, selectedIds, onSelectionChange, connected, liveness = {}, hasProject, activeProjectId, sidebarWidth = 270, deviceOrder, onDeviceOrderChange, focusedDeviceId, onFocusDevice, mirrored = false, locked = false }) {
+export default function DeviceList({ devices, selectedIds, onSelectionChange, connected, liveness = {}, hasProject, activeProjectId, sidebarWidth = 270, deviceOrder, onDeviceOrderChange, focusedDeviceId, onFocusDevice, mirrored = false, locked = false, lockLabel = '' }) {
   const [addOpen, setAddOpen]       = useState(false)
   const [editDevice, setEditDevice] = useState(null)
   const [templates, setTemplates]   = useState([])
@@ -128,8 +128,14 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
 
   // Добавить/убрать устройство из группы выделения (мультивыбор). Вызывается
   // галочкой и двойным кликом по строке.
+  // Пока идёт длительная операция, список ПЧ заблокирован. Молча игнорировать
+  // клик нельзя — выглядит как «подвисло»; поэтому объясняем, что происходит.
+  function warnLocked() {
+    message.warning(`Идёт ${lockLabel || 'операция'} — дождитесь завершения или нажмите «Остановить»`)
+  }
+
   function toggleSelection(device) {
-    if (locked) return // идёт групповое чтение/запись — состав группы не меняем
+    if (locked) { warnLocked(); return }
     const next = new Set(selectedIds)
     if (next.has(device.id)) next.delete(device.id)
     else next.add(device.id)
@@ -142,7 +148,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
   //  - ПЧ вне группы → показываем его одного (иначе клик по невыбранному
   //    устройству ни к чему бы не приводил).
   function focusDevice(device) {
-    if (locked) return // идёт групповая операция — не сбиваем текущий просмотр
+    if (locked) { warnLocked(); return } // идёт операция — не сбиваем текущий просмотр
     // Просмотр ПЧ не меняет состав группы: галочки остаются как были, даже если
     // просматриваемый ПЧ в группу не входит.
     onFocusDevice?.(device.id)
@@ -310,10 +316,13 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
                   checked={visibleTypes.size === 2}
                   onChange={e => setAllTypesVisible(e.target.checked)}
                 />
+                {/* «Все» — не «показать только эту группу», а обычный
+                    переключатель: клик по надписи делает то же, что клик по
+                    квадратику (снять всё / выбрать всё). */}
                 <span
-                  onClick={() => setAllTypesVisible(true)}
+                  onClick={() => setAllTypesVisible(visibleTypes.size !== 2)}
                   style={{ fontSize: 12, cursor: 'pointer' }}
-                  title="Показать все типы"
+                  title={visibleTypes.size === 2 ? 'Снять все' : 'Показать все типы'}
                 >
                   Все
                 </span>
@@ -461,9 +470,14 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
                         justifyContent: compact ? 'center' : 'flex-start',
                         flexDirection: mirrored ? 'row-reverse' : 'row',
                         gap: 8,
-                        background: isFocused ? (mirrored ? '#bae0ff' : '#bae0ff') : 'transparent',
+                        background: isFocused ? '#bae0ff' : 'transparent',
                         [accentSide]: accentColor,
                         borderBottom: '1px solid #f5f5f5',
+                        // Во время операции строки заметно тускнеют — сразу
+                        // видно, что список сейчас недоступен, а не «подвис».
+                        opacity: locked ? 0.45 : 1,
+                        filter: locked ? 'grayscale(0.7)' : 'none',
+                        transition: 'opacity 0.15s, filter 0.15s',
                       }}
                     >
                       {/* Галочка (членство в группе) не прячется никогда — вместе
