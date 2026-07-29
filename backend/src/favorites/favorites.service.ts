@@ -48,23 +48,39 @@ export class FavoritesService {
     this.favorites = this.load();
   }
 
+  // Версия схемы файла. Файлы БЕЗ версии созданы до появления стартового набора
+  // «Избранного» — в них набор по умолчанию досыпается один раз (см. load()).
+  // После этого пустой список означает осознанное «Очистить избранное» и
+  // повторно ничем не заполняется.
+  private static readonly SCHEMA_VERSION = 1;
+
   private load(): Record<DeviceFamily, string[]> {
     try {
       if (fs.existsSync(this.filePath)) {
         const parsed = JSON.parse(fs.readFileSync(this.filePath, 'utf-8'));
-        return {
-          // Пустой массив в файле — это осознанный выбор пользователя
-          // («Очистить избранное»), его не подменяем набором по умолчанию.
-          pump: Array.isArray(parsed?.pump) ? parsed.pump : [...FavoritesService.DEFAULTS.pump],
-          vl: Array.isArray(parsed?.vl) ? parsed.vl : [...FavoritesService.DEFAULTS.vl],
+        const stored = {
+          pump: Array.isArray(parsed?.pump) ? parsed.pump : [],
+          vl: Array.isArray(parsed?.vl) ? parsed.vl : [],
         };
+        if (parsed?.version === FavoritesService.SCHEMA_VERSION) return stored;
+
+        // Разовая миграция старого файла: добавляем стартовый набор, СОХРАНЯЯ
+        // всё, что пользователь уже отметил (его пункты идут после наших).
+        const merged: Record<DeviceFamily, string[]> = {
+          pump: [...new Set([...FavoritesService.DEFAULTS.pump, ...stored.pump])],
+          vl: [...new Set([...FavoritesService.DEFAULTS.vl, ...stored.vl])],
+        };
+        this.favorites = merged;
+        this.persist();
+        return merged;
       }
     } catch { /* повреждённый файл — начинаем с набора по умолчанию */ }
     return { pump: [...FavoritesService.DEFAULTS.pump], vl: [...FavoritesService.DEFAULTS.vl] };
   }
 
   private persist(): void {
-    fs.writeFileSync(this.filePath, JSON.stringify(this.favorites, null, 2), 'utf-8');
+    const payload = { version: FavoritesService.SCHEMA_VERSION, ...this.favorites };
+    fs.writeFileSync(this.filePath, JSON.stringify(payload, null, 2), 'utf-8');
   }
 
   private assertFamily(family: string): asserts family is DeviceFamily {

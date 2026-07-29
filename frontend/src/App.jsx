@@ -385,7 +385,11 @@ export default function App() {
             const focusedDevice = focusedDeviceId && focusedDeviceId !== ALL_DEVICES
               ? devices.find(d => d.id === focusedDeviceId) ?? null
               : null
-            if (selectedIds.size > 1) {
+            // Панель групповых действий (скачать/подготовить/записать) полезна и
+            // для ОДНОГО отмеченного ПЧ — показываем её начиная с одной галочки.
+            // Вкладки «Устройство» и «Заметки» при одном ПЧ BulkPanel добавляет
+            // сам, поэтому ничего не теряется.
+            if (selectedIds.size >= 1) {
               return (
                 <BulkPanel
                   devices={selectedDevices}

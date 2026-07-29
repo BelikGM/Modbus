@@ -6,6 +6,9 @@ import ParamGroups from './ParamGroups'
 import BulkMonitor from './BulkMonitor'
 import Monitor from './Monitor'
 import ValuePresets from './ValuePresets'
+import DeviceInfo from './DeviceInfo'
+import DeviceNotes from './DeviceNotes'
+import ControlPanel from './ControlPanel'
 import { useDeviceSettings } from '../useDeviceSettings'
 import { formatParamValue } from '../paramFormat'
 import { downloadCsv, groupFileLabel } from '../csv'
@@ -603,7 +606,9 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
   // BulkPanel не имеет вкладок "Устройство"/"Журнал" (это данные конкретного
   // ПЧ, не группы) — если пришли сюда из одиночного просмотра, откатываемся на
   // "Параметры".
-  let tabKey = ['params', 'monitor', 'templates'].includes(activeTab) ? activeTab : 'params'
+  let tabKey = ['params', 'monitor', 'templates', 'info', 'notes'].includes(activeTab) ? activeTab : 'params'
+  // Вкладки одиночного ПЧ доступны только когда он один
+  if (devices.length > 1 && (tabKey === 'info' || tabKey === 'notes')) tabKey = 'params'
   // «Шаблоны» при смешанном выборе невозможны — подстраховка на случай, если
   // вкладка осталась активной с прошлого (однотипного) выбора.
   if (!sameType && tabKey === 'templates') tabKey = 'monitor'
@@ -695,6 +700,12 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
       label: <span style={{ opacity: sameType ? 1 : 0.4 }}>{TAB_LABELS.templates}</span>,
       children: !sameType ? null : <ValuePresets device={templateDevice} devices={devices} />,
     },
+    // Когда отмечен ровно один ПЧ, панель заменяет собой одиночный вид —
+    // добавляем его собственные вкладки, чтобы фото/схема и заметки не пропали.
+    ...(devices.length === 1 ? [
+      { key: 'info',  label: 'Устройство', children: <DeviceInfo device={devices[0]} /> },
+      { key: 'notes', label: 'Заметки',    children: <DeviceNotes device={devices[0]} /> },
+    ] : []),
   ]
 
   return (
@@ -812,6 +823,12 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
           message="Выбраны ПЧ разных типов"
           description={`Выбраны устройства разных семейств (${templateIds.join(', ')}) — у них разные карты регистров, поэтому ГРУППОВЫЕ чтение/запись параметров и шаблоны недоступны. Мониторинг работает: показания каждого семейства выводятся отдельным блоком по своей карте параметров. Параметры отдельного ПЧ можно посмотреть на вкладке «Параметры», выбрав его одиночным кликом в списке слева. Pump-Full и Pump-OWN между собой совместимы — это один и тот же ПЧ с урезанным набором параметров.`}
         />
+      )}
+
+      {/* Быстрые команды (пуск/стоп/направление) имеют смысл только для одного
+          устройства — при группе неясно, кем управляем. */}
+      {devices.length === 1 && (
+        <ControlPanel device={devices[0]} modbusConnected={modbusConnected} />
       )}
 
       <Tabs activeKey={tabKey} onChange={handleTabChange} items={items} />

@@ -64,6 +64,14 @@ npm run start:dev
 npm run build          # соберёт React → backend/frontend-dist и скомпилирует backend (tsc)
 npm run electron:dev   # откроет desktop-окно; backend стартует внутри как дочерний процесс
 ```
+Освободить порт 3000 (backend)
+$p=3000; $c=Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue; if(-not $c){Write-Host "Порт $p свободен"} else {$c | ForEach-Object { $n=(Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName; Write-Host "Закрываю PID $($_.OwningProcess) ($n) на порту $p"; Stop-Process -Id $_.OwningProcess -Force }}
+
+
+Освободить порт 5173 (frontend)
+$p=5173; $c=Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue; if(-not $c){Write-Host "Порт $p свободен"} else {$c | ForEach-Object { $n=(Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName; Write-Host "Закрываю PID $($_.OwningProcess) ($n) на порту $p"; Stop-Process -Id $_.OwningProcess -Force }}
+
+
 
 Отдельно запускать backend/frontend не нужно — `electron/main.js` сам форкает `backend/dist/main.js`, ждёт ответа на `localhost:3000` и открывает окно.
 
