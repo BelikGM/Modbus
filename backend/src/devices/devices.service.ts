@@ -53,10 +53,47 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
   // допускает). Теперь ошибка доходит до интерфейса.
   readonly templateErrors = new Map<string, string>();
 
+  // Убирает из JSON комментарии `//` и `/* */`, не трогая их внутри строк
+  // (иначе пострадали бы пути и URL вида "https://..."). Формат JSON комментарии
+  // не допускает, но в файлах-шаблонах они очень полезны — поэтому здесь
+  // поддерживается «JSON с комментариями»: файл остаётся читаемым для человека,
+  // а на разбор уходит уже очищенный текст. Хвостовые запятые тоже убираются.
+  private stripJsonComments(text: string): string {
+    let out = '';
+    let inString = false;
+    let inLine = false;
+    let inBlock = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      const next = text[i + 1];
+      if (inLine) {
+        if (c === '\n') { inLine = false; out += c; }
+        continue;
+      }
+      if (inBlock) {
+        if (c === '*' && next === '/') { inBlock = false; i++; }
+        continue;
+      }
+      if (inString) {
+        out += c;
+        if (c === '\\') { out += next ?? ''; i++; continue; }  // экранированный символ
+        if (c === '"') inString = false;
+        continue;
+      }
+      if (c === '"') { inString = true; out += c; continue; }
+      if (c === '/' && next === '/') { inLine = true; i++; continue; }
+      if (c === '/' && next === '*') { inBlock = true; i++; continue; }
+      out += c;
+    }
+    // хвостовые запятые перед } или ]
+    return out.replace(/,(\s*[}\]])/g, '$1');
+  }
+
   private loadTemplateFile(filePath: string): DeviceConfig | null {
     const fileName = path.basename(filePath);
     try {
-      const config = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as DeviceConfig;
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      const config = JSON.parse(this.stripJsonComments(raw)) as DeviceConfig;
       if (!config.id || !Array.isArray(config.groups)) {
         throw new Error('в файле нет обязательных полей "id" и "groups"');
       }
@@ -69,9 +106,10 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
       return config;
     } catch (e) {
       const raw = (e as Error).message ?? String(e);
-      // Подсказываем самую частую причину прямо в тексте ошибки
-      const hint = /Unexpected token '\/'/.test(raw)
-        ? ' — похоже, в файле есть комментарии («//»), а JSON их не допускает: удалите такие строки'
+      // Комментарии теперь поддерживаются (см. stripJsonComments), поэтому
+      // подсказываем про другую частую причину — оборванную структуру.
+      const hint = /Unexpected end|Expected/.test(raw)
+        ? ' — проверьте парность скобок { } [ ] и кавычек'
         : '';
       this.templateErrors.set(fileName, raw + hint);
       this.events.emit('templates:errors', this.getTemplateErrors());

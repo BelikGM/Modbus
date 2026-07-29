@@ -78,17 +78,35 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = null })
 }
 
-// ── Жизненный цикл ────────────────────────────────────────────────────────────
-app.whenReady().then(async () => {
-  try {
-    startBackend()
-    await waitForBackend()
-    createWindow()
-  } catch (err) {
-    dialog.showErrorBox('Ошибка запуска', String(err.message ?? err))
-    app.quit()
-  }
-})
+// ── Только одна копия приложения ──────────────────────────────────────────────
+// Второй экземпляр недопустим: у него свой backend, который либо не сможет
+// занять порт 3000 (и окно молча покажет данные ЧУЖОГО экземпляра), либо, что
+// хуже, перехватит COM-порт — два мастера на одной шине RS-485 ломают обмен.
+// Поэтому вторая копия сразу закрывается, а активной становится уже открытая.
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    // Пользователь запустил ярлык ещё раз — показываем уже открытое окно
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+    }
+  })
+
+  // ── Жизненный цикл ──────────────────────────────────────────────────────────
+  app.whenReady().then(async () => {
+    try {
+      startBackend()
+      await waitForBackend()
+      createWindow()
+    } catch (err) {
+      dialog.showErrorBox('Ошибка запуска', String(err.message ?? err))
+      app.quit()
+    }
+  })
+}
 
 app.on('window-all-closed', () => {
   if (backendProcess) backendProcess.kill()
