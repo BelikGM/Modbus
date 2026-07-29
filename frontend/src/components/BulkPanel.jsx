@@ -714,7 +714,28 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
           Чтобы обработать все ПЧ проекта, сначала нажмите «Выбрать все» в списке слева.
           Типы можно смешивать: Pump и VL обрабатываются каждый по своей карте регистров.
         </Typography.Text>
+        {/* Порядок кнопок = порядок работы: сначала считать и выгрузить,
+            потом подготовить значения, и только в конце записать в ПЧ. */}
         <Space wrap>
+          <Tooltip title="Считать ВСЕ параметры с каждого выбранного ПЧ и сразу скачать общий CSV (Pump и VL — отдельными секциями в файле)">
+            <Button
+              icon={<DownloadOutlined />}
+              disabled={!modbusConnected || busy || !!bulkOpBar}
+              loading={busy}
+              onClick={downloadAllParams}
+            >
+              1. Скачать все параметры в CSV ({devices.length})
+            </Button>
+          </Tooltip>
+          <Tooltip title="Загрузить ранее скачанный CSV с исправленными значениями — они станут подготовленными значениями соответствующих ПЧ (сопоставление по адресу на шине). Запись в устройства при этом не выполняется.">
+            <Button
+              icon={<UploadOutlined />}
+              disabled={busy || !!bulkOpBar}
+              onClick={() => importInputRef.current?.click()}
+            >
+              2. Подготовить значения из CSV
+            </Button>
+          </Tooltip>
           <Popconfirm
             title="Записать подготовленные значения"
             description={`Каждый из ${devices.length} выбранных ПЧ получит СВОИ подготовленные значения (колонка «Значение для записи»). Идёт реальная запись регистров в устройства.`}
@@ -730,28 +751,9 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
               disabled={!modbusConnected || busy || !!bulkOpBar}
               loading={busy}
             >
-              Записать подготовленное во все выбранные ({devices.length})
+              3. Записать подготовленное во все выбранные ({devices.length})
             </Button>
           </Popconfirm>
-          <Tooltip title="Считать ВСЕ параметры с каждого выбранного ПЧ и сразу скачать общий CSV (Pump и VL — отдельными секциями в файле)">
-            <Button
-              icon={<DownloadOutlined />}
-              disabled={!modbusConnected || busy || !!bulkOpBar}
-              loading={busy}
-              onClick={downloadAllParams}
-            >
-              Скачать все параметры в CSV ({devices.length})
-            </Button>
-          </Tooltip>
-          <Tooltip title="Загрузить ранее скачанный CSV с исправленными значениями — они станут подготовленными значениями соответствующих ПЧ (сопоставление по адресу на шине). Запись в устройства при этом не выполняется.">
-            <Button
-              icon={<UploadOutlined />}
-              disabled={busy || !!bulkOpBar}
-              onClick={() => importInputRef.current?.click()}
-            >
-              Подготовить значения из CSV
-            </Button>
-          </Tooltip>
           <input
             ref={importInputRef}
             type="file"

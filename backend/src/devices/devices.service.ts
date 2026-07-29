@@ -267,24 +267,16 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
   // В файле проекта хранятся ТОЛЬКО overrides (компактно и переживает правки
   // шаблона); заводская база подставляется на лету. Overrides НЕ очищаются после
   // записи — человек на объекте может нажать «Записать» повторно.
+  // ВАЖНО (изменено осознанно): подставлять заводские значения во все
+  // незаполненные поля БОЛЬШЕ НЕЛЬЗЯ. Заводские значения в шаблоне — общие для
+  // модели, а у конкретного исполнения (версия прошивки, мощность) часть из них
+  // отличается; запись «по умолчанию» вслепую означала бы запись наугад в
+  // параметры, которые оператор менять не собирался. Теперь пишется ТОЛЬКО то,
+  // что реально подготовлено — вручную или из шаблона. Если не подготовлено
+  // ничего, запись не выполняется вовсе.
   getEffectivePendingWrites(id: string): Record<string, number> {
-    const device = this.getById(id);
-    if (!device) return {};
-    const result: Record<string, number> = {};
-    for (const group of device.groups) {
-      // Группы настроек связи (RS-485: адрес на шине, скорость, формат) НИКОГДА
-      // не попадают в автоматическую «заводскую» подложку. Заводской адрес у
-      // всех моделей = 1: запись его во все ПЧ разом посадила бы всю шину на
-      // один адрес, а сброс скорости — оборвал бы связь. Восстанавливать
-      // пришлось бы, подключая устройства по одному. Менять эти параметры
-      // можно только вручную, по одной строке.
-      if (group.protectedFromBulk) continue;
-      for (const param of group.params) {
-        if (!this.isParamWritable(device, param)) continue;
-        if (typeof param.default === 'number') result[param.id] = param.default;
-      }
-    }
     const stored = this.getDevicePendingWrites(id);
+    const result: Record<string, number> = {};
     for (const [key, value] of Object.entries(stored)) {
       if (typeof value === 'number') result[key] = value;
     }
