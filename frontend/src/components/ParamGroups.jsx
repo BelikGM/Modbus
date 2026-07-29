@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Collapse, Button, Input, message, Typography, Popconfirm, Space, Modal, Checkbox, Progress, Select, Tag, Tooltip } from 'antd'
+import { Collapse, Button, Input, message, Typography, Popconfirm, Space, Modal, Checkbox, Progress, Select, Tag, Tooltip, Table, Alert } from 'antd'
 import { DownloadOutlined, SearchOutlined, RollbackOutlined, HolderOutlined, UploadOutlined, FileTextOutlined, StarOutlined } from '@ant-design/icons'
 import {
   DndContext,
@@ -225,6 +225,7 @@ export default function ParamGroups({
   // остались сохранённые currentValues).
   const [bulkResults, setBulkResults] = useState({})
   const [currentFillStamp] = useState(0)
+  const [factoryReport, setFactoryReport] = useState(null) // отчёт о параметрах, которые нельзя заполнить без исполнения
   const [presetModalOpen, setPresetModalOpen] = useState(false)
   const [presets, setPresets] = useState([])
   // «Избранное» — собственный список параметров на семейство ПЧ (см.
@@ -685,6 +686,49 @@ export default function ParamGroups({
     message.warning(`Заводской сброс подан на ${targets.length} ПЧ. Связь потеряна — это ожидаемо.`)
   }
 
+  // «Подготовить заводские значения» — заполняет колонку «Значение для записи»
+  // заводскими, НЕ записывая ничего в ПЧ (записать можно потом обычной кнопкой,
+  // предварительно посмотрев и поправив). Учитывает исполнение устройства:
+  //  - параметры с общим для модели заводским значением берутся из шаблона;
+  //  - параметры, у которых значение «зависит от модели ПЧ», — из таблицы
+  //    modelDefaults для конкретного исполнения;
+  //  - если исполнение не указано или значения для него нет — параметр
+  //    пропускается и попадает в отчёт, а не заполняется наугад.
+  async function prepareFactoryValues(groups) {
+    const scope = groups ?? groupsInScope
+    if (scope.length === 0) { message.info('Нет отображаемых групп'); return }
+    const targets = isAllMode ? effectiveDevices : [activeDevice]
+    const dependent = new Set(device.modelDependentParams ?? [])
+
+    const skipped = []   // нечего подставить
+    let prepared = 0
+    for (const d of targets) {
+      const byModel = (device.modelDefaults ?? {})[d.model] ?? {}
+      const patch = {}
+      for (const g of scope) {
+        if (g.protectedFromBulk) continue // настройки связи не трогаем
+        for (const p of g.params) {
+          if (!isParamWritable(device, p)) continue
+          if (dependent.has(p.id)) {
+            if (typeof byModel[p.id] === 'number') patch[p.id] = byModel[p.id]
+            else skipped.push({ device: d.name, paramId: p.id, name: p.name, reason: d.model ? `нет значения для исполнения ${d.model}` : 'не указано исполнение ПЧ' })
+          } else if (typeof p.default === 'number') {
+            patch[p.id] = p.default
+          }
+        }
+      }
+      if (Object.keys(patch).length) {
+        await api.patch(`/devices/${d.id}/pending-writes`, { merge: true, pendingWrites: patch }).catch(() => {})
+        prepared += Object.keys(patch).length
+      }
+    }
+    window.dispatchEvent(new CustomEvent('pending-writes:changed', { detail: { deviceIds: targets.map(d => d.id) } }))
+    const uniqSkipped = [...new Set(skipped.map(s => s.paramId))]
+    message.success(`Подготовлено ${prepared} заводских значений (${targets.length} ПЧ). Проверьте и запишите обычной кнопкой.`)
+    addLog('info', `Подготовлены заводские значения: ${prepared} шт., ПЧ: ${targets.length}${uniqSkipped.length ? `; без значения (зависят от исполнения): ${uniqSkipped.join(', ')}` : ''}`)
+    if (uniqSkipped.length) setFactoryReport({ skipped, uniqSkipped })
+  }
+
   async function processAllGroups(kind) {
     if (groupsInScope.length === 0) {
       message.info('Нет отображаемых групп — отметьте хотя бы одну галочкой ниже')
@@ -1040,6 +1084,15 @@ export default function ParamGroups({
                 Записать все
               </Button>
             </Tooltip>
+            <Tooltip title="Заполнить колонку «Значение для записи» заводскими значениями с учётом исполнения ПЧ. В устройства ничего не пишется — сначала проверьте, потом запишите кнопкой «Записать все».">
+              <Button
+                icon={<RollbackOutlined />}
+                disabled={!groupOpsAllowed}
+                onClick={() => prepareFactoryValues()}
+              >
+                Подготовить заводские
+              </Button>
+            </Tooltip>
             <Popconfirm
               title="Заводской сброс — связь с ПЧ будет потеряна"
               description={(
@@ -1345,6 +1398,50 @@ export default function ParamGroups({
           value={favPresetName}
           onChange={e => setFavPresetName(e.target.value)}
           onPressEnter={createPresetFromFavorites}
+        />
+      </Modal>
+
+      {/* Отчёт: какие заводские значения подставить не удалось. Молча пропускать
+          их нельзя — оператор должен знать, что эти параметры остались как есть. */}
+      <Modal
+        title={<Space><RollbackOutlined />Заводские значения подготовлены не полностью</Space>}
+        open={!!factoryReport}
+        onCancel={() => setFactoryReport(null)}
+        onOk={() => setFactoryReport(null)}
+        okText="Понятно"
+        cancelButtonProps={{ style: { display: 'none' } }}
+        width={720}
+      >
+        <Typography.Paragraph style={{ fontSize: 13 }}>
+          У {factoryReport?.uniqSkipped?.length} параметров заводское значение <b>зависит от исполнения ПЧ</b>
+          {' '}(мощности) — в руководстве вместо числа написано «зависит от модели». Подставить их наугад нельзя:
+          неверный, например, номинальный ток двигателя приведёт к перегреву и срабатыванию защит.
+          Эти параметры оставлены без изменений.
+        </Typography.Paragraph>
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 10 }}
+          message="Что сделать"
+          description={
+            <>
+              1. Укажите исполнение ПЧ в его карточке (кнопка «Изменить» в списке слева) — поле «Модель (мощность)».<br />
+              2. Внесите заводские значения для этого исполнения в шаблон модели (поле <code>modelDefaults</code>) — один раз,
+              дальше они подставляются во всех проектах автоматически.<br />
+              3. Либо задайте эти параметры вручную по шильдику двигателя — это самый надёжный вариант.
+            </>
+          }
+        />
+        <Table
+          size="small"
+          pagination={{ pageSize: 8, size: 'small' }}
+          rowKey={(r, i) => `${r.device}-${r.paramId}-${i}`}
+          dataSource={factoryReport?.skipped ?? []}
+          columns={[
+            { title: 'ПЧ', dataIndex: 'device', width: 150 },
+            { title: 'Параметр', width: 240, render: (_, r) => `${r.paramId} ${r.name ?? ''}` },
+            { title: 'Причина', dataIndex: 'reason' },
+          ]}
         />
       </Modal>
 

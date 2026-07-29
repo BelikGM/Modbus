@@ -1189,5 +1189,11 @@
     "paramId": "F1.17",
     "value": 8,
     "register": 117
-  }
+  },
+  "modelDependentParams": [
+    "F1.07",
+    "F1.08",
+    "F2.10"
+  ],
+  "modelDefaults": {}
 }
