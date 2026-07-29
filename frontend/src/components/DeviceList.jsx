@@ -51,7 +51,7 @@ function SortableDeviceRow({ id, compact, mirrored, children }) {
   )
 }
 
-export default function DeviceList({ devices, selectedIds, onSelectionChange, connected, liveness = {}, hasProject, activeProjectId, sidebarWidth = 270, deviceOrder, onDeviceOrderChange, focusedDeviceId, onFocusDevice, mirrored = false, locked = false, lockLabel = '' }) {
+export default function DeviceList({ devices, selectedIds, onSelectionChange, connected, liveness = {}, hasProject, activeProjectId, sidebarWidth = 270, deviceOrder, onDeviceOrderChange, focusedDeviceId, onFocusDevice, mirrored = false, locked = false, lockLabel = '', templateErrors = [] }) {
   const [addOpen, setAddOpen]       = useState(false)
   const [editDevice, setEditDevice] = useState(null)
   const [templates, setTemplates]   = useState([])
@@ -84,11 +84,15 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
   function openEdit(device, e) {
     e.stopPropagation()
     setEditDevice(device)
+    // Список типов нужен и здесь — тип можно сменить (например добавили свой
+    // шаблон в папку devices/templates рядом с приложением)
+    api.get("/devices/templates").then(({ data }) => setTemplates(data)).catch(() => {})
     editForm.setFieldsValue({
       name:    device.name,
       slaveId: device.connection.slaveId,
       model:   device.model,
       firmware: device.firmware,
+      templateId: device.templateId,
     })
   }
 
@@ -317,6 +321,28 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
       {/* Модель (мощность) по шине не определяется — её задают вручную. Пока
           хотя бы у одного ПЧ она не указана, заводские значения для таких
           параметров подставить нельзя, поэтому коротко предупреждаем. */}
+      {/* Битый файл шаблона раньше отбрасывался молча — и новый тип ПЧ просто
+          не появлялся в списке без объяснения причин. */}
+      {!compact && templateErrors.length > 0 && (
+        <div style={{
+          margin: '0 16px 8px', padding: '4px 8px', borderRadius: 4,
+          background: '#fff2f0', border: '1px solid #ffccc7',
+        }}>
+          <Tooltip title={
+            <>
+              {templateErrors.map(e => (
+                <div key={e.file} style={{ marginBottom: 4 }}><b>{e.file}</b>: {e.message}</div>
+              ))}
+              Исправьте файл в папке devices/templates — он перечитается автоматически.
+            </>
+          }>
+            <Typography.Text style={{ fontSize: 11, color: '#cf1322', cursor: 'help' }}>
+              ⛔ Не удалось прочитать файл шаблона ({templateErrors.length}) — тип ПЧ не появится в списке
+            </Typography.Text>
+          </Tooltip>
+        </div>
+      )}
+
       {hasProject && !compact && (devicesWithoutModel.length > 0 || devicesWithoutFirmware.length > 0) && (
         <div style={{
           margin: '0 16px 8px', padding: '4px 8px', borderRadius: 4,
@@ -656,6 +682,13 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
         confirmLoading={submitting}
       >
         <Form form={editForm} layout="vertical" onFinish={handleEdit} style={{ marginTop: 16 }}>
+          <Form.Item
+            name="templateId"
+            label="Тип устройства (шаблон)"
+            extra="Список берётся из папки devices/templates рядом с приложением — новые файлы подхватываются на лету, пересобирать программу не нужно. При смене типа модель, прошивка, подготовленные и считанные значения сбрасываются: у другого типа своя карта регистров."
+          >
+            <Select showSearch optionFilterProp="label" options={templates.map(t => ({ value: t.id, label: t.name ?? t.id }))} />
+          </Form.Item>
           <Form.Item name="name" label="Название" rules={[{ required: true, message: 'Введите название' }]}>
             <Input />
           </Form.Item>

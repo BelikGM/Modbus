@@ -13,6 +13,12 @@ export class DevicesController {
     return this.devicesService.getAll();
   }
 
+  // Ошибки разбора файлов шаблонов — чтобы битый JSON не пропадал молча
+  @Get('templates/errors')
+  getTemplateErrors() {
+    return this.devicesService.getTemplateErrors();
+  }
+
   @Get('templates')
   getTemplates() {
     return this.devicesService.getTemplates();
@@ -91,7 +97,7 @@ export class DevicesController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() body: { name?: string; slaveId?: number; model?: string; firmware?: string }) {
+  update(@Param('id') id: string, @Body() body: { name?: string; slaveId?: number; model?: string; firmware?: string; templateId?: string }) {
     return this.devicesService.updateDevice(id, body);
   }
 

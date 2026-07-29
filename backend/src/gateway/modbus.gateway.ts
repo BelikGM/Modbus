@@ -57,6 +57,11 @@ export class ModbusGateway
     await this.tryAutoConnect();
     this.ensureLivenessLoopRunning();
 
+    // Ошибки разбора файлов шаблонов — сразу всем клиентам, чтобы битый JSON
+    // не пропадал молча (иначе новый тип ПЧ просто не появляется в списке).
+    this.devicesService.events.on('templates:errors', (errors) =>
+      this.server?.emit('templates:errors', errors),
+    );
     this.devicesService.events.on('device:added', () =>
       this.server?.emit('devices:updated', this.devicesService.getAll()),
     );
@@ -115,6 +120,8 @@ export class ModbusGateway
     client.emit('devices:list', this.devicesService.getAll());
     client.emit('modbus:status', this.buildStatus());
     client.emit('devices:liveness:snapshot', Object.fromEntries(this.deviceLiveness));
+    const tplErrors = this.devicesService.getTemplateErrors();
+    if (tplErrors.length) client.emit('templates:errors', tplErrors);
     const mismatches = this.projectsService.checkMismatches();
     if (mismatches.length) client.emit('project:folder:mismatch', mismatches);
   }

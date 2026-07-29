@@ -177,6 +177,8 @@ export default function App() {
   const [connectedPort, setConnectedPort] = useState(null) // { portPath, baudRate }
   const [waitingPort, setWaitingPort] = useState(null)     // portPath | null
   const [logOpen, setLogOpen] = useState(false)
+  // Ошибки разбора файлов шаблонов ПЧ (битый JSON в devices/templates)
+  const [templateErrors, setTemplateErrors] = useState([])
   // Идёт длительная операция (групповое чтение/запись, выгрузка CSV, мониторинг).
   // На это время блокируем смену выбора ПЧ и вкладок: иначе операция продолжает
   // идти в фоне, а её результаты уходят «не туда» — таблица обнуляется, монитор
@@ -217,6 +219,7 @@ export default function App() {
     socket.on('bulk:op:progress', p => setBusy('bulk', true, p?.kind === 'write' ? 'запись параметров' : 'чтение параметров'))
     socket.on('bulk:op:done', () => setBusy('bulk', false))
     socket.on('bulk:op:error', () => setBusy('bulk', false))
+    socket.on('templates:errors', errs => setTemplateErrors(errs ?? []))
     socket.on('devices:liveness:snapshot', snapshot => setLiveness(snapshot ?? {}))
     socket.on('device:liveness', ({ deviceId, online }) => {
       setLiveness(prev => ({ ...prev, [deviceId]: online }))
@@ -227,6 +230,7 @@ export default function App() {
       socket.off('devices:updated')
       socket.off('device:id:changed')
       socket.off('modbus:status')
+      socket.off('templates:errors')
       socket.off('devices:liveness:snapshot')
       socket.off('device:liveness')
       socket.off('bulk:op:total')

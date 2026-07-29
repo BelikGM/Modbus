@@ -47,17 +47,40 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  // Ошибки разбора шаблонов: имя файла -> текст ошибки. Раньше битый файл
+  // отбрасывался молча, и «почему нового типа ПЧ нет в списке» выяснить было
+  // невозможно (типичная причина — комментарии `//` в JSON, их формат не
+  // допускает). Теперь ошибка доходит до интерфейса.
+  readonly templateErrors = new Map<string, string>();
+
   private loadTemplateFile(filePath: string): DeviceConfig | null {
+    const fileName = path.basename(filePath);
     try {
       const config = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as DeviceConfig;
+      if (!config.id || !Array.isArray(config.groups)) {
+        throw new Error('в файле нет обязательных полей "id" и "groups"');
+      }
       const prevId = this.templateFileToId.get(filePath);
       if (prevId && prevId !== config.id) this.templates.delete(prevId);
       this.templateFileToId.set(filePath, config.id);
       this.templates.set(config.id, { ...config, template: true });
+      this.templateErrors.delete(fileName);
+      this.events.emit('templates:errors', this.getTemplateErrors());
       return config;
-    } catch {
+    } catch (e) {
+      const raw = (e as Error).message ?? String(e);
+      // Подсказываем самую частую причину прямо в тексте ошибки
+      const hint = /Unexpected token '\/'/.test(raw)
+        ? ' — похоже, в файле есть комментарии («//»), а JSON их не допускает: удалите такие строки'
+        : '';
+      this.templateErrors.set(fileName, raw + hint);
+      this.events.emit('templates:errors', this.getTemplateErrors());
       return null;
     }
+  }
+
+  getTemplateErrors(): { file: string; message: string }[] {
+    return Array.from(this.templateErrors, ([file, message]) => ({ file, message }));
   }
 
   private async startTemplateWatcher() {
@@ -220,7 +243,7 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     return merged;
   }
 
-  updateDevice(id: string, patch: { name?: string; slaveId?: number; model?: string; firmware?: string }): DeviceConfig {
+  updateDevice(id: string, patch: { name?: string; slaveId?: number; model?: string; firmware?: string; templateId?: string }): DeviceConfig {
     const instance = this.instances.get(id);
     if (!instance) {
       if (this.templates.has(id)) throw new BadRequestException('Нельзя редактировать шаблон');
@@ -229,6 +252,11 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
 
     const projectId = this.projectsService.getActiveProjectId();
     if (!projectId) throw new BadRequestException('Нет активного проекта');
+
+    const typeChanged = patch.templateId !== undefined && patch.templateId !== instance.templateId;
+    if (typeChanged && !this.templates.has(patch.templateId!)) {
+      throw new BadRequestException(`Шаблон '${patch.templateId}' не найден`);
+    }
 
     let newId = id;
     if (patch.name !== undefined) {
@@ -251,8 +279,19 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
       ...instance,
       id: newId,
       ...(patch.name !== undefined && { name: patch.name }),
-      ...(patch.model !== undefined && { model: patch.model }),
-      ...(patch.firmware !== undefined && { firmware: patch.firmware }),
+      // Смена типа (шаблона) — у нового типа своя карта регистров, поэтому
+      // модель, прошивка и все подготовленные/прочитанные значения от прежнего
+      // типа теряют смысл и сбрасываются, иначе остались бы значения по чужим
+      // адресам регистров.
+      ...(typeChanged && {
+        templateId: patch.templateId!,
+        model: undefined,
+        firmware: undefined,
+        pendingWrites: {},
+        currentValues: {},
+      }),
+      ...(!typeChanged && patch.model !== undefined && { model: patch.model }),
+      ...(!typeChanged && patch.firmware !== undefined && { firmware: patch.firmware }),
       connection: {
         ...instance.connection,
         ...(patch.slaveId !== undefined && { slaveId: patch.slaveId }),
