@@ -23,9 +23,12 @@ export class SettingsController {
     return this.settingsService.updateDeviceSettings(deviceId, body);
   }
 
-  @Patch('device-selection/:projectId')
-  updateDeviceSelection(@Param('projectId') projectId: string, @Body() body: { selected: string[] }) {
-    this.settingsService.saveDeviceSelection(projectId, body.selected ?? []);
+  // projectId передаём в ТЕЛЕ, а не в пути: имена проектов бывают кириллицей и
+  // с пробелами («Тест_1»), в URL это лишний источник проблем с кодировкой.
+  @Patch('device-selection')
+  updateDeviceSelection(@Body() body: { projectId: string; selected: string[] }) {
+    if (!body?.projectId) return { success: false };
+    this.settingsService.saveDeviceSelection(body.projectId, body.selected ?? []);
     return { success: true };
   }
 

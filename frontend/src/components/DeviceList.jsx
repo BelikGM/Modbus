@@ -273,6 +273,10 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
   // Уже галочки+номера панель не сжимается (SIDER_MIN_WIDTH в App.jsx).
   const showModelLabel = sidebarWidth >= 180
   const showName       = sidebarWidth >= 150
+  // Промежуточная ступень перед полным скрытием имени: убираем приставку
+  // «EMD-» («EMD-PUMP-1» -> «PUMP-1») — она одинаковая у всех и места занимает
+  // больше всего.
+  const shortenName    = sidebarWidth < 210
   const showAvatar     = sidebarWidth >= 110
   const showAddrWord   = sidebarWidth >= 76
   // Кнопки правки/удаления требуют места и появляются только в полном виде.
@@ -518,7 +522,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
                             // где текст реально дотягивается до их угла.
                             paddingRight: (!mirrored && showRowActions) ? 48 : 0,
                           }}>
-                            {device.name}
+                            {shortenName ? device.name.replace(/^EMD[-\s]?/i, '') : device.name}
                           </div>
                         )}
                         <span style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
@@ -619,7 +623,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
               не поддерживает Modbus-функцию идентификации устройства. */}
           <Form.Item
             name="model"
-            label="Исполнение (мощность)"
+            label="Модель (мощность)"
             extra="Определить по шине нельзя — выберите по шильдику устройства. Влияет на подсказки о диапазонах значений."
           >
             <Select

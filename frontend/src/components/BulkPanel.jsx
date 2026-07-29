@@ -81,6 +81,10 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
   // Что именно мониторим: в режиме «Все выбранные ПЧ» — всю группу, иначе —
   // только тот ПЧ, что выбран одиночным кликом/переключателем (он может быть и
   // вне группы). Если ничего не выбрано, остаётся вся группа.
+  // При смешанном выборе на вкладке «Параметры» работаем с одним ПЧ: либо с
+  // выбранным одиночным кликом, либо (если не выбран) с первым отмеченным.
+  const mixedViewDevice = devices.find(d => d.id === focusedDeviceId) ?? focusedDevice ?? devices[0]
+
   const monitoredDevices = (() => {
     if (!focusedDeviceId || focusedDeviceId === ALL_DEVICES) return devices
     const inGroup = devices.find(d => d.id === focusedDeviceId)
@@ -612,29 +616,19 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
       // остаётся доступной, если одиночным кликом выбран конкретный ПЧ.
       label: <span style={{ opacity: (sameType || focusedDevice) ? 1 : 0.4 }}>{TAB_LABELS.params}</span>,
       children: !sameType ? (
-        focusedDevice ? (
-          <Space direction="vertical" style={{ width: '100%' }} size="middle">
-            <Alert
-              type="info"
-              showIcon
-              message={`Просмотр параметров: ${focusedDevice.name} · Адрес ${focusedDevice.connection.slaveId}`}
-              description="Выбраны ПЧ разных типов, поэтому групповые чтение/запись недоступны — показаны параметры одного устройства, отмеченного одиночным кликом. Значения можно читать и писать по отдельным строкам."
-            />
-            <ParamGroups
-              key={focusedDevice.id}
-              device={focusedDevice}
-              modbusConnected={modbusConnected}
-              groupOpsEnabled={false}
-            />
-          </Space>
-        ) : (
-          <Alert
-            type="warning"
-            showIcon
-            message="Выбраны ПЧ разных типов"
-            description="Групповые операции с параметрами недоступны — у Pump и VL разные карты регистров. Нажмите одиночным кликом на нужный ПЧ в списке слева, чтобы посмотреть и править его параметры по отдельности."
-          />
-        )
+        // Смешанный выбор: групповые операции невозможны (разные карты
+        // регистров), но работать с ОДНИМ ПЧ можно всегда — показываем его
+        // параметры и переключатель внутри ParamGroups (без пункта «все
+        // разом»). Тупиковой заглушки больше нет.
+        <ParamGroups
+          key={mixedViewDevice.id}
+          device={mixedViewDevice}
+          modbusConnected={modbusConnected}
+          groupOpsEnabled={false}
+          mixedSelectable={devices}
+          focusedDeviceId={focusedDeviceId}
+          onFocusDevice={onFocusDevice}
+        />
       ) : (
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
           {readResultRows.length > 0 && (

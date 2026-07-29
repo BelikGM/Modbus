@@ -130,6 +130,10 @@ export default function ParamGroups({
   // false — просматриваемый ПЧ не входит в группу (не отмечен галочкой):
   // массовые операции по группе к нему не относятся и блокируются.
   groupOpsEnabled = true,
+  // Смешанный выбор Pump+VL: список ПЧ для переключателя. Работаем всегда с
+  // ОДНИМ устройством (пункта «все разом» нет — карты регистров разные),
+  // но переключаться между ними можно прямо здесь.
+  mixedSelectable,
 }) {
   const outOfGroupHint = 'ПЧ не отмечен галочкой — групповые операции недоступны'
   // В одиночном режиме (DeviceDetail) `devices` не передаётся — работаем с одним
@@ -651,6 +655,36 @@ export default function ParamGroups({
     setPendingVersion(v => v + 1)
   }
 
+  // Заводской сброс — ОДНОЙ штатной командой в специальный регистр (Pump:
+  // F1.17=8, VL: PP.01=1), а не записью сотни значений по одному. Так корректнее:
+  // сам ПЧ знает свои заводские значения для конкретного исполнения, а наши
+  // табличные default'ы общие для модели и могут не подойти.
+  // Связь после сброса теряется — это поведение самого устройства, оператор
+  // предупреждён в диалоге подтверждения.
+  async function factoryResetDevices() {
+    const targets = isAllMode ? effectiveDevices : [activeDevice]
+    const reset = device.factoryReset
+    if (!reset) {
+      message.error('Для этой модели не задана команда заводского сброса')
+      return
+    }
+    const key = processStart(`Заводской сброс: ${targets.length} ПЧ…`, 'Сброс до заводских')
+    let ok = 0
+    for (const d of targets) {
+      try {
+        await api.post('/modbus/write', { deviceId: d.id, paramId: reset.paramId, value: reset.value })
+        ok++
+        addLog('warning', `Заводской сброс подан: ${d.name} (Адрес ${d.connection.slaveId}) — ${reset.paramId}=${reset.value}; связь с устройством будет потеряна`)
+      } catch (e) {
+        // Устройство часто не успевает ответить на подтверждение — оно уже
+        // сбрасывается и меняет адрес. Это не обязательно ошибка.
+        addLog('warning', `${d.name}: ответ на команду сброса не получен (${e?.response?.data?.message ?? e.message}) — вероятно, ПЧ уже сбрасывается`)
+      }
+    }
+    processDone(key, `Команда сброса подана на ${targets.length} ПЧ (подтвердили ${ok}). Связь с ними потеряна — настройте адрес и скорость с пульта.`, 'Сброс выполнен')
+    message.warning(`Заводской сброс подан на ${targets.length} ПЧ. Связь потеряна — это ожидаемо.`)
+  }
+
   async function processAllGroups(kind) {
     if (groupsInScope.length === 0) {
       message.info('Нет отображаемых групп — отметьте хотя бы одну галочкой ниже')
@@ -919,29 +953,38 @@ export default function ParamGroups({
       }}>
         <Typography.Text strong style={{ fontSize: 12 }}>Работаем с:</Typography.Text>
         <Select
-          value={activeDeviceId}
-          onChange={changeActiveDevice}
+          value={mixedSelectable ? device.id : activeDeviceId}
+          onChange={mixedSelectable ? (id => onFocusDevice?.(id)) : changeActiveDevice}
           style={{ minWidth: 300 }}
           popupMatchSelectWidth={false}
-          options={[
-            ...(isBulk ? [{
-              value: ALL_DEVICES,
-              label: `★ Все выбранные ПЧ (${effectiveDeviceIds.length}) — читать, мониторить и править разом`,
-            }] : []),
-            ...effectiveDevices.map(d => ({
-              value: d.id,
-              label: `${d.name} · Адрес ${d.connection.slaveId}`,
-            })),
-            ...(outsideDevice ? [{
-              value: outsideDevice.id,
-              label: `${outsideDevice.name} · Адрес ${outsideDevice.connection.slaveId} — вне группы отладки`,
-            }] : []),
-          ]}
+          options={mixedSelectable
+            // Смешанный выбор: только конкретные ПЧ, без «все разом» —
+            // групповые операции по разным картам регистров невозможны.
+            ? mixedSelectable.map(d => ({
+                value: d.id,
+                label: `${d.name} · Адрес ${d.connection.slaveId} · ${deviceFamily(d.templateId) === 'vl' ? 'VL' : 'Pump'}`,
+              }))
+            : [
+                ...(isBulk ? [{
+                  value: ALL_DEVICES,
+                  label: `★ Все выбранные ПЧ (${effectiveDeviceIds.length}) — читать, мониторить и править разом`,
+                }] : []),
+                ...effectiveDevices.map(d => ({
+                  value: d.id,
+                  label: `${d.name} · Адрес ${d.connection.slaveId}`,
+                })),
+                ...(outsideDevice ? [{
+                  value: outsideDevice.id,
+                  label: `${outsideDevice.name} · Адрес ${outsideDevice.connection.slaveId} — вне группы отладки`,
+                }] : []),
+              ]}
         />
         <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-          {isAllMode
-            ? 'чтение, мониторинг и правка значений — по всем отмеченным ПЧ сразу'
-            : 'чтение, мониторинг и правка значений — только по этому ПЧ'}
+          {mixedSelectable
+            ? 'выбраны ПЧ разных типов — групповые операции недоступны, работаем с одним устройством'
+            : isAllMode
+              ? 'чтение, мониторинг и правка значений — по всем отмеченным ПЧ сразу'
+              : 'чтение, мониторинг и правка значений — только по этому ПЧ'}
         </Typography.Text>
       </div>
 
@@ -998,15 +1041,28 @@ export default function ParamGroups({
               </Button>
             </Tooltip>
             <Popconfirm
-              title="Сброс всех параметров"
-              description="Записать заводские значения во все отображаемые параметры?"
-              okText="Сбросить всё"
+              title="Заводской сброс — связь с ПЧ будет потеряна"
+              description={(
+                <div style={{ maxWidth: 460 }}>
+                  Будет подана штатная команда заводского сброса
+                  {device.factoryReset ? ` (${device.factoryReset.paramId} = ${device.factoryReset.value})` : ''}
+                  {' '}на {isAllMode ? `все выбранные ПЧ (${effectiveDeviceIds.length})` : 'выбранный ПЧ'}.
+                  <br /><br />
+                  <b>ПЧ сбросит и настройки связи:</b> адрес на шине станет 1, скорость и формат — заводскими.
+                  Программа сразу потеряет это устройство. Если сбросить несколько ПЧ, все они окажутся
+                  на адресе 1 и начнут отвечать одновременно — шина перестанет работать.
+                  <br /><br />
+                  Восстановить связь можно будет только настроив адрес и скорость заново
+                  с пульта каждого ПЧ (или подключая их по одному).
+                </div>
+              )}
+              okText="Всё равно сбросить"
               cancelText="Отмена"
               okButtonProps={{ danger: true }}
-              onConfirm={() => processAllGroups('reset')}
+              onConfirm={factoryResetDevices}
             >
               <Button icon={<RollbackOutlined />} danger disabled={!modbusConnected || !groupOpsAllowed}>
-                Сбросить все до заводских
+                Сбросить до заводских
               </Button>
             </Popconfirm>
           </>

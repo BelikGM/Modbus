@@ -123,7 +123,7 @@ export default function App() {
   // сохранённый — иначе первый же рендер затёр бы его пустым множеством).
   useEffect(() => {
     if (!activeProjectId || !selectionLoadedRef.current) return
-    api.patch(`/settings/device-selection/${activeProjectId}`, { selected: [...selectedIds] }).catch(() => {})
+    api.patch('/settings/device-selection', { projectId: activeProjectId, selected: [...selectedIds] }).catch(() => {})
   }, [selectedIds, activeProjectId])
 
   function toggleTheme(checked) {
@@ -340,7 +340,10 @@ export default function App() {
               </Button>
             </div>
           )}
-          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          {/* overflowX: hidden — при сжатии панель не должна прокручиваться
+              вбок: содержимое сокращается по ступеням (модель -> имя -> фото),
+              а горизонтальный скролл только мешал бы. */}
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}>
             <DeviceList
               devices={devices}
               selectedIds={selectedIds}
