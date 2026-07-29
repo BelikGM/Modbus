@@ -385,7 +385,8 @@ export default function ParamGroups({
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
   // ─── Избранное: своя группа из произвольных параметров ────────────────────
-  const FAV_GROUP_ID = '__favorites__'
+  const FAV_GROUP_ID = '__favorites__'   // постоянное «Избранное» из шаблона
+  const DEBUG_GROUP_ID = '__debug__'    // рабочая «Отладка», редактируется на месте
   const deviceFamilyId = deviceFamily(device.templateId ?? device.id)
 
   useEffect(() => {
@@ -397,11 +398,24 @@ export default function ParamGroups({
   }, [deviceFamilyId])
 
   const allParamsById = new Map(device.groups.flatMap(g => g.params).map(p => [p.id, p]))
-  // Виртуальная группа «Избранное»: конкретные параметры в порядке, заданном
-  // пользователем (не целые группы). Параметры, которых нет у этой модели,
-  // просто отбрасываются — список общий на семейство.
-  const favoriteParams = favoriteIds.map(id => allParamsById.get(id)).filter(Boolean)
-  const favoriteGroup = { id: FAV_GROUP_ID, name: '★ Избранное', params: favoriteParams }
+
+  // Две разные виртуальные группы, их легко перепутать:
+  //
+  // «★ Избранное» — ПОСТОЯННЫЙ набор, заданный в шаблоне модели
+  // (builtinFavorites) ещё до сборки инсталлятора. На объекте не редактируется:
+  // это выверенный список того, что нужно при пусконаладке всегда.
+  //
+  // «🔧 Отладка» — РАБОЧАЯ группа: собирается на месте под текущую задачу,
+  // меняется и очищается сколько угодно, хранится отдельно (favorites API).
+  const builtinFavoriteParams = (device.builtinFavorites ?? [])
+    .map(id => allParamsById.get(id))
+    .filter(Boolean)
+  const favoriteGroup = { id: FAV_GROUP_ID, name: '★ Избранное', params: builtinFavoriteParams }
+
+  const debugParams = favoriteIds.map(id => allParamsById.get(id)).filter(Boolean)
+  const debugGroup = { id: DEBUG_GROUP_ID, name: '🔧 Отладка', params: debugParams }
+  // Дальше по коду редактируемым списком остаётся debug-набор
+  const favoriteParams = debugParams
 
   // Сохраняем на бэке; локальное состояние обновляем только при успехе, иначе
   // список «на экране есть, а на самом деле не сохранён» (эта рассинхронизация
@@ -443,7 +457,7 @@ export default function ParamGroups({
     if (!(await saveFavorites(ordered))) return // не закрываем окно — правки не потеряются
     setFavModalOpen(false)
     if (ordered.length > 0) {
-      setVisibleGroups(new Set([...visibleGroupIds, FAV_GROUP_ID]))
+      setVisibleGroups(new Set([...visibleGroupIds, DEBUG_GROUP_ID]))
       message.success(`В избранном ${ordered.length} параметров`)
     } else {
       message.success('Избранное очищено')
@@ -484,12 +498,18 @@ export default function ParamGroups({
   }
 
   // Избранное всегда первым — это «самое нужное», ради чего его и заводят.
-  const groupsWithFavorites = favoriteParams.length > 0 ? [favoriteGroup, ...device.groups] : device.groups
+  const groupsWithFavorites = [
+    ...(builtinFavoriteParams.length > 0 ? [favoriteGroup] : []),
+    ...(debugParams.length > 0 ? [debugGroup] : []),
+    ...device.groups,
+  ]
 
   const orderedGroups = groupOrder
     ? [...groupsWithFavorites].sort((a, b) => {
-        if (a.id === FAV_GROUP_ID) return -1
-        if (b.id === FAV_GROUP_ID) return 1
+        // Обе виртуальные группы всегда наверху, порядок между ними фиксирован
+        const rank = id => (id === FAV_GROUP_ID ? -2 : id === DEBUG_GROUP_ID ? -1 : 0)
+        if (rank(a.id) !== rank(b.id)) return rank(a.id) - rank(b.id)
+        if (rank(a.id) < 0) return 0
         const ai = groupOrder.indexOf(a.id)
         const bi = groupOrder.indexOf(b.id)
         return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
@@ -1225,7 +1245,7 @@ export default function ParamGroups({
                   : 'Показать только эту группу'}
                 style={{
                   fontSize: 12, lineHeight: 1.3, cursor: 'pointer',
-                  fontWeight: group.id === FAV_GROUP_ID ? 600 : undefined,
+                  fontWeight: (group.id === FAV_GROUP_ID || group.id === DEBUG_GROUP_ID) ? 600 : undefined,
                 }}
               >
                 {group.name}
@@ -1241,27 +1261,27 @@ export default function ParamGroups({
         {/* Управление составом избранного — рядом с чекбоксами групп */}
         <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <Button size="small" icon={<StarOutlined />} onClick={openFavModal}>
-            {favoriteParams.length > 0 ? `Изменить избранное (${favoriteParams.length})` : 'Собрать избранное'}
+            {favoriteParams.length > 0 ? `Изменить «Отладку» (${favoriteParams.length})` : 'Собрать группу «Отладка»'}
           </Button>
           {favoriteParams.length > 0 && (
             <>
               <Button size="small" icon={<FileTextOutlined />} onClick={() => { setFavPresetName(''); setFavPresetOpen(true) }}>
-                Создать шаблон из избранного
+                Создать шаблон из «Отладки»
               </Button>
               <Popconfirm
-                title="Очистить избранное?"
-                description={`Из группы «★ Избранное» будут убраны все ${favoriteParams.length} параметров. Сами параметры и их значения не тронуты.`}
+                title="Очистить группу «Отладка»?"
+                description={`Из группы «🔧 Отладка» будут убраны все ${favoriteParams.length} параметров. Сами параметры и их значения не тронуты.`}
                 okText="Очистить"
                 cancelText="Отмена"
                 okButtonProps={{ danger: true }}
                 onConfirm={clearFavorites}
               >
-                <Button size="small" danger>Очистить избранное</Button>
+                <Button size="small" danger>Очистить «Отладку»</Button>
               </Popconfirm>
             </>
           )}
           <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-            «★ Избранное» — свой список любых параметров этой модели ПЧ; читается и пишется как обычная группа
+            «★ Избранное» — постоянный набор из шаблона модели (не меняется). «🔧 Отладка» — рабочая группа: соберите под текущую задачу, потом очистите
           </Typography.Text>
         </div>
       </div>
@@ -1302,7 +1322,7 @@ export default function ParamGroups({
 
       {/* Состав избранного: отмечаем ОТДЕЛЬНЫЕ параметры (не группы целиком) */}
       <Modal
-        title={<Space><StarOutlined />Состав группы «Избранное»</Space>}
+        title={<Space><StarOutlined />Состав группы «🔧 Отладка»</Space>}
         open={favModalOpen}
         onCancel={() => setFavModalOpen(false)}
         width={760}

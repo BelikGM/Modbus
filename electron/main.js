@@ -1,7 +1,49 @@
 const { app, BrowserWindow, dialog } = require('electron')
 const { fork } = require('child_process')
 const path = require('path')
+const fs = require('fs')
 const http = require('http')
+
+// ── Где хранить данные пользователя (проекты, настройки, журнал) ──────────────
+// По умолчанию Electron предлагает %APPDATA%\<имя> — данные оказываются далеко
+// от установленной программы, их неудобно найти, скопировать и перенести.
+// Поэтому храним их в папке data РЯДОМ С EXE (куда установили — туда и данные).
+// Если писать туда нельзя (например, установили в Program Files без прав),
+// молча ломаться нельзя — откатываемся на стандартный userData.
+function resolveDataDir() {
+  const nextToExe = path.join(path.dirname(app.getPath('exe')), 'data')
+  try {
+    fs.mkdirSync(nextToExe, { recursive: true })
+    const probe = path.join(nextToExe, '.write-test')
+    fs.writeFileSync(probe, 'ok')
+    fs.unlinkSync(probe)
+  } catch (e) {
+    const fallback = app.getPath('userData')
+    console.warn(`[data] «${nextToExe}» недоступна для записи (${e.code ?? e.message}), данные — в ${fallback}`)
+    return fallback
+  }
+  migrateFromUserData(nextToExe)
+  return nextToExe
+}
+
+// Разовый перенос ранее созданных данных из %APPDATA%: иначе после обновления
+// пользователь увидел бы пустой список проектов и решил, что всё потерялось.
+// Копируем только если рядом с exe данных ещё нет.
+function migrateFromUserData(targetDir) {
+  const legacy = app.getPath('userData')
+  if (legacy === targetDir) return
+  const items = ['projects', 'logs', 'settings.json', 'value-presets.json', 'favorite-params.json']
+  const alreadyHasData = items.some(n => fs.existsSync(path.join(targetDir, n)))
+  if (alreadyHasData) return
+  let moved = 0
+  for (const name of items) {
+    const from = path.join(legacy, name)
+    const to = path.join(targetDir, name)
+    if (!fs.existsSync(from) || fs.existsSync(to)) continue
+    try { fs.cpSync(from, to, { recursive: true }); moved++ } catch { /* пропускаем */ }
+  }
+  if (moved) console.log(`[data] перенесено из ${legacy}: ${moved} элементов`)
+}
 
 let backendProcess = null
 let mainWindow = null
@@ -22,7 +64,7 @@ function startBackend() {
       ...process.env,
       ELECTRON_RUN_AS_NODE: '1',
       NODE_ENV: 'production',
-      USER_DATA_PATH: app.getPath('userData'),
+      USER_DATA_PATH: resolveDataDir(),
     },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   })
