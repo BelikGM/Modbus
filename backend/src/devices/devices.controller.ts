@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, NotFoundException, Res, HttpCode } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Param, Body, NotFoundException, Res, HttpCode } from '@nestjs/common';
 import type { Response } from 'express';
 import { DevicesService } from './devices.service';
 import * as fs from 'fs';
@@ -22,6 +22,23 @@ export class DevicesController {
   @Get('templates')
   getTemplates() {
     return this.devicesService.getTemplates();
+  }
+
+  // Создание/правка пользовательского типа ПЧ прямо в программе
+  @Post('templates')
+  createTemplate(@Body() body: any) {
+    return this.devicesService.saveTemplate(body, { overwrite: false });
+  }
+
+  @Put('templates/:id')
+  updateTemplate(@Param('id') id: string, @Body() body: any) {
+    return this.devicesService.saveTemplate({ ...body, id }, { overwrite: true });
+  }
+
+  @Delete('templates/:id')
+  deleteTemplate(@Param('id') id: string) {
+    this.devicesService.deleteTemplate(id);
+    return { success: true };
   }
 
   @Get('images/:filename')

@@ -516,4 +516,77 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     this.instances.delete(id);
     this.events.emit('device:removed', id);
   }
+
+  // ─── Редактор типов ПЧ (шаблонов) ──────────────────────────────────────────
+  //
+  // Позволяет создавать свои типы прямо на объекте, не дожидаясь нового
+  // инсталлятора: тип можно собрать с нуля или на основе уже имеющихся, отобрав
+  // нужные группы и отдельные параметры. Файлы кладутся в ту же папку
+  // devices/templates и подхватываются наблюдателем автоматически.
+  //
+  // Штатные шаблоны (поставляются с программой) защищены от изменения и
+  // удаления: пользовательские помечаются `custom: true`. Иначе правка «под
+  // объект» испортила бы эталон, и восстановить его можно было бы только
+  // переустановкой.
+
+  private templateFilePath(id: string): string {
+    // Имя файла = id, очищенный от всего, что ломает путь
+    const safe = String(id).replace(/[\\/:*?"<>|]+/g, '_').trim();
+    if (!safe) throw new BadRequestException('Некорректный идентификатор типа');
+    return path.join(this.templatesPath, `${safe}.json`);
+  }
+
+  private assertCustomTemplate(id: string): DeviceConfig {
+    const tpl = this.templates.get(id);
+    if (!tpl) throw new NotFoundException(`Тип ПЧ '${id}' не найден`);
+    if (!(tpl as any).custom) {
+      throw new BadRequestException(
+        `«${tpl.name ?? id}» — штатный тип, его нельзя изменить или удалить. Создайте на его основе свой тип.`,
+      );
+    }
+    return tpl;
+  }
+
+  saveTemplate(config: DeviceConfig, opts: { overwrite?: boolean } = {}): DeviceConfig {
+    if (!config?.id) throw new BadRequestException('Не задан идентификатор типа (id)');
+    if (!Array.isArray(config.groups) || config.groups.length === 0) {
+      throw new BadRequestException('В типе нет ни одной группы параметров');
+    }
+    const existing = this.templates.get(config.id);
+    if (existing && !opts.overwrite) {
+      throw new BadRequestException(`Тип с идентификатором «${config.id}» уже существует`);
+    }
+    if (existing) this.assertCustomTemplate(config.id); // менять можно только свои
+
+    const payload: DeviceConfig = {
+      ...config,
+      custom: true,           // признак пользовательского типа
+      template: undefined,    // служебный флаг проставляется при загрузке
+    } as DeviceConfig;
+    delete (payload as any).template;
+
+    const file = this.templateFilePath(config.id);
+    fs.writeFileSync(file, JSON.stringify(payload, null, 2), 'utf-8');
+    // Наблюдатель тоже перечитает файл, но делаем это сразу — чтобы ответ уже
+    // содержал актуальный тип и фронт не ждал события.
+    const loaded = this.loadTemplateFile(file);
+    if (loaded) this.events.emit(existing ? 'device:changed' : 'device:added', loaded);
+    return this.templates.get(config.id)!;
+  }
+
+  deleteTemplate(id: string): void {
+    this.assertCustomTemplate(id);
+    const used = Array.from(this.instances.values()).filter(i => i.templateId === id);
+    if (used.length) {
+      throw new BadRequestException(
+        `Тип используют ${used.length} устройств (${used.map(u => u.name).join(', ')}). Смените им тип или удалите их.`,
+      );
+    }
+    let file: string | null = null;
+    for (const [fp, tid] of this.templateFileToId) if (tid === id) file = fp;
+    if (file && fs.existsSync(file)) fs.unlinkSync(file);
+    this.templates.delete(id);
+    if (file) this.templateFileToId.delete(file);
+    this.events.emit('device:removed', id);
+  }
 }

@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Layout, Typography, Empty, Button, Badge, ConfigProvider, theme as antdTheme } from 'antd'
-import { FileTextOutlined, SunOutlined, MoonOutlined } from '@ant-design/icons'
+import { FileTextOutlined, SunOutlined, MoonOutlined, ApartmentOutlined } from '@ant-design/icons'
 import DeviceList from './components/DeviceList'
 import DeviceDetail from './components/DeviceDetail'
 import BulkPanel from './components/BulkPanel'
 import ConnectionPanel from './components/ConnectionPanel'
 import BusScanner from './components/BusScanner'
+import TemplateEditor from './components/TemplateEditor'
 import LogDrawer from './components/LogDrawer'
 import ProjectSelector from './components/ProjectSelector'
 import socket from './socket'
@@ -177,6 +178,7 @@ export default function App() {
   const [connectedPort, setConnectedPort] = useState(null) // { portPath, baudRate }
   const [waitingPort, setWaitingPort] = useState(null)     // portPath | null
   const [logOpen, setLogOpen] = useState(false)
+  const [typesOpen, setTypesOpen] = useState(false)  // редактор типов ПЧ
   // Ошибки разбора файлов шаблонов ПЧ (битый JSON в devices/templates)
   const [templateErrors, setTemplateErrors] = useState([])
   // Идёт длительная операция (групповое чтение/запись, выгрузка CSV, мониторинг).
@@ -280,6 +282,13 @@ export default function App() {
           />
           <ConnectionPanel connected={connected} reconnecting={reconnecting} reconnectAttempt={reconnectAttempt} connectedPort={connectedPort} waitingPort={waitingPort} />
           <BusScanner connected={connected} />
+          <Button
+            icon={<ApartmentOutlined />}
+            onClick={() => setTypesOpen(true)}
+            style={{ background: "transparent", borderColor: "#ffffff40", color: "#fff" }}
+          >
+            Типы ПЧ
+          </Button>
         </div>
 
         <div style={{ flex: 1 }} />
@@ -430,6 +439,7 @@ export default function App() {
         </Content>
       </Layout>
 
+      <TemplateEditor open={typesOpen} onClose={() => setTypesOpen(false)} />
       <LogDrawer open={logOpen} onClose={() => setLogOpen(false)} projectName={activeProjectId} />
     </Layout>
     </ConfigProvider>
