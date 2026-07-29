@@ -239,6 +239,9 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
   const hasPump = allDevices.some(d => deviceType(d) === 'pump')
   const hasVl   = allDevices.some(d => deviceType(d) === 'vl')
   const visibleDevices = allDevices.filter(d => visibleTypes.has(deviceType(d)))
+  // ПЧ без указанной модели — только те, у чьей модели вообще есть каталог
+  // исполнений (иначе указывать нечего).
+  const devicesWithoutModel = allDevices.filter(d => !d.model && (d.models?.length ?? 0) > 0)
 
   function handleDragEnd(event) {
     const { active, over } = event
@@ -306,6 +309,22 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
           </Button>
         </Tooltip>
       </div>
+
+      {/* Модель (мощность) по шине не определяется — её задают вручную. Пока
+          хотя бы у одного ПЧ она не указана, заводские значения для таких
+          параметров подставить нельзя, поэтому коротко предупреждаем. */}
+      {hasProject && !compact && devicesWithoutModel.length > 0 && (
+        <div style={{
+          margin: '0 16px 8px', padding: '4px 8px', borderRadius: 4,
+          background: '#fffbe6', border: '1px solid #ffe58f',
+        }}>
+          <Tooltip title={`Не указана модель: ${devicesWithoutModel.map(d => d.name).join(', ')}. Откройте карточку ПЧ (кнопка «Изменить») и выберите модель — без неё нельзя подставить заводские значения параметров, которые зависят от мощности.`}>
+            <Typography.Text style={{ fontSize: 11, color: '#ad6800', cursor: 'help' }}>
+              ⚠ Не указана модель у {devicesWithoutModel.length} ПЧ — задайте вручную
+            </Typography.Text>
+          </Tooltip>
+        </div>
+      )}
 
       {hasProject && allDevices.length > 0 && !compact && (
         <div style={{ padding: '0 16px 8px', borderBottom: '1px solid #f5f5f5', marginBottom: 4 }}>
