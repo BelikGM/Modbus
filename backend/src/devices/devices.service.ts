@@ -125,6 +125,7 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
       name: instance.name,
       template: false,
       templateId,
+      model: instance.model,
       connection: { ...template.connection, ...instance.connection },
     };
   }
@@ -199,7 +200,7 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     return merged;
   }
 
-  updateDevice(id: string, patch: { name?: string; slaveId?: number }): DeviceConfig {
+  updateDevice(id: string, patch: { name?: string; slaveId?: number; model?: string }): DeviceConfig {
     const instance = this.instances.get(id);
     if (!instance) {
       if (this.templates.has(id)) throw new BadRequestException('Нельзя редактировать шаблон');
@@ -230,6 +231,7 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
       ...instance,
       id: newId,
       ...(patch.name !== undefined && { name: patch.name }),
+      ...(patch.model !== undefined && { model: patch.model }),
       connection: {
         ...instance.connection,
         ...(patch.slaveId !== undefined && { slaveId: patch.slaveId }),

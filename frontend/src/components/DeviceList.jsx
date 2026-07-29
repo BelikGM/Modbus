@@ -87,6 +87,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
     editForm.setFieldsValue({
       name:    device.name,
       slaveId: device.connection.slaveId,
+      model:   device.model,
     })
   }
 
@@ -525,7 +526,13 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
                             {showAddrWord ? `Адрес ${device.connection.slaveId ?? 1}` : (device.connection.slaveId ?? 1)}
                           </Tag>
                           {showModelLabel && (
-                            <Typography.Text type="secondary" style={{ fontSize: 11 }}>{modelLabel}</Typography.Text>
+                            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                              {modelLabel}
+                              {/* Исполнение (мощность), если указано в карточке ПЧ */}
+                              {device.model && (
+                                <> · {(device.models ?? []).find(m => m.code === device.model)?.powerKw ?? ''} кВт</>
+                              )}
+                            </Typography.Text>
                           )}
                         </span>
                       </div>
@@ -607,6 +614,24 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
           </Form.Item>
           <Form.Item name="slaveId" label="Адрес ПЧ (Slave ID на шине)" rules={[{ required: true, message: 'Введите адрес ПЧ' }]}>
             <InputNumber min={1} max={247} style={{ width: '100%' }} />
+          </Form.Item>
+          {/* Исполнение выбирается вручную: по шине его не определить — ELHART
+              не поддерживает Modbus-функцию идентификации устройства. */}
+          <Form.Item
+            name="model"
+            label="Исполнение (мощность)"
+            extra="Определить по шине нельзя — выберите по шильдику устройства. Влияет на подсказки о диапазонах значений."
+          >
+            <Select
+              allowClear
+              showSearch
+              placeholder="Не указано"
+              optionFilterProp="label"
+              options={(editDevice?.models ?? []).map(m => ({
+                value: m.code,
+                label: `${m.code} — ${m.powerKw} кВт${m.supply ? ` · ${m.supply}` : ''}`,
+              }))}
+            />
           </Form.Item>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             Скорость, чётность, биты данных и стоп-биты — общие настройки порта для всей шины

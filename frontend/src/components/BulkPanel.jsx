@@ -4,6 +4,7 @@ import { CloseOutlined, ClearOutlined, DownloadOutlined, UploadOutlined, Loading
 import socket from '../socket'
 import ParamGroups from './ParamGroups'
 import BulkMonitor from './BulkMonitor'
+import Monitor from './Monitor'
 import ValuePresets from './ValuePresets'
 import { useDeviceSettings } from '../useDeviceSettings'
 import { formatParamValue } from '../paramFormat'
@@ -14,6 +15,7 @@ import api from '../api'
 import { addLog } from '../log'
 import { stopOnlyParamsOf, statusParamId, isRunningFromStatus, stopCommandValue } from '../driveControl'
 import { parseParamsCsv } from '../csvImport'
+import { ALL_DEVICES } from './ParamGroups'
 
 // Pump-Full и Pump-OWN — один и тот же физический ПЧ, у OWN просто урезанный
 // (но регистрово идентичный) набор параметров — сверено вручную: все параметры
@@ -75,6 +77,17 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
   }, [deviceSettings, sameType])
 
   const deviceIds = devices.map(d => d.id)
+
+  // Что именно мониторим: в режиме «Все выбранные ПЧ» — всю группу, иначе —
+  // только тот ПЧ, что выбран одиночным кликом/переключателем (он может быть и
+  // вне группы). Если ничего не выбрано, остаётся вся группа.
+  const monitoredDevices = (() => {
+    if (!focusedDeviceId || focusedDeviceId === ALL_DEVICES) return devices
+    const inGroup = devices.find(d => d.id === focusedDeviceId)
+    if (inGroup) return [inGroup]
+    if (focusedDevice) return [focusedDevice]
+    return devices
+  })()
 
   // Разные типы ПЧ вперемешку — групповая настройка параметров лишена смысла
   // (разные карты регистров), но мониторинг каждого по своей карте — вполне
@@ -675,7 +688,13 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
     {
       key: 'monitor',
       label: 'Мониторинг',
-      children: <BulkMonitor devices={devices} modbusConnected={modbusConnected} sameType={sameType} />,
+      // Мониторим то же, с чем работаем: конкретный выбранный ПЧ (в т.ч. вне
+      // группы) — только его; режим «Все выбранные ПЧ» — всю группу. Раньше
+      // мониторинг всегда шёл по группе, даже когда одиночным кликом выбран
+      // другой ПЧ, и было непонятно, чьи это показания.
+      children: monitoredDevices.length === 1
+        ? <Monitor device={monitoredDevices[0]} modbusConnected={modbusConnected} />
+        : <BulkMonitor devices={monitoredDevices} modbusConnected={modbusConnected} sameType={sameType} />,
     },
     {
       key: 'templates',

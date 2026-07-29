@@ -68,5 +68,11 @@ export interface DeviceConfig {
   errorCodes?: Record<string, string>;
   alerts?: AlertRule[];
   access_legend?: Record<string, string>;
+  // Каталог исполнений модели (артикул + мощность) — берётся из шаблона.
+  models?: { code: string; powerKw: number; supply?: string }[];
+  // Выбранное исполнение конкретного устройства — из инстанса проекта.
+  // Заполняется вручную: по шине исполнение не определить (ELHART не
+  // поддерживает Modbus-функцию идентификации 43/MEI).
+  model?: string;
   groups: ParamGroup[];
 }

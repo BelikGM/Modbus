@@ -17,6 +17,10 @@ export interface DeviceInstance {
   name: string;
   templateId: string;
   connection: Partial<DeviceConnection>;
+  // Конкретное исполнение ПЧ (артикул из каталога модели, напр. «EMD-PUMP-0037 T»).
+  // Задаётся вручную: определить исполнение по шине нельзя — ELHART не
+  // поддерживает стандартную Modbus-функцию идентификации устройства (43/MEI).
+  model?: string;
   pendingWrites?: Record<string, any>;
   currentValues?: Record<string, any>;
   notes?: DeviceNote[];

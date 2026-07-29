@@ -29,6 +29,9 @@ export interface AppSettings {
   // Порядок устройств в сайдбаре (drag-n-drop) — per-project, т.к. id
   // устройств значимы только внутри своего проекта.
   deviceOrders?: Record<string, string[]>;
+  // Отмеченные галочками ПЧ (группа отладки) на проект — чтобы выбор не
+  // терялся при перезагрузке страницы.
+  deviceSelections?: Record<string, string[]>;
 }
 
 const DEFAULTS: AppSettings = { activeProject: null, siderSide: 'left', siderWidth: 270, theme: 'light', deviceSettings: {}, projectConnections: {} };
@@ -93,6 +96,24 @@ export class SettingsService {
 
   getDeviceOrder(projectId: string): string[] | null {
     return this.settings.deviceOrders?.[projectId] ?? null;
+  }
+
+  // Состав группы отладки (отмеченные галочками ПЧ) — сохраняем на проект,
+  // чтобы перезагрузка страницы не сбрасывала уже собранную выборку.
+  saveDeviceSelection(projectId: string, selected: string[]): void {
+    const updated: AppSettings = {
+      ...this.settings,
+      deviceSelections: {
+        ...(this.settings.deviceSelections ?? {}),
+        [projectId]: selected,
+      },
+    };
+    this.settings = updated;
+    fs.writeFileSync(this.filePath, JSON.stringify(updated, null, 2), 'utf-8');
+  }
+
+  getDeviceSelection(projectId: string): string[] | null {
+    return this.settings.deviceSelections?.[projectId] ?? null;
   }
 
   updateDeviceSettings(deviceId: string, patch: Partial<DeviceUISettings>): AppSettings {

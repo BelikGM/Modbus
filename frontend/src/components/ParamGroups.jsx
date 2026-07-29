@@ -907,6 +907,44 @@ export default function ParamGroups({
 
   return (
     <>
+      {/* Переключатель «с чем работаем» — ВЫШЕ панели действий: сначала видно,
+          к какому ПЧ (или ко всей группе) относятся кнопки, и только потом сами
+          кнопки. Показывается всегда, даже когда доступен один ПЧ, — чтобы
+          адресат операции был явным, а не угадывался. */}
+      <div style={{
+        marginBottom: 12, padding: '6px 10px', borderRadius: 6,
+        background: isAllMode ? '#fff7e6' : '#f0f7ff',
+        border: `1px solid ${isAllMode ? '#ffd591' : '#bae0ff'}`,
+        display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+      }}>
+        <Typography.Text strong style={{ fontSize: 12 }}>Работаем с:</Typography.Text>
+        <Select
+          value={activeDeviceId}
+          onChange={changeActiveDevice}
+          style={{ minWidth: 300 }}
+          popupMatchSelectWidth={false}
+          options={[
+            ...(isBulk ? [{
+              value: ALL_DEVICES,
+              label: `★ Все выбранные ПЧ (${effectiveDeviceIds.length}) — читать, мониторить и править разом`,
+            }] : []),
+            ...effectiveDevices.map(d => ({
+              value: d.id,
+              label: `${d.name} · Адрес ${d.connection.slaveId}`,
+            })),
+            ...(outsideDevice ? [{
+              value: outsideDevice.id,
+              label: `${outsideDevice.name} · Адрес ${outsideDevice.connection.slaveId} — вне группы отладки`,
+            }] : []),
+          ]}
+        />
+        <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+          {isAllMode
+            ? 'чтение, мониторинг и правка значений — по всем отмеченным ПЧ сразу'
+            : 'чтение, мониторинг и правка значений — только по этому ПЧ'}
+        </Typography.Text>
+      </div>
+
       <Space style={{ marginBottom: 12, width: '100%' }} wrap>
         <Input
           prefix={<SearchOutlined style={{ color: '#bbb' }} />}
@@ -981,32 +1019,6 @@ export default function ParamGroups({
             Этот ПЧ просматривается, но не отмечен галочкой для групповых операций — «Прочитать/Записать/Сбросить все» недоступны.
             Отметьте его галочкой в списке слева, чтобы включить в группу отладки.
           </Typography.Text>
-        </div>
-      )}
-
-      {/* Переключатель «какой ПЧ смотрим/правим» — рядом с группами параметров,
-          а не в ряду с «Прочитать все»: те кнопки работают по ВСЕЙ группе, и
-          соседство путало (казалось, что читается только выбранный ПЧ). */}
-      {isBulk && (
-        <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>Показать значения ПЧ:</Typography.Text>
-          <Select
-            value={activeDeviceId}
-            onChange={changeActiveDevice}
-            style={{ width: 260 }}
-            popupMatchSelectWidth={false}
-            options={[
-              { value: ALL_DEVICES, label: `★ Все выбранные ПЧ (${effectiveDeviceIds.length}) — править разом` },
-              ...effectiveDevices.map(d => ({
-                value: d.id,
-                label: `${d.name} · Адрес ${d.connection.slaveId}`,
-              })),
-              ...(outsideDevice ? [{
-                value: outsideDevice.id,
-                label: `${outsideDevice.name} · Адрес ${outsideDevice.connection.slaveId} — вне группы`,
-              }] : []),
-            ]}
-          />
         </div>
       )}
 

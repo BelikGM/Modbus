@@ -88,6 +88,9 @@ export default function App() {
   // сайдбар, а не в порядке, в котором они лежат в файле проекта.
   const [deviceOrder, setDeviceOrder] = useState(null)
   const resizingRef = useRef(null)
+  // Пока сохранённая выборка не загружена, не сохраняем текущую (пустую) —
+  // иначе первый рендер затёр бы её в настройках.
+  const selectionLoadedRef = useRef(false)
 
   useEffect(() => {
     api.get('/settings').then(({ data }) => {
@@ -104,8 +107,24 @@ export default function App() {
     if (!activeProjectId) { setDeviceOrder(null); return }
     api.get('/settings').then(({ data }) => {
       setDeviceOrder(data.deviceOrders?.[activeProjectId] ?? null)
-    }).catch(() => setDeviceOrder(null))
+      // Восстанавливаем состав группы отладки — раньше галочки слетали при
+      // каждой перезагрузке страницы.
+      const saved = data.deviceSelections?.[activeProjectId]
+      if (Array.isArray(saved) && saved.length) {
+        selectionLoadedRef.current = true
+        setSelectedIds(new Set(saved))
+      } else {
+        selectionLoadedRef.current = true
+      }
+    }).catch(() => { setDeviceOrder(null); selectionLoadedRef.current = true })
   }, [activeProjectId])
+
+  // Сохраняем состав выборки при каждом изменении (после того, как загрузили
+  // сохранённый — иначе первый же рендер затёр бы его пустым множеством).
+  useEffect(() => {
+    if (!activeProjectId || !selectionLoadedRef.current) return
+    api.patch(`/settings/device-selection/${activeProjectId}`, { selected: [...selectedIds] }).catch(() => {})
+  }, [selectedIds, activeProjectId])
 
   function toggleTheme(checked) {
     const next = checked ? 'dark' : 'light'
@@ -245,7 +264,15 @@ export default function App() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexShrink: 0 }}>
           <ProjectSelector
             onProjectInit={id => setActiveProjectId(id)}
-            onProjectChange={id => { setSelectedIds(new Set()); setActiveProjectId(id ?? null) }}
+            onProjectChange={id => {
+              // Сбрасываем выборку и запрещаем её сохранение до тех пор, пока
+              // не подтянем сохранённую для НОВОГО проекта (иначе пустое
+              // множество тут же затёрло бы её в настройках).
+              selectionLoadedRef.current = false
+              setSelectedIds(new Set())
+              setFocusedDeviceId(null)
+              setActiveProjectId(id ?? null)
+            }}
           />
           <ConnectionPanel connected={connected} reconnecting={reconnecting} reconnectAttempt={reconnectAttempt} connectedPort={connectedPort} waitingPort={waitingPort} />
           <BusScanner connected={connected} />
@@ -325,10 +352,10 @@ export default function App() {
               sidebarWidth={siderWidth}
               deviceOrder={deviceOrder}
               onDeviceOrderChange={setDeviceOrder}
-              // Подсветка просматриваемого ПЧ имеет смысл только на вкладке
-              // «Параметры» — на «Мониторинге» показания идут по всей группе,
-              // и выделять там один ПЧ нечего (вернётся при возврате назад).
-              focusedDeviceId={activeDeviceTab === 'params' ? focusedDeviceId : null}
+              // Подсветка держится на всех вкладках: мониторинг теперь тоже
+              // идёт по выбранному ПЧ (или по всей группе в режиме «Все»),
+              // поэтому гасить её при переходе больше незачем.
+              focusedDeviceId={focusedDeviceId}
               onFocusDevice={id => {
                 setFocusedDeviceId(id)
                 // Одиночный клик по ПЧ = «покажи его параметры»: сразу

@@ -7018,5 +7018,157 @@
         }
       ]
     }
+  ],
+  "models": [
+    {
+      "code": "EMD-VL-0004 S",
+      "powerKw": 0.4,
+      "supply": "1~220В"
+    },
+    {
+      "code": "EMD-VL-0007 S",
+      "powerKw": 0.75,
+      "supply": "1~220В"
+    },
+    {
+      "code": "EMD-VL-0015 S",
+      "powerKw": 1.5,
+      "supply": "1~220В"
+    },
+    {
+      "code": "EMD-VL-0022 S",
+      "powerKw": 2.2,
+      "supply": "1~220В"
+    },
+    {
+      "code": "EMD-VL-0037 S",
+      "powerKw": 3.7,
+      "supply": "1~220В"
+    },
+    {
+      "code": "EMD-VL-0007 T",
+      "powerKw": 0.75,
+      "supply": "3~380В"
+    },
+    {
+      "code": "EMD-VL-0015 T",
+      "powerKw": 1.5,
+      "supply": "3~380В"
+    },
+    {
+      "code": "EMD-VL-0022 T",
+      "powerKw": 2.2,
+      "supply": "3~380В"
+    },
+    {
+      "code": "EMD-VL-0037 T",
+      "powerKw": 3.7,
+      "supply": "3~380В"
+    },
+    {
+      "code": "EMD-VL-0055 T",
+      "powerKw": 5.5,
+      "supply": "3~380В"
+    },
+    {
+      "code": "EMD-VH-0075 T",
+      "powerKw": 7.5,
+      "supply": "3~380В"
+    },
+    {
+      "code": "EMD-VH-0110 T",
+      "powerKw": 11,
+      "supply": "3~380В"
+    },
+    {
+      "code": "EMD-VH-0150 T",
+      "powerKw": 15,
+      "supply": "3~380В"
+    },
+    {
+      "code": "EMD-VH-0185 T",
+      "powerKw": 18.5,
+      "supply": "3~380В"
+    },
+    {
+      "code": "EMD-VH-0220 T",
+      "powerKw": 22,
+      "supply": "3~380В"
+    },
+    {
+      "code": "EMD-VH-0300 T",
+      "powerKw": 30,
+      "supply": "3~380В"
+    },
+    {
+      "code": "EMD-VH-0370 T",
+      "powerKw": 37,
+      "supply": "3~380В"
+    },
+    {
+      "code": "EMD-VH-0450 T",
+      "powerKw": 45,
+      "supply": "3~380В"
+    },
+    {
+      "code": "EMD-VH-0550 T",
+      "powerKw": 55,
+      "supply": "3~380В"
+    },
+    {
+      "code": "EMD-VH-0750 T",
+      "powerKw": 75,
+      "supply": "3~380В"
+    },
+    {
+      "code": "EMD-VH-0900 T",
+      "powerKw": 90,
+      "supply": "3~380В"
+    },
+    {
+      "code": "EMD-VH-1100 T",
+      "powerKw": 110,
+      "supply": "3~380В"
+    },
+    {
+      "code": "EMD-VH-1320 T",
+      "powerKw": 132,
+      "supply": "3~380В"
+    },
+    {
+      "code": "EMD-VH-1600 T",
+      "powerKw": 160,
+      "supply": "3~380В"
+    },
+    {
+      "code": "EMD-VH-1850 T",
+      "powerKw": 185,
+      "supply": "3~380В"
+    },
+    {
+      "code": "EMD-VH-2200 T",
+      "powerKw": 220,
+      "supply": "3~380В"
+    },
+    {
+      "code": "EMD-VH-2500 T",
+      "powerKw": 250,
+      "supply": "3~380В"
+    },
+    {
+      "code": "EMD-VH-2800 T",
+      "powerKw": 280,
+      "supply": "3~380В"
+    },
+    {
+      "code": "EMD-VH-3150 T",
+      "powerKw": 315,
+      "supply": "3~380В"
+    },
+    {
+      "code": "EMD-VH-3500 T",
+      "powerKw": 350,
+      "supply": "3~380В"
+    }
   ]
 }
