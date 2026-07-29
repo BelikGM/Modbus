@@ -579,6 +579,8 @@ export class ModbusGateway
     client.emit('bulk:op:total', { kind: 'read', total });
     let done = 0;
     let ok = 0;
+    // Накопитель прочитанного по устройствам — в конце разом сохраняем в проект
+    const readByDevice: Record<string, Record<string, number>> = {};
 
     outer:
     for (const deviceId of payload.deviceIds) {
@@ -602,9 +604,11 @@ export class ModbusGateway
             if (this.bulkOpCancelled) throw firstErr;
             rawValue = await this.modbusService.readRegister(param.register, slaveId);
           }
+          const value = rawValue * (param.scale ?? 1);
+          readByDevice[deviceId] = { ...(readByDevice[deviceId] ?? {}), [paramId]: value };
           client.emit('bulk:op:progress', {
             kind: 'read', deviceId, paramId,
-            value: rawValue * (param.scale ?? 1), unit: param.unit, name: param.name,
+            value, unit: param.unit, name: param.name,
             type: param.type, options: param.options, bits: param.bits,
           });
           ok++;
@@ -616,6 +620,11 @@ export class ModbusGateway
         done++;
       }
     }
+
+    // Сохраняем прочитанное как «значение на устройстве» для КАЖДОГО ПЧ, а не
+    // только когда читали один: на этих значениях строится сравнение
+    // «старое/новое» перед записью, и без них защита от перезаписи слепа.
+    this.devicesService.mergeManyDevicesCurrentValues(readByDevice);
 
     this.bulkOpRunning = false;
     client.emit('bulk:op:done', { kind: 'read', done, ok, total, cancelled: this.bulkOpCancelled });

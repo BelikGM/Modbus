@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Modal, Table, Checkbox, Typography, Alert, Tag, Space } from 'antd'
+import { Modal, Table, Checkbox, Typography, Alert, Tag, Space, Button } from 'antd'
 import { WarningOutlined } from '@ant-design/icons'
 import { formatParamValue } from '../paramFormat'
 
@@ -47,7 +47,7 @@ export function collectOverwriteConflicts({ devices, values, known, coveredParam
   return conflicts
 }
 
-export default function OverwriteGuard({ open, conflicts, uncheckedCount, onCancel, onConfirm }) {
+export default function OverwriteGuard({ open, conflicts, uncheckedCount, onCancel, onConfirm, onReadAll, reading }) {
   // По умолчанию НИЧЕГО не перезаписываем: безопасный вариант — сохранить то,
   // что уже настроено на ПЧ. Оператор осознанно отмечает, что можно затереть.
   const [checked, setChecked] = useState(new Set())
@@ -58,6 +58,9 @@ export default function OverwriteGuard({ open, conflicts, uncheckedCount, onCanc
 
   const keyOf = c => `${c.deviceId}::${c.paramId}`
   const allChecked = conflicts.length > 0 && conflicts.every(c => checked.has(keyOf(c)))
+  // Параметры источника управления (помечены critical в шаблоне) — их сброс
+  // отбирает управление по RS-485, поэтому выносим отдельным предупреждением.
+  const criticalConflicts = conflicts.filter(c => c.param?.critical)
 
   function toggle(c) {
     const next = new Set(checked)
@@ -96,18 +99,60 @@ export default function OverwriteGuard({ open, conflicts, uncheckedCount, onCanc
       okButtonProps={{ danger: checked.size > 0 }}
       width={860}
     >
-      <Alert
-        type="warning"
-        showIcon
-        style={{ marginBottom: 12 }}
-        message={`Найдено ${conflicts.length} параметров, не покрытых шаблоном, у которых значение на ПЧ отличается от заводского`}
-        description="Эти параметры шаблон не задаёт, поэтому в них пойдёт ЗАВОДСКОЕ значение и текущая настройка будет потеряна. Отметьте те, которые действительно нужно вернуть к заводским. Неотмеченные останутся на ПЧ без изменений."
-      />
+      {conflicts.length > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message={`Найдено ${conflicts.length} параметров, не покрытых шаблоном, у которых значение на ПЧ отличается от заводского`}
+          description="Эти параметры шаблон не задаёт, поэтому в них пойдёт ЗАВОДСКОЕ значение и текущая настройка будет потеряна. Отметьте те, которые действительно нужно вернуть к заводским. Неотмеченные останутся на ПЧ без изменений."
+        />
+      )}
+
+      {/* Параметры источника управления — отдельно и максимально заметно:
+          вернув их к заводским, ПЧ переключится на пульт и управлять им по
+          RS-485 (в том числе писать параметры) станет невозможно. */}
+      {criticalConflicts.length > 0 && (
+        <Alert
+          type="error"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message={`Среди них ${criticalConflicts.length} — параметры источника управления!`}
+          description={
+            <>
+              <div style={{ marginBottom: 4 }}>
+                {criticalConflicts.map(c => `${c.paramId} ${c.param?.name ?? ''}`).filter((v, i, a) => a.indexOf(v) === i).join('; ')}
+              </div>
+              Сброс на заводское значение переведёт управление на пульт ПЧ — после этого
+              подать команды и записать параметры по RS-485 будет НЕЛЬЗЯ, потребуется
+              настраивать устройство вручную с его панели. Оставьте их без изменений,
+              если не уверены.
+            </>
+          }
+        />
+      )}
+
       {uncheckedCount > 0 && (
-        <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
-          Сравнение выполнено только по считанным ранее значениям. Ещё {uncheckedCount} параметров ни разу не читались с ПЧ — по ним проверить нечего.
-          Чтобы проверка была полной, сначала выполните «Прочитать все».
-        </Typography.Paragraph>
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message={`${uncheckedCount} параметров ни разу не читались с ПЧ — сравнить их не с чем`}
+          description={
+            <>
+              Проверка выполнена только по ранее считанным значениям. Непрочитанные параметры
+              будут записаны заводскими без предупреждения — среди них может оказаться важная
+              настройка.
+              {onReadAll && (
+                <div style={{ marginTop: 8 }}>
+                  <Button type="primary" size="small" loading={reading} onClick={onReadAll}>
+                    Сначала считать все параметры с ПЧ и сравнить
+                  </Button>
+                </div>
+              )}
+            </>
+          }
+        />
       )}
       <Checkbox
         checked={allChecked}
@@ -143,11 +188,16 @@ export default function OverwriteGuard({ open, conflicts, uncheckedCount, onCanc
           },
           {
             title: 'Параметр',
-            width: 220,
+            width: 260,
             render: (_, c) => (
               <span>
                 <Typography.Text code style={{ fontSize: 11 }}>{c.paramId}</Typography.Text>{' '}
                 <Typography.Text style={{ fontSize: 12 }}>{c.param?.name ?? ''}</Typography.Text>
+                {c.param?.critical && (
+                  <Tag color="red" style={{ fontSize: 10, marginLeft: 4, padding: '0 4px' }}>
+                    источник управления
+                  </Tag>
+                )}
               </span>
             ),
           },

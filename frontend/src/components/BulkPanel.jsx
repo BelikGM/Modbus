@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { Space, Typography, Tag, Alert, message, Tabs, Table, Button, Tooltip, Popconfirm, Progress } from 'antd'
-import { CloseOutlined, ClearOutlined, DownloadOutlined, UploadOutlined, LoadingOutlined } from '@ant-design/icons'
+import { Space, Typography, Tag, Alert, message, Tabs, Table, Button, Tooltip, Popconfirm, Progress, Modal } from 'antd'
+import { CloseOutlined, ClearOutlined, DownloadOutlined, UploadOutlined, LoadingOutlined, WarningOutlined } from '@ant-design/icons'
 import socket from '../socket'
 import ParamGroups from './ParamGroups'
 import BulkMonitor from './BulkMonitor'
@@ -11,6 +11,8 @@ import { downloadCsv, groupFileLabel } from '../csv'
 import { processStart, processDone, processInfo, processError } from '../notify'
 import OverwriteGuard, { collectOverwriteConflicts } from './OverwriteGuard'
 import api from '../api'
+import { addLog } from '../log'
+import { stopOnlyParamsOf, statusParamId, isRunningFromStatus, stopCommandValue } from '../driveControl'
 
 // Pump-Full и Pump-OWN — один и тот же физический ПЧ, у OWN просто урезанный
 // (но регистрово идентичный) набор параметров — сверено вручную: все параметры
@@ -55,6 +57,9 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
   lockedRef.current = locked
   const [busy, setBusy] = useState(false) // идёт «Записать всё» / «Скачать всё» (для блокировки кнопок)
   const [guard, setGuard] = useState(null) // { conflicts, uncheckedCount } — предупреждение о перезаписи
+  const [guardReading, setGuardReading] = useState(false) // идёт «считать все и сравнить» из окна предупреждения
+  const [stopGuard, setStopGuard] = useState(null) // { statuses, running, unknown, skip } — нужен останов ПЧ
+  const [stopping, setStopping] = useState(false)
 
   useEffect(() => {
     if (!sameType || deviceSettings === null) return
@@ -275,6 +280,37 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
   // Перед реальной записью проверяем, не затрут ли ЗАВОДСКИЕ значения (те, что
   // шаблон не задаёт) уже настроенные параметры на ПЧ. Если да — показываем
   // список и даём выбрать, что перезаписывать.
+  // «Сначала считать все параметры и сравнить» из окна предупреждения: читаем
+  // с каждого ПЧ его собственную карту (сервер попутно сохраняет значения в
+  // «значение на устройстве»), затем пересобираем сравнение уже по полным данным.
+  function readAllThenRecheck() {
+    setGuardReading(true)
+    const paramsByDevice = Object.fromEntries(
+      devices.map(d => [d.id, d.groups.flatMap(g => g.params.map(p => p.id))]),
+    )
+    const key = processStart(`Чтение всех параметров с ${devices.length} ПЧ для сравнения…`, 'Опрос ПЧ')
+    function cleanup() {
+      socket.off('bulk:op:done', onDone)
+      socket.off('bulk:op:error', onError)
+      setGuardReading(false)
+    }
+    async function onDone(d) {
+      if (d.kind !== 'read') return
+      cleanup()
+      processDone(key, `Считано ${d.ok} из ${d.total} — сравнение обновлено`)
+      addLog('success', `Считаны все параметры с ${devices.length} ПЧ перед записью (${d.ok}/${d.total})`)
+      setGuard(null)
+      await checkAndWriteAll() // пересобрать конфликты уже по свежим данным
+    }
+    function onError(e) {
+      cleanup()
+      processError(key, e?.message ?? 'Не удалось считать параметры')
+    }
+    socket.on('bulk:op:done', onDone)
+    socket.on('bulk:op:error', onError)
+    socket.emit('bulk:read:start', { deviceIds, paramsByDevice })
+  }
+
   async function checkAndWriteAll() {
     setBusy(true)
     try {
@@ -302,16 +338,90 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
         const vals = values[d.id] ?? {}
         return sum + Object.keys(vals).filter(pid => !covered.has(pid) && known[d.id]?.[pid] === undefined).length
       }, 0)
-      if (conflicts.length > 0) {
+      // Окно показываем не только когда нашли конфликты, но и когда часть
+      // параметров вообще не читалась: молча записать заводское поверх
+      // неизвестного — как раз то, чего нужно избежать.
+      if (conflicts.length > 0 || totalUnchecked > 0) {
         setBusy(false)
         setGuard({ conflicts, uncheckedCount: totalUnchecked })
         return
       }
-      writeAllPrepared({})
+      setBusy(false)
+      await startWriteWithStopCheck({})
     } catch {
       setBusy(false)
       message.error('Не удалось проверить подготовленные значения')
     }
+  }
+
+  // Перед записью проверяем, нет ли среди записываемых параметров таких, что
+  // меняются ТОЛЬКО на остановленном приводе (у VL это access "X"; у Pump таких
+  // в документации нет). Если есть и ПЧ сейчас работает — спрашиваем, а не
+  // останавливаем молча. Если таких параметров нет — привод не трогаем вовсе.
+  async function startWriteWithStopCheck(skip = {}) {
+    try {
+      const pend = await Promise.all(devices.map(d =>
+        api.get(`/devices/${d.id}/pending-writes`).then(r => [d.id, r.data ?? {}]).catch(() => [d.id, {}]),
+      ))
+      const needStop = [] // [{ device, params: [...] }]
+      for (const [id, vals] of pend) {
+        const device = devices.find(d => d.id === id)
+        if (!device) continue
+        const ids = Object.keys(vals).filter(pid => !(skip[id] ?? []).includes(pid))
+        const stopOnly = stopOnlyParamsOf(device, ids)
+        if (stopOnly.length) needStop.push({ device, params: stopOnly })
+      }
+      if (needStop.length === 0) { writeAllPrepared(skip); return }
+
+      // Узнаём, какие из них реально вращаются прямо сейчас.
+      const statuses = await Promise.all(needStop.map(async ({ device, params }) => {
+        const value = await api.post('/modbus/read', { deviceId: device.id, paramId: statusParamId() })
+          .then(r => r.data?.value).catch(() => null)
+        return { device, params, running: isRunningFromStatus(device, value) }
+      }))
+      const running = statuses.filter(s => s.running === true)
+      const unknown = statuses.filter(s => s.running === null)
+      if (running.length === 0 && unknown.length === 0) { writeAllPrepared(skip); return }
+      setStopGuard({ statuses, running, unknown, skip })
+    } catch {
+      message.error('Не удалось проверить состояние ПЧ перед записью')
+    }
+  }
+
+  // Остановить работающие ПЧ (мягкая остановка) и продолжить запись.
+  async function stopRunningAndWrite() {
+    const g = stopGuard
+    if (!g) return
+    setStopping(true)
+    try {
+      for (const { device } of g.running) {
+        await api.post('/modbus/write', {
+          deviceId: device.id, paramId: 'CMD', value: stopCommandValue(device),
+        }).catch(() => {})
+        addLog('warning', `Подана команда остановки перед записью: ${device.name} (Адрес ${device.connection.slaveId})`)
+      }
+      // Приводу нужно время на торможение по рампе, иначе запись «только на
+      // остановленном» ещё отвалится по ошибке доступа.
+      await new Promise(r => setTimeout(r, 1500))
+      setStopGuard(null)
+      writeAllPrepared(g.skip)
+    } finally {
+      setStopping(false)
+    }
+  }
+
+  // Записать только то, что можно менять на ходу — работающие ПЧ не трогаем.
+  function writeOnlySafe() {
+    const g = stopGuard
+    if (!g) return
+    const skip = { ...g.skip }
+    for (const { device, params } of g.statuses) {
+      // пропускаем «только на остановленном» у ВСЕХ проверенных ПЧ, чтобы
+      // результат был предсказуемым, а не зависел от момента опроса статуса
+      skip[device.id] = [...(skip[device.id] ?? []), ...params.map(p => p.id)]
+    }
+    setStopGuard(null)
+    writeAllPrepared(skip)
   }
 
   function writeAllPrepared(skip = {}) {
@@ -622,9 +732,70 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
         open={!!guard}
         conflicts={guard?.conflicts ?? []}
         uncheckedCount={guard?.uncheckedCount ?? 0}
+        reading={guardReading}
+        onReadAll={readAllThenRecheck}
         onCancel={() => setGuard(null)}
-        onConfirm={skip => { setGuard(null); writeAllPrepared(skip) }}
+        onConfirm={skip => { setGuard(null); startWriteWithStopCheck(skip) }}
       />
+
+      {/* Часть параметров меняется только на остановленном приводе. Останавливаем
+          не «на всякий случай», а лишь когда такие параметры реально есть в
+          записи и ПЧ сейчас вращается. */}
+      <Modal
+        title={<Space><WarningOutlined style={{ color: '#faad14' }} />Для записи нужен остановленный ПЧ</Space>}
+        open={!!stopGuard}
+        onCancel={() => setStopGuard(null)}
+        width={720}
+        footer={[
+          <Button key="cancel" onClick={() => setStopGuard(null)}>Отмена</Button>,
+          <Button key="safe" onClick={writeOnlySafe}>
+            Записать только то, что можно на ходу
+          </Button>,
+          <Button key="stop" type="primary" danger loading={stopping} onClick={stopRunningAndWrite}>
+            Остановить {stopGuard?.running?.length ? `(${stopGuard.running.length} ПЧ)` : ''} и записать всё
+          </Button>,
+        ]}
+      >
+        <Typography.Paragraph style={{ fontSize: 13 }}>
+          Среди подготовленных значений есть параметры, которые ПЧ разрешает менять
+          <b> только когда привод остановлен</b>. Если записать их на ходу, устройство
+          вернёт ошибку доступа и значения не применятся.
+        </Typography.Paragraph>
+        {stopGuard?.running?.length > 0 && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 10 }}
+            message="Сейчас вращаются"
+            description={
+              <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
+                {stopGuard.running.map(({ device, params }) => (
+                  <li key={device.id} style={{ fontSize: 12 }}>
+                    <b>{device.name}</b> · Адрес {device.connection.slaveId} — требуют остановки: {params.length} парам.
+                    {' '}<Typography.Text type="secondary">({params.slice(0, 6).map(p => p.id).join(', ')}{params.length > 6 ? '…' : ''})</Typography.Text>
+                  </li>
+                ))}
+              </ul>
+            }
+          />
+        )}
+        {stopGuard?.unknown?.length > 0 && (
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 10 }}
+            message="Состояние не удалось прочитать"
+            description={`Не ответили на запрос статуса: ${stopGuard.unknown.map(s => s.device.name).join(', ')}. Возможно, они остановлены — но проверить нечем.`}
+          />
+        )}
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 0 }}>
+          «Остановить и записать всё» — подаст команду плавной остановки (торможение
+          с замедлением) только тем ПЧ, что сейчас вращаются, подождёт полторы секунды
+          и запишет все значения. Обратно приводы <b>не запускаются</b> — пуск остаётся
+          за вами. «Записать только то, что можно на ходу» — приводы не трогаем,
+          параметры «только на остановленном» пропускаем.
+        </Typography.Paragraph>
+      </Modal>
     </div>
   )
 }

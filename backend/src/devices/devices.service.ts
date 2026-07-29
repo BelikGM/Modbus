@@ -339,6 +339,26 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     this.projectsService.writeInstances(projectId, updated);
   }
 
+  // Вливает прочитанные значения сразу нескольким устройствам и сохраняет
+  // проект ОДНИМ перезаписыванием файла. Вызывается после группового чтения:
+  // раньше «значение на устройстве» сохранялось только когда читали ОДИН ПЧ, а
+  // при групповом чтении/выгрузке CSV значения жили лишь в таблице на экране —
+  // из-за этого защита от перезаписи (OverwriteGuard) не с чем было сравнивать.
+  mergeManyDevicesCurrentValues(patchByDevice: Record<string, Record<string, any>>): void {
+    const projectId = this.projectsService.getActiveProjectId();
+    if (!projectId) return;
+    const updated: DeviceInstance[] = [];
+    for (const [id, patch] of Object.entries(patchByDevice ?? {})) {
+      const instance = this.instances.get(id);
+      if (!instance || !patch || Object.keys(patch).length === 0) continue;
+      const merged = { ...(instance.currentValues ?? {}), ...patch };
+      const next = { ...instance, currentValues: merged };
+      this.instances.set(id, next);
+      updated.push(next);
+    }
+    if (updated.length) this.projectsService.writeInstances(projectId, updated);
+  }
+
   getDeviceCurrentValues(id: string): Record<string, any> {
     const instance = this.instances.get(id);
     return instance?.currentValues ?? {};
