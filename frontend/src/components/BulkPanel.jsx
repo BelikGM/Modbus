@@ -13,6 +13,7 @@ import OverwriteGuard, { collectOverwriteConflicts } from './OverwriteGuard'
 import api from '../api'
 import { addLog } from '../log'
 import { stopOnlyParamsOf, statusParamId, isRunningFromStatus, stopCommandValue } from '../driveControl'
+import { parseParamsCsv } from '../csvImport'
 
 // Pump-Full и Pump-OWN — один и тот же физический ПЧ, у OWN просто урезанный
 // (но регистрово идентичный) набор параметров — сверено вручную: все параметры
@@ -60,6 +61,9 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
   const [guardReading, setGuardReading] = useState(false) // идёт «считать все и сравнить» из окна предупреждения
   const [stopGuard, setStopGuard] = useState(null) // { statuses, running, unknown, skip } — нужен останов ПЧ
   const [stopping, setStopping] = useState(false)
+  const importInputRef = useRef(null)
+  const [importPreview, setImportPreview] = useState(null) // разбор CSV до применения
+  const [importing, setImporting] = useState(false)
 
   useEffect(() => {
     if (!sameType || deviceSettings === null) return
@@ -250,7 +254,9 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
         const entry = bulkReadResults[d.id]?.[paramId]
         if (!entry) return ''
         if (entry.error) return 'ошибка'
-        return String(formatParamValue(entry.type, entry.value, entry.unit, entry.options, entry.bits))
+        // Битовые маски форматируются с переносами строк — в CSV это ломает
+            // строку (парсер читает файл построчно), поэтому склеиваем в одну.
+            return String(formatParamValue(entry.type, entry.value, entry.unit, entry.options, entry.bits)).replace(/\n/g, '; ')
       })
       rows.push([paramId, name, ...cells])
     }
@@ -424,6 +430,49 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
     writeAllPrepared(skip)
   }
 
+  // ─── Импорт CSV в подготовленные значения ────────────────────────────────
+  // Ничего не пишем в устройства: файл лишь заполняет колонку «Значение для
+  // записи». Сначала показываем разбор (сколько применится, что не разобралось),
+  // и только по подтверждению сохраняем.
+  function handleImportFile(e) {
+    const file = e.target.files?.[0]
+    e.target.value = '' // чтобы повторный выбор того же файла тоже сработал
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const parsed = parseParamsCsv(String(reader.result ?? ''), devices)
+        if (parsed.stats.matchedColumns === 0) {
+          message.error('В файле не найдено ни одной колонки с ПЧ из текущего выбора. Проверьте, что это файл, скачанный кнопкой «Скачать все параметры в CSV», и что адреса совпадают.')
+          return
+        }
+        setImportPreview({ fileName: file.name, ...parsed })
+      } catch (err) {
+        message.error(`Не удалось разобрать файл: ${err?.message ?? err}`)
+      }
+    }
+    reader.onerror = () => message.error('Не удалось прочитать файл')
+    reader.readAsText(file, 'utf-8')
+  }
+
+  async function applyImport() {
+    if (!importPreview) return
+    setImporting(true)
+    try {
+      const entries = Object.entries(importPreview.byDevice)
+      await Promise.all(entries.map(([id, values]) =>
+        api.patch(`/devices/${id}/pending-writes`, { merge: true, pendingWrites: values }).catch(() => {}),
+      ))
+      const total = importPreview.stats.applied
+      message.success(`Подготовлено ${total} значений у ${entries.length} ПЧ — проверьте колонку «Значение для записи» и запишите обычной кнопкой`)
+      addLog('success', `Импорт CSV «${importPreview.fileName}»: подготовлено ${total} значений у ${entries.length} ПЧ`)
+      window.dispatchEvent(new CustomEvent('pending-writes:changed', { detail: { deviceIds: entries.map(([id]) => id) } }))
+      setImportPreview(null)
+    } finally {
+      setImporting(false)
+    }
+  }
+
   function writeAllPrepared(skip = {}) {
     setBusy(true)
     const key = processStart(`Запись подготовленных значений во все выбранные ПЧ (${deviceIds.length})…`, 'Запись в ПЧ')
@@ -515,7 +564,9 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
             const entry = collected[d.id]?.[param.id]
             if (!entry) return ''
             if (entry.error) return 'ошибка'
-            return String(formatParamValue(entry.type, entry.value, entry.unit, entry.options, entry.bits))
+            // Битовые маски форматируются с переносами строк — в CSV это ломает
+            // строку (парсер читает файл построчно), поэтому склеиваем в одну.
+            return String(formatParamValue(entry.type, entry.value, entry.unit, entry.options, entry.bits)).replace(/\n/g, '; ')
           })
           rows.push(pad([param.id, param.name, ...cells]))
         }
@@ -686,6 +737,22 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
               Скачать все параметры в CSV ({devices.length})
             </Button>
           </Tooltip>
+          <Tooltip title="Загрузить ранее скачанный CSV с исправленными значениями — они станут подготовленными значениями соответствующих ПЧ (сопоставление по адресу на шине). Запись в устройства при этом не выполняется.">
+            <Button
+              icon={<UploadOutlined />}
+              disabled={busy || !!bulkOpBar}
+              onClick={() => importInputRef.current?.click()}
+            >
+              Подготовить значения из CSV
+            </Button>
+          </Tooltip>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            style={{ display: 'none' }}
+            onChange={handleImportFile}
+          />
         </Space>
       </div>
 
@@ -737,6 +804,63 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
         onCancel={() => setGuard(null)}
         onConfirm={skip => { setGuard(null); startWriteWithStopCheck(skip) }}
       />
+
+      {/* Разбор загруженного CSV — показываем ДО применения: сколько значений
+          ляжет в подготовленные, по каким ПЧ, и что не разобралось. */}
+      <Modal
+        title={<Space><UploadOutlined />Подготовить значения из CSV</Space>}
+        open={!!importPreview}
+        onCancel={() => setImportPreview(null)}
+        onOk={applyImport}
+        okText={`Подготовить ${importPreview?.stats?.applied ?? 0} значений`}
+        okButtonProps={{ loading: importing, disabled: !importPreview?.stats?.applied }}
+        cancelText="Отмена"
+        width={780}
+      >
+        <Alert
+          type={importPreview?.stats?.applied ? 'info' : 'warning'}
+          showIcon
+          style={{ marginBottom: 12 }}
+          message={`Файл: ${importPreview?.fileName ?? ''}`}
+          description={
+            <>
+              Будет подготовлено <b>{importPreview?.stats?.applied ?? 0}</b> значений
+              у <b>{importPreview?.stats?.devices ?? 0}</b> ПЧ (колонок сопоставлено
+              по адресу: {importPreview?.stats?.matchedColumns ?? 0}).
+              {' '}Значения попадут в колонку «Значение для записи» — <b>в устройства
+              ничего не пишется</b>, записать нужно будет отдельной кнопкой.
+            </>
+          }
+        />
+        {importPreview?.unmatchedColumns?.length > 0 && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message="Часть колонок пропущена"
+            description={importPreview.unmatchedColumns.join('; ')}
+          />
+        )}
+        {importPreview?.issues?.length > 0 && (
+          <>
+            <Typography.Text strong style={{ fontSize: 12 }}>
+              Не разобрано ({importPreview.issues.length}) — эти значения останутся без изменений:
+            </Typography.Text>
+            <Table
+              size="small"
+              style={{ marginTop: 6 }}
+              pagination={{ pageSize: 6, size: 'small' }}
+              rowKey={(r, i) => `${r.deviceName}-${r.paramId}-${i}`}
+              dataSource={importPreview.issues}
+              columns={[
+                { title: 'ПЧ', dataIndex: 'deviceName', width: 150, render: (v, r) => `${v} (${r.slaveId})` },
+                { title: 'Параметр', width: 200, render: (_, r) => `${r.paramId} ${r.name ?? ''}` },
+                { title: 'Причина', dataIndex: 'message' },
+              ]}
+            />
+          </>
+        )}
+      </Modal>
 
       {/* Часть параметров меняется только на остановленном приводе. Останавливаем
           не «на всякий случай», а лишь когда такие параметры реально есть в
