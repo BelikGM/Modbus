@@ -244,7 +244,17 @@ export default function ConnectionPanel({ connected, reconnecting, reconnectAtte
           onFinish={handleConnect}
           layout="vertical"
           initialValues={{ baudRate: 9600, dataBits: 8, stopBits: 1, parity: 'none' }}
+          // Enter = «Подключить». Скрытая submit-кнопка нужна, потому что поля
+          // здесь — AutoComplete/Select, и без неё браузер не отправляет форму
+          // по Enter. Во время подбора скорости Enter игнорируем.
+          onKeyDown={e => {
+            if (e.key === 'Enter' && !detecting && !connecting) {
+              e.preventDefault()
+              form.submit()
+            }
+          }}
         >
+          <button type="submit" style={{ display: 'none' }} aria-hidden />
           <Form.Item
             name="portPath"
             label={

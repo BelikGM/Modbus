@@ -311,6 +311,24 @@ export default function ParamGroups({
     return () => { cancelled = true }
   }, [activeDeviceId])
 
+  // Подготовленные значения могли измениться в другом месте (применение
+  // шаблона на вкладке «Шаблоны», массовая подготовка) — перечитываем их,
+  // иначе поля показывали бы старое до перезагрузки страницы.
+  useEffect(() => {
+    function onPendingChanged(e) {
+      const ids = e?.detail?.deviceIds
+      if (ids && !ids.includes(displayDeviceId)) return
+      api.get(`/devices/${displayDeviceId}/pending-writes`)
+        .then(({ data }) => {
+          setPendingWrites(data ?? {})
+          setPendingVersion(v => v + 1) // форсируем переинициализацию полей в ParamRow
+        })
+        .catch(() => {})
+    }
+    window.addEventListener('pending-writes:changed', onPendingChanged)
+    return () => window.removeEventListener('pending-writes:changed', onPendingChanged)
+  }, [displayDeviceId])
+
   const handlePendingWriteChange = useCallback((paramId, val) => {
     setPendingWrites(prev => ({ ...prev, [paramId]: val }))
     if (isAllMode) {
@@ -631,13 +649,20 @@ export default function ParamGroups({
     }
     bulkCancelRef.current = false
     const verb = kind === 'read' ? 'Опрос' : kind === 'write' ? 'Запись' : 'Сброс до заводских'
-    const total = groupsInScope.length
+    // Настройки связи из массового сброса исключены (см. resetGroup): читать их
+    // скопом безопасно, а вот сбрасывать — нет.
+    const skipped = kind === 'reset' ? groupsInScope.filter(g => g.protectedFromBulk) : []
+    if (skipped.length) {
+      message.warning(`Пропущены настройки связи (${skipped.map(g => g.name).join(', ')}) — их массовый сброс оборвал бы связь с ПЧ`)
+    }
+    const groupsToProcess = kind === 'reset' ? groupsInScope.filter(g => !g.protectedFromBulk) : groupsInScope
+    const total = groupsToProcess.length
     const key = processStart(`${verb}: 0 из ${total} групп…`, verb)
     let processed = 0
-    for (let i = 0; i < groupsInScope.length; i++) {
+    for (let i = 0; i < groupsToProcess.length; i++) {
       if (bulkCancelRef.current) break
-      const group = groupsInScope[i]
-      setGroupProgress({ index: i, total: groupsInScope.length, groupName: group.name, kind })
+      const group = groupsToProcess[i]
+      setGroupProgress({ index: i, total, groupName: group.name, kind })
       processUpdate(key, `${verb}: группа ${i + 1} из ${total} — «${group.name}»…`, verb)
       const fakeEvent = { stopPropagation: () => {} }
       // При "Прочитать/Записать/Сбросить всё" группы НЕ разворачиваются одна за
@@ -669,6 +694,13 @@ export default function ParamGroups({
 
   async function resetGroup(group, e, { autoExpand = true, notify = true } = {}) {
     e?.stopPropagation()
+    // Настройки связи (адрес на шине, скорость) сбрасывать нельзя: заводской
+    // адрес у всех ПЧ = 1 — сброс посадил бы всю шину на один адрес и оборвал
+    // связь. Менять их можно только вручную, по одной строке.
+    if (group.protectedFromBulk) {
+      message.warning(`Группа «${group.name}» — настройки связи (адрес на шине, скорость). Массовый сброс для неё запрещён: заводской адрес у всех ПЧ одинаковый, и сброс оборвал бы связь со всеми устройствами. Меняйте эти параметры вручную, по одному.`)
+      return
+    }
     const toWrite = group.params.filter(
       p => isParamWritable(device, p) && p.default !== undefined && p.default !== null && typeof p.default === 'number'
     )
@@ -717,9 +749,14 @@ export default function ParamGroups({
         api.patch(`/devices/${id}/pending-writes`, { merge: true, pendingWrites: preset.values }).catch(() => {})
       ))
       message.success(`Шаблон «${preset.name}» применён к ${effectiveDeviceIds.length} устр. — значения подготовлены к записи`)
+      addLog('success', `Шаблон «${preset.name}» применён к ${effectiveDeviceIds.length} ПЧ (${Object.keys(preset.values).length} параметров подготовлено)`)
       // Обновить видимые поля, если открытое сейчас устройство входит в выборку
       setPendingWrites(prev => ({ ...prev, ...preset.values }))
       setPendingVersion(v => v + 1)
+      // ...и уведомить остальные экземпляры (напр. другой ПЧ в переключателе)
+      window.dispatchEvent(new CustomEvent('pending-writes:changed', {
+        detail: { deviceIds: effectiveDeviceIds },
+      }))
       // Оставляем в отображении и раскрываем ровно те группы, которые есть в
       // шаблоне — чтобы человек сразу видел подготовленные значения и не искал
       // их среди всех групп.
@@ -1034,13 +1071,20 @@ export default function ParamGroups({
               />
               <span
                 onClick={() => setVisibleGroups(new Set([group.id]))}
-                title="Показать только эту группу"
+                title={group.protectedFromBulk
+                  ? 'Показать только эту группу. Настройки связи защищены от массовой записи/сброса — меняйте вручную, по одному параметру'
+                  : 'Показать только эту группу'}
                 style={{
                   fontSize: 12, lineHeight: 1.3, cursor: 'pointer',
                   fontWeight: group.id === FAV_GROUP_ID ? 600 : undefined,
                 }}
               >
                 {group.name}
+                {group.protectedFromBulk && (
+                  <Tag color="gold" style={{ fontSize: 10, marginLeft: 4, padding: '0 4px', lineHeight: '16px' }}>
+                    только вручную
+                  </Tag>
+                )}
               </span>
             </span>
           ))}

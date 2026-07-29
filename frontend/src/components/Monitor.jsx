@@ -53,10 +53,12 @@ const TRASH_ID = '__monitor-trash__'
 // уже поднесли к зоне и можно отпускать.
 function TrashIcon({ open }) {
   return (
-    <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#ff4d4f" strokeWidth="1.8"
-      strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'transform 0.15s' }}>
+    // viewBox с запасом сверху (y от -6) — открытая крышка приподнимается и
+    // поворачивается, без запаса её верхний край обрезался.
+    <svg width="54" height="60" viewBox="0 -6 24 30" fill="none" stroke="#ff4d4f" strokeWidth="1.8"
+      strokeLinecap="round" strokeLinejoin="round" style={{ overflow: 'visible' }}>
       {/* крышка: при открытии приподнята и повёрнута */}
-      <g style={{ transform: open ? 'translateY(-3px) rotate(-18deg)' : 'none', transformOrigin: '6px 6px', transition: 'transform 0.15s' }}>
+      <g style={{ transform: open ? 'translateY(-4px) rotate(-20deg)' : 'none', transformOrigin: '5px 6px', transition: 'transform 0.15s' }}>
         <path d="M3 6h18" />
         <path d="M9 6V4h6v2" />
       </g>
@@ -73,15 +75,17 @@ function TrashZone({ active }) {
     <div
       ref={setNodeRef}
       style={{
-        position: 'fixed', top: 0, left: 0, right: 0, height: 132, zIndex: 1200,
+        position: 'fixed', top: 0, left: 0, right: 0, height: 180, zIndex: 1200,
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start',
-        gap: 6, paddingTop: 10,
-        // Серая заливка: вверху плотная, книзу растворяется — так зона не
-        // перекрывает интерфейс глухой панелью и видно, куда именно тянуть.
+        // Текст и корзина опущены от самого верха: у открытой крышки должно
+        // быть место, иначе она уезжала за край и не отрисовывалась.
+        gap: 12, paddingTop: 26,
+        // Тёмно-серая «асфальтовая» заливка: вверху плотная, книзу растворяется,
+        // чтобы зона не перекрывала интерфейс глухой панелью.
         background: isOver
-          ? 'linear-gradient(to bottom, rgba(90,90,95,0.97) 0%, rgba(90,90,95,0.75) 45%, rgba(90,90,95,0) 100%)'
-          : 'linear-gradient(to bottom, rgba(120,120,125,0.92) 0%, rgba(120,120,125,0.55) 45%, rgba(120,120,125,0) 100%)',
-        color: '#fff', fontSize: 14, fontWeight: 500, textShadow: '0 1px 2px rgba(0,0,0,0.45)',
+          ? 'linear-gradient(to bottom, rgba(48,50,54,0.97) 0%, rgba(48,50,54,0.80) 50%, rgba(48,50,54,0) 100%)'
+          : 'linear-gradient(to bottom, rgba(62,65,70,0.94) 0%, rgba(62,65,70,0.62) 50%, rgba(62,65,70,0) 100%)',
+        color: '#fff', fontSize: 14, fontWeight: 500, textShadow: '0 1px 2px rgba(0,0,0,0.55)',
         transition: 'background 0.15s',
         pointerEvents: 'auto',
       }}
@@ -432,19 +436,26 @@ export default function Monitor({ device, modbusConnected }) {
                 if (triggered) color = alert.level === 'error' ? 'error' : 'warning'
                 else if (triggered === false) color = 'success'
               }
-              // Всегда показываем и параметр, и порог: «Перегрев · Температура
-              // ПЧ > 70 °C». Одного имени правила мало (непонятно, по какому
-              // параметру и с какой границей оно сработает).
-              const condText = `${paramName} ${condLabel} ${alert.threshold}${unit ? ` ${unit}` : ''}`
+              // Формулируем как УСЛОВИЕ СРАБАТЫВАНИЯ, а не как факт: строка
+              // «Температура ПЧ > 70 °C» читалась так, будто сейчас больше 70 и
+              // это норма. Теперь «сработает при > 70 °C», а рядом — текущее
+              // значение и вердикт (норма / сработало).
+              const cur = data[alert.paramId]
+              const curNum = cur && !cur.error && typeof cur.value === 'number' ? cur.value : null
+              const curText = curNum === null
+                ? null
+                : `${Number.isInteger(curNum) ? curNum : curNum.toFixed(2)}${unit ? ` ${unit}` : ''}`
+              const ruleName = alert.label ?? paramName
+              const condText = `сработает при ${condLabel} ${alert.threshold}${unit ? ` ${unit}` : ''}`
+              const statusText = !running
+                ? 'мониторинг не запущен'
+                : curText === null ? 'нет данных'
+                : triggered ? `СЕЙЧАС ${curText} — сработало`
+                : `сейчас ${curText} — норма`
               return (
-                <AntTooltip
-                  key={alert.id}
-                  title={running
-                    ? (triggered ? 'Сейчас сработало' : 'Отслеживается, порог не превышен')
-                    : 'Оповещение сработает после запуска мониторинга'}
-                >
+                <AntTooltip key={alert.id} title={`Параметр: ${paramName}`}>
                   <Tag color={color} style={{ fontSize: 12, cursor: 'help' }}>
-                    {alert.label ? `${alert.label} · ${condText}` : condText}
+                    {`${ruleName}: ${condText} · ${statusText}`}
                   </Tag>
                 </AntTooltip>
               )

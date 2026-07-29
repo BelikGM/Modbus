@@ -542,7 +542,10 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
           описание. */}
       <div style={{ marginBottom: 16, padding: '8px 10px', border: '1px solid #f0f0f0', borderRadius: 6 }}>
         <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
-          Операции по всем выбранным ПЧ сразу — работают и для смешанного выбора Pump + VL
+          Действуют на ПЧ, <b>отмеченные галочками</b> — сейчас их {devices.length}
+          {' '}({devices.map(d => `№${d.connection.slaveId}`).join(', ')}).
+          Чтобы обработать все ПЧ проекта, сначала нажмите «Выбрать все» в списке слева.
+          Типы можно смешивать: Pump и VL обрабатываются каждый по своей карте регистров.
         </Typography.Text>
         <Space wrap>
           <Popconfirm

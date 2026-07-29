@@ -6125,7 +6125,8 @@
           ],
           "default": 1
         }
-      ]
+      ],
+      "protectedFromBulk": true
     },
     {
       "id": "PP",

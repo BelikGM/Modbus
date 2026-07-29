@@ -5,6 +5,7 @@ import api from '../api'
 import { formatParamValue, normalizeOptions } from '../paramFormat'
 import { isParamWritable } from '../access'
 import { downloadCsv, parseCsv } from '../csv'
+import { addLog } from '../log'
 
 function deviceFamily(templateId) {
   return (templateId ?? '').toLowerCase().includes('vl') ? 'vl' : 'pump'
@@ -85,6 +86,13 @@ export default function ValuePresets({ device, devices }) {
         api.patch(`/devices/${d.id}/pending-writes`, { merge: true, pendingWrites: preset.values }).catch(() => {})
       ))
       message.success(`Шаблон «${preset.name}» применён к ${targetDevices.length} устр. — значения подготовлены к записи на вкладке «Параметры»`)
+      addLog('success', `Шаблон «${preset.name}» применён к ${targetDevices.length} ПЧ (${Object.keys(preset.values).length} параметров подготовлено)`)
+      // Вкладка «Параметры» — отдельный компонент, который читает подготовленные
+      // значения один раз при монтировании. Без этого события возврат на неё
+      // показывал старые поля, пока не перезагрузишь страницу.
+      window.dispatchEvent(new CustomEvent('pending-writes:changed', {
+        detail: { deviceIds: targetDevices.map(d => d.id) },
+      }))
     } finally {
       setApplyingId(null)
     }

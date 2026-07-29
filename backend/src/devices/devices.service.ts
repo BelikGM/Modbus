@@ -272,6 +272,13 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     if (!device) return {};
     const result: Record<string, number> = {};
     for (const group of device.groups) {
+      // Группы настроек связи (RS-485: адрес на шине, скорость, формат) НИКОГДА
+      // не попадают в автоматическую «заводскую» подложку. Заводской адрес у
+      // всех моделей = 1: запись его во все ПЧ разом посадила бы всю шину на
+      // один адрес, а сброс скорости — оборвал бы связь. Восстанавливать
+      // пришлось бы, подключая устройства по одному. Менять эти параметры
+      // можно только вручную, по одной строке.
+      if (group.protectedFromBulk) continue;
       for (const param of group.params) {
         if (!this.isParamWritable(device, param)) continue;
         if (typeof param.default === 'number') result[param.id] = param.default;
