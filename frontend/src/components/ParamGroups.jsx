@@ -48,6 +48,7 @@ function SortableCollapseItem({ id, children }) {
   return (
     <div
       ref={setNodeRef}
+      className="param-group-item"
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
@@ -55,11 +56,15 @@ function SortableCollapseItem({ id, children }) {
         position: 'relative',
       }}
     >
+      {/* Ручка перетаскивания лежит ВНУТРИ панели группы, у её левого края:
+          сама панель выровнена по левому краю блока с чекбоксами групп, а место
+          под ручку освобождено сдвигом заголовка (см. .param-group-item в
+          App.css) — иначе ручка перекрывала бы стрелку раскрытия. */}
       <div
         {...attributes}
         {...listeners}
         style={{
-          position: 'absolute', left: 0, top: 0, bottom: 0, width: 20,
+          position: 'absolute', left: 4, top: 0, bottom: 0, width: 18,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'grab', zIndex: 2, color: '#bbb',
         }}
@@ -1028,7 +1033,7 @@ export default function ParamGroups({
           к какому ПЧ (или ко всей группе) относятся кнопки, и только потом сами
           кнопки. Показывается всегда, даже когда доступен один ПЧ, — чтобы
           адресат операции был явным, а не угадывался. */}
-      <div style={{
+      <div className={isAllMode ? 'param-scope-box param-scope-box-all' : 'param-scope-box'} style={{
         marginBottom: 12, padding: '6px 10px', borderRadius: 6,
         background: isAllMode ? '#fff7e6' : '#f0f7ff',
         border: `1px solid ${isAllMode ? '#ffd591' : '#bae0ff'}`,
@@ -1162,7 +1167,7 @@ export default function ParamGroups({
       </Space>
 
       {!groupOpsAllowed && (
-        <div style={{ marginBottom: 8, padding: '4px 10px', background: '#fff7e6', border: '1px solid #ffd591', borderRadius: 6 }}>
+        <div className="param-warn-box" style={{ marginBottom: 8, padding: '4px 10px', background: '#fff7e6', border: '1px solid #ffd591', borderRadius: 6 }}>
           <Typography.Text style={{ fontSize: 12, color: '#d46b08' }}>
             Этот ПЧ просматривается, но не отмечен галочкой для групповых операций — «Прочитать/Записать/Сбросить все» недоступны.
             Отметьте его галочкой в списке слева, чтобы включить в группу отладки.
@@ -1171,7 +1176,7 @@ export default function ParamGroups({
       )}
 
       {isAllMode && (
-        <div style={{ marginBottom: 8, padding: '4px 10px', background: '#fff7e6', border: '1px solid #ffd591', borderRadius: 6 }}>
+        <div className="param-warn-box" style={{ marginBottom: 8, padding: '4px 10px', background: '#fff7e6', border: '1px solid #ffd591', borderRadius: 6 }}>
           <Typography.Text style={{ fontSize: 12, color: '#d46b08' }}>
             ★ Режим «Все выбранные ПЧ»: любое изменение поля «Значение для записи» применяется сразу ко всем {effectiveDeviceIds.length} выбранным ПЧ.
           </Typography.Text>
@@ -1288,7 +1293,7 @@ export default function ParamGroups({
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={filteredGroups.map(g => g.id)} strategy={verticalListSortingStrategy}>
-          <div style={{ paddingLeft: 20 }}>
+          <div>
             {filteredGroups.map((group) => {
               const item = items.find(it => it.key === group.id)
               if (!item) return null

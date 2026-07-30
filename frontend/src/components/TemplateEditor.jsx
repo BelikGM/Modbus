@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Button, Table, Input, Select, InputNumber, Space, Typography, Tag, message, Popconfirm, Alert, Collapse, Checkbox, Divider, Tooltip,
 } from 'antd'
@@ -36,6 +36,40 @@ const ACCESS_OPTIONS = [
   { value: 'write', label: 'Только запись' },
 ]
 
+// Поля, которые бэкенд проставляет сам при чтении шаблона (признак «свой»,
+// списки исполнений из поставки). В файл своего типа они попадать не должны —
+// иначе копия штатного типа тащила бы за собой чужую служебную разметку.
+const RUNTIME_FIELDS = ['custom', 'template', 'builtinModels', 'builtinFirmwares']
+
+function copyTemplate(t) {
+  const copy = JSON.parse(JSON.stringify(t))
+  for (const f of RUNTIME_FIELDS) delete copy[f]
+  return copy
+}
+
+// Ссылки на параметры, которых в типе больше нет, чистим: оповещение по
+// несуществующему paramId молча не сработает, а команда заводского сброса
+// укажет не на тот регистр — ровно та ошибка, что случается при переносе блока
+// alerts между разными моделями.
+function pruneToParams(draft) {
+  const ids = new Set((draft.groups ?? []).flatMap(g => g.params.map(p => p.id)))
+  const next = { ...draft }
+  if (next.alerts) next.alerts = next.alerts.filter(a => ids.has(a.paramId))
+  if (next.builtinFavorites) next.builtinFavorites = next.builtinFavorites.filter(id => ids.has(id))
+  if (next.modelDependentParams) next.modelDependentParams = next.modelDependentParams.filter(id => ids.has(id))
+  if (next.factoryReset?.paramId && !ids.has(next.factoryReset.paramId)) next.factoryReset = undefined
+  if (next.firmwareOverrides) {
+    next.firmwareOverrides = Object.fromEntries(
+      Object.entries(next.firmwareOverrides)
+        .map(([fw, map]) => [fw, Object.fromEntries(
+          Object.entries(map ?? {}).filter(([paramId]) => ids.has(paramId)),
+        )])
+        .filter(([, map]) => Object.keys(map).length > 0),
+    )
+  }
+  return next
+}
+
 export default function TemplateEditor({ open, onClose }) {
   const [templates, setTemplates] = useState([])
   const [loading, setLoading] = useState(false)
@@ -58,6 +92,10 @@ export default function TemplateEditor({ open, onClose }) {
   const [openGroup, setOpenGroup] = useState(null)
   const [hoverGroup, setHoverGroup] = useState(null)
   const [renamingGroup, setRenamingGroup] = useState(null)
+  // Черновик «как был при открытии»: по нему видно, правили ли тип, — чтобы
+  // спрашивать про потерю работы только когда терять действительно есть что.
+  const draftOpened = useRef(null)
+  const [exitAsk, setExitAsk] = useState(false)
 
   // Отмена действий. Два независимых журнала: правка типа и каталог моделей —
   // это разные экраны, и общая история путала бы шаги между ними. Дальше по
@@ -133,16 +171,81 @@ export default function TemplateEditor({ open, onClose }) {
   }
   useEffect(() => { if (open) load() }, [open])
 
+  // Окно «Типы ПЧ» закрыли целиком — забываем всё незаписанное. Компонент
+  // остаётся смонтированным (open=false только прячет окно), поэтому без явной
+  // очистки недоделанный тип со всеми группами и параметрами всплывал бы при
+  // следующем открытии как ни в чём не бывало.
+  useEffect(() => {
+    if (open) return
+    draftOpened.current = null
+    setEditingState(null); draftUndo.reset()
+    setExtrasState(null); extrasUndo.reset()
+    setBaseId(null); setPicked(new Set()); setExitAsk(false)
+    setOpenGroup(null); setHoverGroup(null); setRenamingGroup(null)
+    setOptionsEditor(null); setNewFirmware('')
+  }, [open])
+
   const base = templates.find(t => t.id === baseId) ?? null
 
+  // ─── Жизненный цикл черновика ──────────────────────────────────────────────
+  function beginDraft(draft) {
+    draftOpened.current = JSON.stringify(draft)
+    setOpenGroup(null); setHoverGroup(null); setRenamingGroup(null); setOptionsEditor(null)
+    setEditing(draft)
+  }
+
+  // Закрыли форму — черновик забыт целиком: ни поля, ни созданные группы и
+  // параметры не «донашиваются» до следующего открытия.
+  function closeDraft() {
+    draftOpened.current = null
+    setExitAsk(false)
+    setBaseId(null); setPicked(new Set())
+    setOpenGroup(null); setHoverGroup(null); setRenamingGroup(null); setOptionsEditor(null)
+    setEditing(null)   // заодно чистит историю отмены
+  }
+
+  // Но случайный клик по крестику (или мимо окна) не должен молча стирать
+  // полчаса работы — если черновик правили, сначала спрашиваем.
+  function requestCloseDraft() {
+    if (editing && JSON.stringify(editing) !== draftOpened.current) setExitAsk(true)
+    else closeDraft()
+  }
+
   // ─── Создание ──────────────────────────────────────────────────────────────
+  // Свободный идентификатор для копии: он же имя файла, и занять чужой нельзя.
+  function freeTemplateId(wanted) {
+    if (!templates.some(t => t.id === wanted)) return wanted
+    let n = 2
+    while (templates.some(t => t.id === `${wanted}-${n}`)) n++
+    return `${wanted}-${n}`
+  }
+
+  // «За основу» — это ПОЛНАЯ копия типа, а не одни лишь группы параметров:
+  // название, семейство, описание, фотографии, параметры связи, коды аварий,
+  // пороговые оповещения, команда заводского сброса, правила адресации, каталог
+  // исполнений — всё на месте сразу, ещё до того как решено, какие параметры
+  // оставить. Раньше эти разделы заполнялись только после «Перенести
+  // отмеченные», и до первого переноса форма выглядела пустой, хотя основа уже
+  // выбрана; заодно терялись поля, которых перенос не знал (addressingRules у
+  // VL, familyLabel, примечание к прошивкам).
   function startNew(fromId) {
+    const src = fromId ? templates.find(t => t.id === fromId) : null
     setBaseId(fromId ?? null)
-    setPicked(new Set())
-    setEditing({
-      id: '', name: '', family: '', familyLabel: '',
-      connection: { slaveId: 1, baudRate: 9600, dataBits: 8, stopBits: 1, parity: 'none', protocol: 'modbus-rtu' },
-      groups: [],
+    if (!src) {
+      setPicked(new Set())
+      beginDraft({
+        id: '', name: '', family: '', familyLabel: '',
+        connection: { slaveId: 1, baudRate: 9600, dataBits: 8, stopBits: 1, parity: 'none', protocol: 'modbus-rtu' },
+        groups: [],
+        isNew: true,
+      })
+      return
+    }
+    setPicked(new Set(src.groups.flatMap(g => g.params.map(p => p.id))))
+    beginDraft({
+      ...copyTemplate(src),
+      id: freeTemplateId(`${src.id}-copy`),
+      name: `${src.name ?? src.id} (копия)`,
       isNew: true,
     })
   }
@@ -151,38 +254,21 @@ export default function TemplateEditor({ open, onClose }) {
     setBaseId(null)
     setPicked(new Set())
     // Работаем с копией — «Отмена» не должна оставлять следов
-    setEditing(JSON.parse(JSON.stringify({ ...t, isNew: false })))
+    beginDraft({ ...copyTemplate(t), isNew: false })
   }
 
-  // Перенос отмеченных параметров из основы в черновик
+  // Оставить в типе только отмеченные параметры основы. Корневые разделы
+  // (фото, коды аварий, связь и т.д.) уже перенесены при выборе основы и здесь
+  // НЕ перезаписываются — иначе правки пользователя откатывались бы назад.
+  // Зато чистим ссылки на выброшенные параметры.
   function applyPicked() {
     if (!base) return
     const groups = base.groups
       .map(g => ({ ...g, params: g.params.filter(p => picked.has(p.id)) }))
       .filter(g => g.params.length > 0)
     if (groups.length === 0) { message.warning('Отметьте хотя бы один параметр'); return }
-    setEditing(prev => ({
-      ...prev,
-      // Переносим ВСЕ корневые поля основы, чтобы структура нового типа была
-      // такой же полной, как у штатного (описание, картинки, коды ошибок,
-      // оповещения, команда заводского сброса, каталоги и т.д.). Иначе часть
-      // возможностей у своего типа просто не работала бы.
-      description: base.description,
-      connection: base.connection,
-      images: base.images,
-      access_legend: base.access_legend,
-      errorCodes: base.errorCodes,
-      alerts: base.alerts,
-      factoryReset: base.factoryReset,
-      models: base.models,
-      firmwares: base.firmwares,
-      firmwareOverrides: base.firmwareOverrides,
-      modelDependentParams: base.modelDependentParams,
-      modelDefaults: base.modelDefaults,
-      builtinFavorites: (base.builtinFavorites ?? []).filter(id => picked.has(id)),
-      groups,
-    }))
-    message.success(`Перенесено ${groups.flatMap(g => g.params).length} параметров из «${base.name}»`)
+    setEditing(prev => pruneToParams({ ...prev, groups }))
+    message.success(`В типе оставлено ${groups.flatMap(g => g.params).length} параметров из «${base.name}»`)
   }
 
   function toggleParam(id, on) {
@@ -276,13 +362,16 @@ export default function TemplateEditor({ open, onClose }) {
     if (filled.length === 0) { message.warning('В типе нет ни одного параметра'); return }
     setSaving(true)
     try {
-      const payload = { ...d, groups: filled }
+      // Пустые группы в файл не пишем, а заодно чистим ссылки на параметры,
+      // которых в типе не осталось: оповещение или команда сброса по чужому
+      // paramId — молчаливая ошибка, которая всплывёт уже на объекте.
+      const payload = pruneToParams({ ...d, groups: filled })
       delete payload.isNew
       if (d.isNew) await api.post('/devices/templates', payload)
       else await api.put(`/devices/templates/${encodeURIComponent(d.id)}`, payload)
       message.success(`Тип «${d.name}» сохранён`)
       addLog('success', `${d.isNew ? 'Создан' : 'Изменён'} тип ПЧ «${d.name}» (${d.groups.flatMap(g => g.params).length} параметров)`)
-      setEditing(null)
+      closeDraft()
       load()
     } catch (e) {
       message.error(e?.response?.data?.message ?? 'Не удалось сохранить тип')
@@ -498,12 +587,12 @@ export default function TemplateEditor({ open, onClose }) {
     <AppModal
       title={<Space><ApartmentOutlined />{editing.isNew ? 'Новый тип ПЧ' : `Правка типа: ${editing.name}`}</Space>}
       open={open}
-      onCancel={() => setEditing(null)}
+      onCancel={requestCloseDraft}
       onEnter={save}
       width={1100}
       footer={[
         ...undoButtons(draftUndo),
-        <Button key="back" onClick={() => setEditing(null)}>Назад к списку</Button>,
+        <Button key="back" onClick={requestCloseDraft}>Назад к списку</Button>,
         <Button key="save" type="primary" loading={saving} onClick={save}>Сохранить тип</Button>,
       ]}
     >
@@ -553,13 +642,18 @@ export default function TemplateEditor({ open, onClose }) {
           <Divider orientation="left" style={{ margin: '8px 0' }}>
             Что взять из «{base.name}»
           </Divider>
+          <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+            Тип уже скопирован целиком — все параметры отмечены. Снимите лишние и нажмите
+            «Применить отбор», чтобы оставить в своём типе только нужное. Оповещения и команда
+            сброса, ссылавшиеся на убранные параметры, при этом тоже убираются.
+          </Typography.Paragraph>
           <Space style={{ marginBottom: 8 }} wrap>
             <Button size="small" onClick={() => setPicked(new Set(base.groups.flatMap(g => g.params.map(p => p.id))))}>
               Отметить всё
             </Button>
             <Button size="small" onClick={() => setPicked(new Set())}>Снять всё</Button>
             <Button size="small" type="primary" onClick={applyPicked}>
-              Перенести отмеченные ({picked.size})
+              Применить отбор ({picked.size})
             </Button>
           </Space>
           <div style={{ maxHeight: 260, overflowY: 'auto', marginBottom: 12 }}>
@@ -613,7 +707,7 @@ export default function TemplateEditor({ open, onClose }) {
           showIcon
           message="Параметров пока нет"
           description={editing.isNew && base
-            ? 'Отметьте нужные выше и нажмите «Перенести отмеченные».'
+            ? 'Отметьте нужные выше и нажмите «Применить отбор».'
             : 'Нажмите «Создать группу», затем «+» на её заголовке — и заполните параметры. Либо вернитесь в список и создайте тип на основе имеющегося: так карта регистров получится готовой.'}
         />
       ) : (
@@ -781,6 +875,27 @@ export default function TemplateEditor({ open, onClose }) {
           }))}
         />
       )}
+
+      {/* Выход из формы без сохранения. Enter здесь намеренно НЕ нажимает
+          основную кнопку (enterSubmit={false}): это окно уничтожает работу, и
+          случайный Enter не должен быть тем, что её стирает. */}
+      <AppModal
+        title="Черновик не сохранён"
+        open={exitAsk}
+        onCancel={() => setExitAsk(false)}
+        onOk={closeDraft}
+        enterSubmit={false}
+        okText="Выйти без сохранения"
+        cancelText="Вернуться к правке"
+        okButtonProps={{ danger: true }}
+        width={480}
+      >
+        <Typography.Paragraph style={{ marginBottom: 0 }}>
+          {editing.isNew
+            ? 'Новый тип ещё не сохранён. Заполненные поля, созданные группы и параметры будут удалены — при следующем открытии форма начнётся с чистого листа.'
+            : `Изменения типа «${editing.name}» не сохранены и будут потеряны.`}
+        </Typography.Paragraph>
+      </AppModal>
 
       {/* Варианты значения для «Перечисления»: пары «число -> подпись». Именно
           так они хранятся в наших шаблонах (пуск/стоп/вперёд/назад и т.п.). */}

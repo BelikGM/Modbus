@@ -96,6 +96,31 @@
   border-color: #2a3b52 !important;
 }
 
+/* Полоса «Работаем с:» над кнопками и жёлтые пояснения под ними: фон задан
+   инлайном (светло-голубой / светло-жёлтый) и в тёмной теме выглядел белой
+   заплатой поперёк экрана. Текст пояснений тоже инлайновый (#d46b08) —
+   поэтому перекрываем и его. */
+[data-theme='dark'] .param-scope-box {
+  background: #122c46 !important;
+  border-color: #2a4a6f !important;
+}
+[data-theme='dark'] .param-scope-box-all,
+[data-theme='dark'] .param-warn-box {
+  background: #3a2a10 !important;
+  border-color: #6b4a15 !important;
+}
+[data-theme='dark'] .param-warn-box .ant-typography {
+  color: #ffc069 !important;
+}
+
+/* Панель группы параметров выровнена по левому краю блока «Отображаемые группы
+   параметров» — раньше список групп был сдвинут вправо на 20px под ручку
+   перетаскивания, и два соседних блока начинались с разного отступа. Ручка
+   теперь лежит внутри панели, а её место освобождено сдвигом заголовка. */
+.param-group-item .ant-collapse-header {
+  padding-left: 26px !important;
+}
+
 /* Таблицы (результаты группового чтения, мониторинг) — контрастная граница
    в тёмной теме вместо еле заметной светло-серой antd по умолчанию. */
 [data-theme='dark'] .ant-table-bordered .ant-table-cell {
