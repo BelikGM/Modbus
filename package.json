@@ -58,7 +58,17 @@
       "target": "dmg",
       "icon": "build/icon.png",
       "category": "public.app-category.utilities"
-    }
+    },
+    "extraFiles": [
+      {
+        "from": "build/extra/README.txt",
+        "to": "README.txt"
+      },
+      {
+        "from": "build/extra/drivers",
+        "to": "drivers"
+      }
+    ]
   },
   "devDependencies": {
     "electron": "^42.0.1",

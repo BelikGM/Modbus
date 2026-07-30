@@ -634,6 +634,73 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     return updated;
   }
 
+  // ─── Фотографии устройств ──────────────────────────────────────────────────
+  //
+  // Две папки, как и у шаблонов: поставочная (только чтение) и своя в папке
+  // данных. Загружать можно только во вторую — первая заменяется при обновлении
+  // программы, а в Program Files ещё и недоступна для записи.
+  private get userImagesPath(): string {
+    return path.join(path.dirname(this.userTemplatesPath), 'images');
+  }
+
+  private static readonly IMAGE_EXT = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'];
+
+  // Имя файла из запроса нельзя подставлять в путь как есть: '../' увёл бы
+  // чтение и запись за пределы папки с картинками.
+  private safeImageName(name: string): string {
+    const safe = path.basename(String(name ?? '')).replace(/[\\/:*?"<>|]/g, '_').trim();
+    if (!safe) throw new BadRequestException('Некорректное имя файла');
+    if (!DevicesService.IMAGE_EXT.includes(path.extname(safe).toLowerCase())) {
+      throw new BadRequestException(`Поддерживаются только изображения (${DevicesService.IMAGE_EXT.join(', ')})`);
+    }
+    return safe;
+  }
+
+  findImage(filename: string): string | null {
+    const safe = path.basename(String(filename ?? ''));
+    for (const dir of [this.userImagesPath, path.join(this.devicesPath, 'images')]) {
+      const p = path.join(dir, safe);
+      if (fs.existsSync(p)) return p;
+    }
+    return null;
+  }
+
+  listImages(): { name: string; custom: boolean }[] {
+    const seen = new Map<string, boolean>();
+    const scan = (dir: string, custom: boolean) => {
+      if (!fs.existsSync(dir)) return;
+      for (const f of fs.readdirSync(dir)) {
+        if (!DevicesService.IMAGE_EXT.includes(path.extname(f).toLowerCase())) continue;
+        if (!seen.has(f)) seen.set(f, custom);
+      }
+    };
+    scan(this.userImagesPath, true);
+    scan(path.join(this.devicesPath, 'images'), false);
+    return Array.from(seen, ([name, custom]) => ({ name, custom }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  }
+
+  saveImage(name: string, dataBase64: string): { name: string } {
+    const safe = this.safeImageName(name);
+    const raw = String(dataBase64 ?? '').replace(/^data:[^;]+;base64,/, '');
+    if (!raw) throw new BadRequestException('Пустой файл');
+    const buf = Buffer.from(raw, 'base64');
+    if (buf.length === 0) throw new BadRequestException('Не удалось разобрать файл');
+    if (buf.length > 15 * 1024 * 1024) throw new BadRequestException('Файл больше 15 МБ');
+    fs.mkdirSync(this.userImagesPath, { recursive: true });
+    fs.writeFileSync(path.join(this.userImagesPath, safe), buf);
+    return { name: safe };
+  }
+
+  deleteImage(filename: string): void {
+    const safe = path.basename(String(filename ?? ''));
+    const own = path.join(this.userImagesPath, safe);
+    if (!fs.existsSync(own)) {
+      throw new BadRequestException('Это фотография из поставки — её удалить нельзя');
+    }
+    fs.unlinkSync(own);
+  }
+
   private templateFilePath(id: string): string {
     // Имя файла = id, очищенный от всего, что ломает путь
     const safe = String(id).replace(/[\\/:*?"<>|]+/g, '_').trim();

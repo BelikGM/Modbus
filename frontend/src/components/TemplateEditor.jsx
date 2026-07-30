@@ -11,6 +11,7 @@ import api from '../api'
 import { addLog } from '../log'
 import { normalizeOptions } from '../paramFormat'
 import useUndoHistory from '../useUndoHistory'
+import TemplateExtras from './TemplateExtras'
 
 // Редактор типов ПЧ (шаблонов).
 //
@@ -542,6 +543,10 @@ export default function TemplateEditor({ open, onClose }) {
         Семейство определяет, с какими типами разрешены групповые операции: у одного семейства
         должна быть совместимая карта регистров.
       </Typography.Paragraph>
+
+      {/* Остальные разделы JSON-типа: фотографии, связь, коды аварий,
+          оповещения, команда сброса. Свёрнуты, чтобы не заслонять параметры. */}
+      <TemplateExtras draft={editing} onChange={setEditing} />
 
       {editing.isNew && base && (
         <>

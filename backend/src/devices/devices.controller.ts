@@ -48,11 +48,31 @@ export class DevicesController {
     return { success: true };
   }
 
+  // Список доступных фотографий: и поставочные, и загруженные пользователем —
+  // чтобы в редакторе типа можно было выбрать из готовых, а не только загружать
+  @Get('images')
+  listImages() {
+    return this.devicesService.listImages();
+  }
+
+  // Загрузка фотографии для своего типа ПЧ. Файл приходит в base64 внутри JSON:
+  // так не нужен multer со своей настройкой хранилища, а картинки устройств —
+  // это единицы файлов на несколько мегабайт, не поток.
+  @Post('images')
+  uploadImage(@Body() body: { name: string; dataBase64: string }) {
+    return this.devicesService.saveImage(body?.name, body?.dataBase64);
+  }
+
+  @Delete('images/:filename')
+  deleteImage(@Param('filename') filename: string) {
+    this.devicesService.deleteImage(filename);
+    return { success: true };
+  }
+
   @Get('images/:filename')
   getImage(@Param('filename') filename: string, @Res() res: Response) {
-    const safeName = path.basename(filename);
-    const filePath = path.join(this.devicesService.devicesPath, 'images', safeName);
-    if (!fs.existsSync(filePath)) throw new NotFoundException('Image not found');
+    const filePath = this.devicesService.findImage(filename);
+    if (!filePath) throw new NotFoundException('Image not found');
     res.sendFile(filePath);
   }
 
