@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react'
 import {
-  Button, Modal, Progress, Space, Typography, Alert, Tag,
+  Button, Progress, Space, Typography, Alert, Tag,
 } from 'antd'
+import AppModal from './AppModal'
 import {
   SaveOutlined, FolderOpenOutlined, CheckOutlined, CloseOutlined,
 } from '@ant-design/icons'
@@ -186,7 +187,7 @@ export default function BackupRestore({ device, modbusConnected }) {
       </Space>
 
       {/* Прогресс чтения */}
-      <Modal
+      <AppModal
         title="Создание резервной копии…"
         open={phase === 'reading'}
         footer={null}
@@ -199,12 +200,14 @@ export default function BackupRestore({ device, modbusConnected }) {
             {progress.current} / {progress.total} — {progress.label}
           </Typography.Text>
         </Space>
-      </Modal>
+      </AppModal>
 
       {/* Предпросмотр восстановления */}
-      <Modal
+      <AppModal
         title="Восстановление из резервной копии"
         open={phase === 'restore-preview'}
+        /* Enter здесь выключен: кнопка ЗАПИСЫВАЕТ параметры в ПЧ */
+        enterSubmit={false}
         okText={`Записать ${matchCount} параметров`}
         okButtonProps={{ danger: true, disabled: matchCount === 0 }}
         cancelText="Отмена"
@@ -257,10 +260,10 @@ export default function BackupRestore({ device, modbusConnected }) {
             )}
           </Space>
         )}
-      </Modal>
+      </AppModal>
 
       {/* Прогресс записи */}
-      <Modal
+      <AppModal
         title="Запись параметров в устройство…"
         open={phase === 'writing'}
         footer={null}
@@ -273,18 +276,19 @@ export default function BackupRestore({ device, modbusConnected }) {
             {progress.current} / {progress.total} — {progress.label}
           </Typography.Text>
         </Space>
-      </Modal>
+      </AppModal>
 
       {/* Итоги */}
-      <Modal
+      <AppModal
         title="Результат восстановления"
         open={phase === 'summary'}
+        onEnter={reset}
         footer={<Button onClick={reset}>Закрыть</Button>}
         onCancel={reset}
         width={500}
       >
         <WriteSummary results={writeResults} />
-      </Modal>
+      </AppModal>
     </>
   )
 }

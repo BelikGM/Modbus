@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { Button, Select, AutoComplete, Space, Tag, Modal, Form, message, Tooltip, Collapse, Row, Col, Alert } from 'antd'
+import {
+  Button, Select, AutoComplete, Space, Tag, Form, message, Tooltip, Collapse, Row, Col, Alert,
+} from 'antd'
+import AppModal from './AppModal'
 import { ReloadOutlined, ScanOutlined, LoadingOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import socket from '../socket'
 import api from '../api'
@@ -191,7 +194,7 @@ export default function ConnectionPanel({ connected, reconnecting, reconnectAtte
         </Button>
       )}
 
-      <Modal
+      <AppModal
         title="Подключение к устройству"
         open={open}
         onCancel={() => { if (detecting) cancelDetect(); setOpen(false) }}
@@ -341,7 +344,7 @@ export default function ConnectionPanel({ connected, reconnecting, reconnectAtte
             }]}
           />
         </Form>
-      </Modal>
+      </AppModal>
     </Space>
   )
 }

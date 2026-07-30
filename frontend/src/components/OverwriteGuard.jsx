@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Modal, Table, Checkbox, Typography, Alert, Tag, Space, Button } from 'antd'
+import {
+  Table, Checkbox, Typography, Alert, Tag, Space, Button,
+} from 'antd'
+import AppModal from './AppModal'
 import { WarningOutlined } from '@ant-design/icons'
 import { formatParamValue } from '../paramFormat'
 
@@ -89,9 +92,11 @@ export default function OverwriteGuard({ open, conflicts, uncheckedCount, onCanc
     : String(val)
 
   return (
-    <Modal
+    <AppModal
       title={<Space><WarningOutlined style={{ color: '#faad14' }} />Заводские значения затрут настроенные параметры</Space>}
       open={open}
+      /* Enter здесь выключен: кнопка перезаписывает настроенные параметры ПЧ */
+      enterSubmit={false}
       onCancel={onCancel}
       onOk={handleOk}
       okText={checked.size > 0 ? `Записать, перезаписав отмеченные (${checked.size})` : 'Записать, сохранив все текущие значения'}
@@ -213,6 +218,6 @@ export default function OverwriteGuard({ open, conflicts, uncheckedCount, onCanc
           },
         ]}
       />
-    </Modal>
+    </AppModal>
   )
 }

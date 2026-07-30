@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import {
-  Modal, Button, Table, Input, Select, InputNumber, Space, Typography, Tag,
-  message, Popconfirm, Alert, Collapse, Checkbox, Divider, Tooltip,
+  Button, Table, Input, Select, InputNumber, Space, Typography, Tag, message, Popconfirm, Alert, Collapse, Checkbox, Divider, Tooltip,
 } from 'antd'
+import AppModal from './AppModal'
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, ApartmentOutlined, CopyOutlined,
   UndoOutlined, RedoOutlined,
@@ -304,10 +304,11 @@ export default function TemplateEditor({ open, onClose }) {
   // ─── Модели и прошивки ─────────────────────────────────────────────────────
   if (extras) {
     return (
-      <Modal
+      <AppModal
         title={<Space><ApartmentOutlined />Модели и прошивки: {extras.type.name ?? extras.type.id}</Space>}
         open={open}
         onCancel={() => setExtras(null)}
+        onEnter={saveExtras}
         width={780}
         footer={[
           ...undoButtons(extrasUndo),
@@ -413,17 +414,18 @@ export default function TemplateEditor({ open, onClose }) {
             },
           ]}
         />
-      </Modal>
+      </AppModal>
     )
   }
 
   // ─── Список типов ──────────────────────────────────────────────────────────
   if (!editing) {
     return (
-      <Modal
+      <AppModal
         title={<Space><ApartmentOutlined />Типы ПЧ</Space>}
         open={open}
         onCancel={onClose}
+        onEnter={onClose}
         width={820}
         footer={[
           <Button key="new" icon={<PlusOutlined />} onClick={() => startNew(null)}>Создать с нуля</Button>,
@@ -484,7 +486,7 @@ export default function TemplateEditor({ open, onClose }) {
             },
           ]}
         />
-      </Modal>
+      </AppModal>
     )
   }
 
@@ -492,10 +494,11 @@ export default function TemplateEditor({ open, onClose }) {
   const draftParams = editing.groups.flatMap(g => g.params.map(p => ({ ...p, __group: g.id, __groupName: g.name })))
 
   return (
-    <Modal
+    <AppModal
       title={<Space><ApartmentOutlined />{editing.isNew ? 'Новый тип ПЧ' : `Правка типа: ${editing.name}`}</Space>}
       open={open}
       onCancel={() => setEditing(null)}
+      onEnter={save}
       width={1100}
       footer={[
         ...undoButtons(draftUndo),
@@ -776,7 +779,7 @@ export default function TemplateEditor({ open, onClose }) {
 
       {/* Варианты значения для «Перечисления»: пары «число -> подпись». Именно
           так они хранятся в наших шаблонах (пуск/стоп/вперёд/назад и т.п.). */}
-      <Modal
+      <AppModal
         title="Варианты значения"
         open={!!optionsEditor}
         onCancel={() => setOptionsEditor(null)}
@@ -830,7 +833,7 @@ export default function TemplateEditor({ open, onClose }) {
             },
           ]}
         />
-      </Modal>
-    </Modal>
+      </AppModal>
+    </AppModal>
   )
 }

@@ -1,5 +1,8 @@
 import { useState, useRef } from 'react'
-import { Typography, Badge, Avatar, Tag, Button, Modal, Form, Input, InputNumber, Select, Popconfirm, Tooltip, Checkbox, Space, message } from 'antd'
+import {
+  Typography, Badge, Avatar, Tag, Button, Form, Input, InputNumber, Select, Popconfirm, Tooltip, Checkbox, Space, message,
+} from 'antd'
+import AppModal from './AppModal'
 import { LinkOutlined, DisconnectOutlined, PlusOutlined, DeleteOutlined, EditOutlined, HolderOutlined } from '@ant-design/icons'
 import {
   DndContext,
@@ -659,7 +662,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
       )}
 
       {/* Модалка добавления */}
-      <Modal
+      <AppModal
         title="Добавить устройство"
         open={addOpen}
         onCancel={() => setAddOpen(false)}
@@ -679,10 +682,10 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
             <InputNumber min={1} max={247} style={{ width: '100%' }} placeholder="1–247" />
           </Form.Item>
         </Form>
-      </Modal>
+      </AppModal>
 
       {/* Модалка редактирования */}
-      <Modal
+      <AppModal
         title={`Редактировать: ${editDevice?.name}`}
         open={!!editDevice}
         onCancel={() => setEditDevice(null)}
@@ -741,7 +744,7 @@ export default function DeviceList({ devices, selectedIds, onSelectionChange, co
             (не у каждого устройства свои), их можно изменить в панели «Подключение» в шапке приложения.
           </Typography.Text>
         </Form>
-      </Modal>
+      </AppModal>
     </>
   )
 }

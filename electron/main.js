@@ -4,45 +4,64 @@ const path = require('path')
 const fs = require('fs')
 const http = require('http')
 
-// ── Где хранить данные пользователя (проекты, настройки, журнал) ──────────────
-// По умолчанию Electron предлагает %APPDATA%\<имя> — данные оказываются далеко
-// от установленной программы, их неудобно найти, скопировать и перенести.
-// Поэтому храним их в папке data РЯДОМ С EXE (куда установили — туда и данные).
-// Если писать туда нельзя (например, установили в Program Files без прав),
-// молча ломаться нельзя — откатываемся на стандартный userData.
+// ── Где хранить данные пользователя (проекты, настройки, журнал, свои типы) ───
+//
+// Одно постоянное место, не зависящее от того, куда установлена программа:
+// «Документы\Modbus Controller». Причина именно такая:
+//
+// • %APPDATA% (предложение Electron по умолчанию) — данные далеко от глаз,
+//   их неудобно найти, скопировать на другой компьютер и положить в бэкап.
+// • Папка рядом с exe выглядит удобной, но смертельно опасна: деинсталлятор
+//   NSIS выполняет RMDir /r $INSTDIR, а обновление версии запускает его же —
+//   то есть каждое обновление стирало бы все проекты вместе с программой.
+//
+// «Документы» переживают и обновление, и переустановку, видны пользователю и
+// не требуют прав администратора. Если писать туда нельзя (перенаправленный
+// профиль, политика домена) — молча ломаться нельзя, откатываемся на userData.
+const DATA_FOLDER_NAME = 'Modbus Controller'
+
 function resolveDataDir() {
-  const nextToExe = path.join(path.dirname(app.getPath('exe')), 'data')
-  try {
-    fs.mkdirSync(nextToExe, { recursive: true })
-    const probe = path.join(nextToExe, '.write-test')
-    fs.writeFileSync(probe, 'ok')
-    fs.unlinkSync(probe)
-  } catch (e) {
-    const fallback = app.getPath('userData')
-    console.warn(`[data] «${nextToExe}» недоступна для записи (${e.code ?? e.message}), данные — в ${fallback}`)
-    return fallback
+  const candidates = []
+  try { candidates.push(path.join(app.getPath('documents'), DATA_FOLDER_NAME)) } catch { /* нет «Документов» */ }
+  candidates.push(app.getPath('userData'))
+
+  for (const dir of candidates) {
+    try {
+      fs.mkdirSync(dir, { recursive: true })
+      const probe = path.join(dir, '.write-test')
+      fs.writeFileSync(probe, 'ok')
+      fs.unlinkSync(probe)
+    } catch (e) {
+      console.warn(`[data] «${dir}» недоступна для записи (${e.code ?? e.message})`)
+      continue
+    }
+    migrateLegacyData(dir)
+    return dir
   }
-  migrateFromUserData(nextToExe)
-  return nextToExe
+  return app.getPath('userData')
 }
 
-// Разовый перенос ранее созданных данных из %APPDATA%: иначе после обновления
+// Разовый перенос данных из прежних мест хранения: иначе после обновления
 // пользователь увидел бы пустой список проектов и решил, что всё потерялось.
-// Копируем только если рядом с exe данных ещё нет.
-function migrateFromUserData(targetDir) {
-  const legacy = app.getPath('userData')
-  if (legacy === targetDir) return
-  const items = ['projects', 'logs', 'settings.json', 'value-presets.json', 'favorite-params.json']
-  const alreadyHasData = items.some(n => fs.existsSync(path.join(targetDir, n)))
-  if (alreadyHasData) return
+// Порядок важен — сначала папка рядом с exe (более свежее место), потом APPDATA.
+// Копируем только то, чего в целевой папке ещё нет.
+function migrateLegacyData(targetDir) {
+  const legacyDirs = [
+    path.join(path.dirname(app.getPath('exe')), 'data'),
+    app.getPath('userData'),
+  ]
+  const items = ['projects', 'logs', 'templates', 'settings.json', 'value-presets.json', 'favorite-params.json', 'template-extras.json']
   let moved = 0
-  for (const name of items) {
-    const from = path.join(legacy, name)
-    const to = path.join(targetDir, name)
-    if (!fs.existsSync(from) || fs.existsSync(to)) continue
-    try { fs.cpSync(from, to, { recursive: true }); moved++ } catch { /* пропускаем */ }
+  for (const legacy of legacyDirs) {
+    if (path.resolve(legacy) === path.resolve(targetDir) || !fs.existsSync(legacy)) continue
+    for (const name of items) {
+      const from = path.join(legacy, name)
+      const to = path.join(targetDir, name)
+      if (!fs.existsSync(from) || fs.existsSync(to)) continue
+      try { fs.cpSync(from, to, { recursive: true }); moved++ } catch { /* пропускаем */ }
+    }
+    if (moved) console.log(`[data] перенесено из ${legacy}: ${moved} элементов`)
   }
-  if (moved) console.log(`[data] перенесено из ${legacy}: ${moved} элементов`)
 }
 
 let backendProcess = null
@@ -110,6 +129,10 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     title: 'Modbus Controller',
+    // Иконка окна и панели задач. Значок самого exe ставит electron-builder,
+    // но окно берёт свой отдельно — без этого в панели задач висел бы
+    // стандартный значок Electron.
+    icon: path.join(__dirname, '..', 'build', 'icon.png'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

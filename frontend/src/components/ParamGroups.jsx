@@ -1,5 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Collapse, Button, Input, message, Typography, Popconfirm, Space, Modal, Checkbox, Progress, Select, Tag, Tooltip, Table, Alert } from 'antd'
+import {
+  Collapse, Button, Input, message, Typography, Popconfirm, Space, Checkbox, Progress, Select, Tag, Tooltip, Table, Alert,
+} from 'antd'
+import AppModal from './AppModal'
 import { DownloadOutlined, SearchOutlined, RollbackOutlined, HolderOutlined, UploadOutlined, FileTextOutlined, ToolOutlined } from '@ant-design/icons'
 import {
   DndContext,
@@ -1318,7 +1321,7 @@ export default function ParamGroups({
       </DndContext>
 
       {/* Состав избранного: отмечаем ОТДЕЛЬНЫЕ параметры (не группы целиком) */}
-      <Modal
+      <AppModal
         title={<Space><ToolOutlined />Состав группы «🔧 Отладка»</Space>}
         open={favModalOpen}
         onCancel={() => setFavModalOpen(false)}
@@ -1412,10 +1415,10 @@ export default function ParamGroups({
             }).filter(Boolean)}
           />
         </div>
-      </Modal>
+      </AppModal>
 
       {/* Шаблон значений из избранного */}
-      <Modal
+      <AppModal
         title={<Space><FileTextOutlined />Шаблон из избранного</Space>}
         open={favPresetOpen}
         onCancel={() => setFavPresetOpen(false)}
@@ -1435,11 +1438,11 @@ export default function ParamGroups({
           onChange={e => setFavPresetName(e.target.value)}
           onPressEnter={createPresetFromFavorites}
         />
-      </Modal>
+      </AppModal>
 
       {/* Отчёт: какие заводские значения подставить не удалось. Молча пропускать
           их нельзя — оператор должен знать, что эти параметры остались как есть. */}
-      <Modal
+      <AppModal
         title={<Space><RollbackOutlined />Заводские значения подготовлены не полностью</Space>}
         open={!!factoryReport}
         onCancel={() => setFactoryReport(null)}
@@ -1479,9 +1482,9 @@ export default function ParamGroups({
             { title: 'Причина', dataIndex: 'reason' },
           ]}
         />
-      </Modal>
+      </AppModal>
 
-      <Modal
+      <AppModal
         title={<Space><FileTextOutlined />Подготовить значения из шаблона</Space>}
         open={presetModalOpen}
         onCancel={() => setPresetModalOpen(false)}
@@ -1502,7 +1505,7 @@ export default function ParamGroups({
           options={presets.map(p => ({ value: p.id, label: `${p.name} (${Object.keys(p.values).length} рег.)` }))}
           notFoundContent="Нет шаблонов для этого типа ПЧ"
         />
-      </Modal>
+      </AppModal>
     </>
   )
 }

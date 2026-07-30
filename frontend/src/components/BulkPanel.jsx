@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { Space, Typography, Tag, Alert, message, Tabs, Table, Button, Tooltip, Popconfirm, Progress, Modal } from 'antd'
+import {
+  Space, Typography, Tag, Alert, message, Tabs, Table, Button, Tooltip, Popconfirm, Progress,
+} from 'antd'
+import AppModal from './AppModal'
 import { CloseOutlined, ClearOutlined, DownloadOutlined, UploadOutlined, LoadingOutlined, WarningOutlined } from '@ant-design/icons'
 import socket from '../socket'
 import ParamGroups from './ParamGroups'
@@ -843,7 +846,7 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
 
       {/* Разбор загруженного CSV — показываем ДО применения: сколько значений
           ляжет в подготовленные, по каким ПЧ, и что не разобралось. */}
-      <Modal
+      <AppModal
         title={<Space><UploadOutlined />Подготовить значения из CSV</Space>}
         open={!!importPreview}
         onCancel={() => setImportPreview(null)}
@@ -896,12 +899,12 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
             />
           </>
         )}
-      </Modal>
+      </AppModal>
 
       {/* Часть параметров меняется только на остановленном приводе. Останавливаем
           не «на всякий случай», а лишь когда такие параметры реально есть в
           записи и ПЧ сейчас вращается. */}
-      <Modal
+      <AppModal
         title={<Space><WarningOutlined style={{ color: '#faad14' }} />Для записи нужен остановленный ПЧ</Space>}
         open={!!stopGuard}
         onCancel={() => setStopGuard(null)}
@@ -955,7 +958,7 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
           за вами. «Записать только то, что можно на ходу» — приводы не трогаем,
           параметры «только на остановленном» пропускаем.
         </Typography.Paragraph>
-      </Modal>
+      </AppModal>
     </div>
   )
 }

@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import {
-  Button, Modal, InputNumber, Progress, Space,
-  Tag, Typography, Alert, Row, Col, Divider, Tooltip, List, Spin, AutoComplete,
+  Button, InputNumber, Progress, Space, Tag, Typography, Alert, Row, Col, Divider, Tooltip, List, Spin, AutoComplete,
 } from 'antd'
+import AppModal from './AppModal'
 import { ApartmentOutlined, CloseCircleOutlined, PlusCircleOutlined, CheckCircleOutlined, ExclamationCircleOutlined, LoadingOutlined, InfoCircleOutlined, ThunderboltOutlined, RedoOutlined } from '@ant-design/icons'
 import socket from '../socket'
 import api from '../api'
@@ -235,7 +235,7 @@ export default function BusScanner({ connected }) {
         </Button>
       </Tooltip>
 
-      <Modal
+      <AppModal
         title={
           <Space>
             <InfoCircleOutlined />
@@ -243,6 +243,7 @@ export default function BusScanner({ connected }) {
           </Space>
         }
         open={!!probeModal}
+        onEnter={() => setProbeModal(null)}
         onCancel={() => setProbeModal(null)}
         footer={<Button onClick={() => setProbeModal(null)}>Закрыть</Button>}
         width={620}
@@ -277,9 +278,9 @@ export default function BusScanner({ connected }) {
             </div>
           )
         }
-      </Modal>
+      </AppModal>
 
-      <Modal
+      <AppModal
         title={
           <Space>
             <ApartmentOutlined />
@@ -288,6 +289,8 @@ export default function BusScanner({ connected }) {
         }
         open={open}
         onCancel={handleClose}
+        onEnter={connected ? handleStart : handleAutoDetect}
+        enterSubmit={!running && !sweeping && (connected || !!selectedPort)}
         footer={null}
         width={640}
         destroyOnHidden={false}
@@ -531,7 +534,7 @@ export default function BusScanner({ connected }) {
           </Space>
 
         </Space>
-      </Modal>
+      </AppModal>
     </>
   )
 }

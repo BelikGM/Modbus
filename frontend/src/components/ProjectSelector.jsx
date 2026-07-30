@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import {
-  Dropdown, Button, Modal, Form, Input, Space, Popconfirm,
-  message, Alert, Typography, Select, AutoComplete, Tag,
+  Dropdown, Button, Form, Input, Space, Popconfirm, message, Alert, Typography, Select, AutoComplete, Tag,
 } from 'antd'
+import AppModal from './AppModal'
 import {
   PlusOutlined, FolderOpenOutlined, DownOutlined,
   EditOutlined, DeleteOutlined, ImportOutlined, ExportOutlined,
@@ -269,7 +269,7 @@ export default function ProjectSelector({ onProjectChange, onProjectInit }) {
 
       {/* Mismatch alert */}
       {mismatches.length > 0 && (
-        <Modal
+        <AppModal
           title={<Space><WarningOutlined style={{ color: '#faad14' }} />Несоответствие имён проекта</Space>}
           open
           footer={null}
@@ -340,11 +340,11 @@ export default function ProjectSelector({ onProjectChange, onProjectInit }) {
               </div>
             )
           })}
-        </Modal>
+        </AppModal>
       )}
 
       {/* Create project */}
-      <Modal
+      <AppModal
         title="Новый проект"
         open={createOpen}
         onCancel={() => { setCreateOpen(false); createForm.resetFields() }}
@@ -357,10 +357,10 @@ export default function ProjectSelector({ onProjectChange, onProjectInit }) {
             <Input placeholder="Например: Завод 1" autoFocus />
           </Form.Item>
         </Form>
-      </Modal>
+      </AppModal>
 
       {/* Port required dialog */}
-      <Modal
+      <AppModal
         title={
           <Space>
             <DisconnectOutlined style={{ color: '#faad14' }} />
@@ -414,10 +414,10 @@ export default function ProjectSelector({ onProjectChange, onProjectInit }) {
             />
           </Space>
         </Space>
-      </Modal>
+      </AppModal>
 
       {/* Rename project */}
-      <Modal
+      <AppModal
         title="Переименовать проект"
         open={!!editProject}
         onCancel={() => { setEditProject(null); editForm.resetFields() }}
@@ -430,7 +430,7 @@ export default function ProjectSelector({ onProjectChange, onProjectInit }) {
             <Input autoFocus />
           </Form.Item>
         </Form>
-      </Modal>
+      </AppModal>
     </>
   )
 }
