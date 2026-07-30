@@ -318,9 +318,11 @@ export default function App() {
           </Badge>
         </div>
 
-        {/* Кнопки окна прижаты к правому краю вплотную, как системные, —
-            поэтому съедаем правый отступ шапки. В браузере не рисуются. */}
-        <div style={{ flexShrink: 0, marginLeft: 16, marginRight: -24, alignSelf: 'stretch', display: 'flex' }}>
+        {/* Кнопки окна прижаты к самому верхнему правому углу, как системные, —
+            поэтому съедаем правый отступ шапки и не растягиваем их на всю её
+            высоту (alignSelf: flex-start). Саму шапку это не меняет.
+            В браузере не рисуются. */}
+        <div style={{ flexShrink: 0, marginLeft: 16, marginRight: -24, alignSelf: 'flex-start', display: 'flex' }}>
           <WindowControls />
         </div>
       </Header>

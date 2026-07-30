@@ -1,16 +1,60 @@
 import { useState, useEffect } from 'react'
-import { MinusOutlined, BorderOutlined, SwitcherOutlined, CloseOutlined } from '@ant-design/icons'
 
 // Кнопки управления окном — свернуть / развернуть / закрыть.
 //
 // Окно собранной программы идёт без рамки Windows (frame: false), поэтому
-// родных кнопок в правом верхнем углу нет и рисуем их сами. Размеры и поведение
-// повторяют системные (46×высота шапки, красный «крестик» при наведении), чтобы
-// оператор не гадал, куда нажимать.
+// родных кнопок в правом верхнем углу нет и рисуем их сами. Вид — как в
+// VS Code: узкие кнопки, прижатые к самому верху правого угла, и тонкие
+// штриховые значки, а не залитые иконки из набора antd (те в шапке смотрелись
+// крупными и «тяжёлыми»). Красный «крестик» при наведении — как в Windows.
 //
 // В браузере (запуск как обычный локальный сервер) моста в главный процесс нет —
 // компонент просто ничего не рисует.
-export default function WindowControls({ height = 64 }) {
+
+// Значки рисуем сами: 10×10, обводка в 1 px по currentColor. Готовые наборы
+// иконок дают залитые глифы другого веса — рядом с тонкой рамкой окна это
+// заметно.
+const STROKE = { fill: 'none', stroke: 'currentColor', strokeWidth: 1 }
+
+function Glyph({ children }) {
+  return <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">{children}</svg>
+}
+
+const ICONS = {
+  minimize: <Glyph><path d="M0 5h10" {...STROKE} /></Glyph>,
+  maximize: <Glyph><rect x="0.5" y="0.5" width="9" height="9" {...STROKE} /></Glyph>,
+  // «Восстановить» — два квадрата уступом: передний целиком, задний виден
+  // только верхней и правой сторонами.
+  restore: (
+    <Glyph>
+      <path d="M2.5 2.5V0.5h7v7h-2" {...STROKE} />
+      <rect x="0.5" y="2.5" width="7" height="7" {...STROKE} />
+    </Glyph>
+  ),
+  close: <Glyph><path d="M0.5 0.5l9 9M9.5 0.5l-9 9" {...STROKE} /></Glyph>,
+}
+
+// Узкие и низкие, как в VS Code: 40×30 вместо кнопки во всю высоту шапки.
+const BUTTON = {
+  width: 40, height: 30, border: 'none', background: 'transparent',
+  color: '#fff', cursor: 'pointer', padding: 0,
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+}
+
+function CaptionButton({ title, icon, onClick, danger }) {
+  const paint = (e, color) => { e.currentTarget.style.background = color }
+  return (
+    <button
+      type="button" title={title} style={BUTTON} onClick={onClick}
+      onMouseEnter={e => paint(e, danger ? '#e81123' : '#ffffff26')}
+      onMouseLeave={e => paint(e, 'transparent')}
+    >
+      {icon}
+    </button>
+  )
+}
+
+export default function WindowControls() {
   const api = typeof window !== 'undefined' ? window.modbusDesktop?.windowControls : null
   const [maximized, setMaximized] = useState(false)
 
@@ -18,38 +62,17 @@ export default function WindowControls({ height = 64 }) {
 
   if (!api) return null
 
-  const base = {
-    width: 46, height, border: 'none', background: 'transparent',
-    color: '#fff', cursor: 'pointer', display: 'flex',
-    alignItems: 'center', justifyContent: 'center', padding: 0, fontSize: 13,
-  }
-  const hover = (e, color) => { e.currentTarget.style.background = color }
-
   return (
-    <div style={{ display: 'flex', alignSelf: 'stretch' }}>
-      <button
-        type="button" title="Свернуть" style={base}
-        onMouseEnter={e => hover(e, '#ffffff26')} onMouseLeave={e => hover(e, 'transparent')}
-        onClick={() => api.minimize()}
-      >
-        <MinusOutlined />
-      </button>
-      <button
-        type="button" title={maximized ? 'Восстановить размер' : 'Развернуть'} style={base}
-        onMouseEnter={e => hover(e, '#ffffff26')} onMouseLeave={e => hover(e, 'transparent')}
+    <div style={{ display: 'flex' }}>
+      <CaptionButton title="Свернуть" icon={ICONS.minimize} onClick={() => api.minimize()} />
+      <CaptionButton
+        title={maximized ? 'Восстановить размер' : 'Развернуть'}
+        icon={maximized ? ICONS.restore : ICONS.maximize}
         onClick={() => api.toggleMaximize()}
-      >
-        {maximized ? <SwitcherOutlined /> : <BorderOutlined />}
-      </button>
-      {/* Закрытие — красным при наведении, как в Windows: это единственная
-          кнопка здесь, нажатие которой нельзя отменить. */}
-      <button
-        type="button" title="Закрыть" style={base}
-        onMouseEnter={e => hover(e, '#e81123')} onMouseLeave={e => hover(e, 'transparent')}
-        onClick={() => api.close()}
-      >
-        <CloseOutlined />
-      </button>
+      />
+      {/* Закрытие — красным при наведении: единственная кнопка здесь, нажатие
+          которой нельзя отменить. */}
+      <CaptionButton title="Закрыть" icon={ICONS.close} onClick={() => api.close()} danger />
     </div>
   )
 }

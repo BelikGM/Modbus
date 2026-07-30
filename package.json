@@ -1,7 +1,7 @@
 {
   "name": "modbus-controller",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Modbus RTU / RS-485 device manager",
   "author": {
     "name": "BelikGM",
