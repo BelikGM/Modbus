@@ -20,14 +20,23 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
 
   readonly devicesPath: string;
   readonly templatesPath: string;
+  // Свои типы ПЧ живут ОТДЕЛЬНО от поставки — в папке данных.
+  // В папку поставки писать нельзя: при установке обновления она заменяется
+  // целиком (созданные типы пропали бы), а если программа стоит в Program Files,
+  // запись туда вообще запрещена системой.
+  readonly userTemplatesPath: string;
 
   constructor(private readonly projectsService: ProjectsService) {
     this.devicesPath = path.join(process.cwd(), '..', 'devices');
     this.templatesPath = path.join(this.devicesPath, 'templates');
+    const userDataPath = process.env.USER_DATA_PATH ?? path.join(process.cwd(), '..');
+    this.userTemplatesPath = path.join(userDataPath, 'templates');
   }
 
   async onModuleInit() {
     fs.mkdirSync(this.templatesPath, { recursive: true });
+    fs.mkdirSync(this.userTemplatesPath, { recursive: true });
+    this.migrateCustomTemplates();
     this.loadAllTemplates();
     await this.startTemplateWatcher();
     this.loadActiveProjectInstances();
@@ -41,10 +50,41 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
   // ─── Templates ─────────────────────────────────────────────────────────────
 
   private loadAllTemplates() {
+    // Сначала поставка, затем свои: при совпадении id свой тип перекрывает
+    // штатный (пользователь явно этого хотел), а не наоборот.
+    for (const dir of [this.templatesPath, this.userTemplatesPath]) {
+      if (!fs.existsSync(dir)) continue;
+      for (const file of fs.readdirSync(dir).filter(f => f.endsWith('.json'))) {
+        this.loadTemplateFile(path.join(dir, file));
+      }
+    }
+  }
+
+  // Разовый перенос типов, созданных до разделения папок: они лежали среди
+  // файлов поставки и потерялись бы при первом же обновлении программы.
+  private migrateCustomTemplates() {
     if (!fs.existsSync(this.templatesPath)) return;
     for (const file of fs.readdirSync(this.templatesPath).filter(f => f.endsWith('.json'))) {
-      this.loadTemplateFile(path.join(this.templatesPath, file));
+      const from = path.join(this.templatesPath, file);
+      try {
+        const raw = JSON.parse(this.stripJsonComments(fs.readFileSync(from, 'utf-8')));
+        if (raw?.custom !== true) continue;
+        const to = path.join(this.userTemplatesPath, file);
+        if (fs.existsSync(to)) continue;
+        fs.copyFileSync(from, to);
+        fs.unlinkSync(from);
+        console.log(`[templates] свой тип «${raw.id ?? file}» перенесён в папку данных`);
+      } catch {
+        // битый файл — не наше дело, о нём сообщит loadTemplateFile
+      }
     }
+  }
+
+  // Файл принадлежит пользователю (его можно менять и удалять), если лежит
+  // в папке данных. Признак определяется расположением, а не полем в JSON:
+  // так штатный файл нельзя «сделать своим», подправив в нём одну строчку.
+  private isUserTemplateFile(filePath: string): boolean {
+    return path.resolve(filePath).startsWith(path.resolve(this.userTemplatesPath) + path.sep);
   }
 
   // Ошибки разбора шаблонов: имя файла -> текст ошибки. Раньше битый файл
@@ -100,7 +140,7 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
       const prevId = this.templateFileToId.get(filePath);
       if (prevId && prevId !== config.id) this.templates.delete(prevId);
       this.templateFileToId.set(filePath, config.id);
-      this.templates.set(config.id, { ...config, template: true });
+      this.templates.set(config.id, { ...config, template: true, custom: this.isUserTemplateFile(filePath) });
       this.templateErrors.delete(fileName);
       this.events.emit('templates:errors', this.getTemplateErrors());
       return config;
@@ -123,7 +163,7 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
 
   private async startTemplateWatcher() {
     const chokidar = await import('chokidar');
-    this.templateWatcher = chokidar.watch(this.templatesPath, {
+    this.templateWatcher = chokidar.watch([this.templatesPath, this.userTemplatesPath], {
       ignoreInitial: true,
       awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
     });
@@ -137,14 +177,22 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
       const c = this.loadTemplateFile(fp);
       if (c) this.events.emit('device:changed', c);
     });
-    this.templateWatcher.on('unlink', (fp: string) => {
-      const id = this.templateFileToId.get(fp);
-      if (id) {
-        this.templates.delete(id);
-        this.templateFileToId.delete(fp);
-        this.events.emit('device:removed', id);
-      }
-    });
+    this.templateWatcher.on('unlink', (fp: string) => this.forgetTemplateFile(fp));
+  }
+
+  // Файл шаблона исчез. Если тот же id есть и в другой папке (свой тип
+  // перекрывал штатный), возвращаем оставшийся файл, а не «теряем» тип целиком.
+  private forgetTemplateFile(filePath: string) {
+    const id = this.templateFileToId.get(filePath);
+    if (!id) return;
+    this.templates.delete(id);
+    this.templateFileToId.delete(filePath);
+    const survivor = Array.from(this.templateFileToId).find(([, tid]) => tid === id)?.[0];
+    if (survivor && fs.existsSync(survivor)) {
+      const c = this.loadTemplateFile(survivor);
+      if (c) { this.events.emit('device:changed', this.templates.get(id)!); return; }
+    }
+    this.events.emit('device:removed', id);
   }
 
   // ─── Instances ─────────────────────────────────────────────────────────────
@@ -590,7 +638,7 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     // Имя файла = id, очищенный от всего, что ломает путь
     const safe = String(id).replace(/[\\/:*?"<>|]+/g, '_').trim();
     if (!safe) throw new BadRequestException('Некорректный идентификатор типа');
-    return path.join(this.templatesPath, `${safe}.json`);
+    return path.join(this.userTemplatesPath, `${safe}.json`);
   }
 
   private assertCustomTemplate(id: string): DeviceConfig {
@@ -639,11 +687,12 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
         `Тип используют ${used.length} устройств (${used.map(u => u.name).join(', ')}). Смените им тип или удалите их.`,
       );
     }
+    // Удаляем только файл в папке данных: тип из поставки сюда не дойдёт
+    // (assertCustomTemplate выше), но подстраховка не лишняя.
     let file: string | null = null;
-    for (const [fp, tid] of this.templateFileToId) if (tid === id) file = fp;
-    if (file && fs.existsSync(file)) fs.unlinkSync(file);
-    this.templates.delete(id);
-    if (file) this.templateFileToId.delete(file);
-    this.events.emit('device:removed', id);
+    for (const [fp, tid] of this.templateFileToId) if (tid === id && this.isUserTemplateFile(fp)) file = fp;
+    if (!file) throw new BadRequestException('Файл этого типа не найден в папке данных');
+    if (fs.existsSync(file)) fs.unlinkSync(file);
+    this.forgetTemplateFile(file);
   }
 }

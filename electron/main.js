@@ -125,9 +125,11 @@ function createWindow() {
 // что для оператора на объекте бесполезно. Собираем своё: только нужные пункты
 // и с понятными названиями.
 function buildMenu() {
-  const templatesDir = app.isPackaged
-    ? path.join(process.resourcesPath, 'devices', 'templates')
-    : path.join(__dirname, '..', 'devices', 'templates')
+  // Своя папка типов, а не поставочная: там лежат созданные пользователем типы,
+  // и только её содержимое переживает обновление программы. Путь вычисляем
+  // в момент клика — меню строится раньше, чем backend определит папку данных.
+  const userTemplatesDir = () =>
+    path.join(process.env.MODBUS_DATA_DIR || app.getPath('userData'), 'templates')
 
   const template = [
     {
@@ -177,8 +179,12 @@ function buildMenu() {
           click: () => shell.openPath(process.env.MODBUS_DATA_DIR || app.getPath('userData')),
         },
         {
-          label: 'Открыть папку с типами ПЧ',
-          click: () => shell.openPath(templatesDir),
+          label: 'Открыть папку со своими типами ПЧ',
+          click: () => {
+            const dir = userTemplatesDir()
+            try { fs.mkdirSync(dir, { recursive: true }) } catch { /* покажем как есть */ }
+            shell.openPath(dir)
+          },
         },
         { type: 'separator' },
         {

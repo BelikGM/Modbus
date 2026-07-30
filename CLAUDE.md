@@ -39,14 +39,15 @@ Modbus/
     src/
       components/      ← UI компоненты
   devices/
-    templates/         ← JSON-шаблоны моделей ПЧ (карта регистров)
+    templates/         ← JSON-шаблоны моделей ПЧ из поставки (карта регистров, только чтение)
     images/            ← фото устройств и схемы подключения
   projects/            ← данные проектов пользователя (в .gitignore, создаются в userData)
   electron/            ← main.js (форкает backend, ждёт готовности, открывает окно), afterPack.js
 ```
 
 ## Концепция — «Шаблон + Проект» (не «файл = устройство»)
-- `devices/templates/*.json` — шаблон модели ПЧ: карта регистров, `errorCodes`, `alerts`, `access_legend`. Общий для всех устройств этой модели.
+- `devices/templates/*.json` — шаблон модели ПЧ: карта регистров, `errorCodes`, `alerts`, `access_legend`. Общий для всех устройств этой модели. Это ПОСТАВКА — только чтение, правка запрещена (`assertCustomTemplate`).
+- `<userData>/templates/*.json` — типы, созданные пользователем в редакторе (`TemplateEditor.jsx`). Признак «свой» (`custom`) определяется ПАПКОЙ, а не полем в JSON, поэтому штатный файл нельзя сделать редактируемым правкой одной строчки. Писать/удалять можно только здесь: папка поставки заменяется целиком при обновлении программы, а в Program Files ещё и недоступна для записи. Типы, созданные до разделения папок, переносятся при старте (`migrateCustomTemplates`). При совпадении id свой тип перекрывает штатный.
 - Проект (`projects/<id>/<id>.project.json`) хранит **инстансы** — конкретные устройства на шине: `{ id, name, templateId, connection: { slaveId, ... }, notes, pendingWrites, currentValues }`.
 - `DevicesService.merge()` на лету склеивает шаблон + инстанс в `DeviceConfig`, который видит фронт и API.
 - chokidar следит за `/devices/templates/` (правки шаблона → `device:changed` всем устройствам этой модели) и за `/projects/` (переключение/переименование проекта → `devices:reloaded`).
@@ -232,7 +233,7 @@ client.writeRegister(108, 150)
 **`device.types.ts`** — типы: `DeviceParam`, `ParamGroup`, `DeviceConnection`, `AlertRule` (`paramId`, `condition: gt|gte|lt|lte|eq|neq`, `threshold`, `level`, `message`), `DeviceConfig` (включает `template?`, `templateId?`, `errorCodes?`, `alerts?`, `access_legend?`).
 
 **`devices.service.ts`**:
-- `onModuleInit()` — грузит все шаблоны из `/devices/templates/`, запускает chokidar-слежку за ними, грузит инстансы активного проекта; подписывается на `projectsService.events('project:changed')`, чтобы перезагрузить инстансы при смене проекта
+- `onModuleInit()` — грузит шаблоны из ДВУХ папок (`/devices/templates/` — поставка, `<userData>/templates/` — свои), запускает chokidar-слежку за ними, грузит инстансы активного проекта; подписывается на `projectsService.events('project:changed')`, чтобы перезагрузить инстансы при смене проекта
 - `loadTemplateFile` / `startTemplateWatcher` — hot-reload шаблонов (`device:added/changed/removed`)
 - `merge(instance)` — склеивает шаблон + инстанс в итоговый `DeviceConfig` (id/name/connection берутся из инстанса)
 - `getAll()` / `getById(id)` / `findParam(deviceId, paramId)` — как раньше, но по объединённому набору (шаблоны + инстансы текущего проекта)
