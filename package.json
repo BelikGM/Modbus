@@ -51,7 +51,8 @@
         "ru_RU",
         "en_US"
       ],
-      "language": "1049"
+      "language": "1049",
+      "include": "build/installer.nsh"
     },
     "mac": {
       "target": "dmg",

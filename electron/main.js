@@ -6,22 +6,22 @@ const http = require('http')
 
 // ── Где хранить данные пользователя (проекты, настройки, журнал, свои типы) ───
 //
-// Одно постоянное место, не зависящее от того, куда установлена программа:
-// «Документы\Modbus Controller». Причина именно такая:
+// Папка `data` РЯДОМ С ПРОГРАММОЙ: куда установили — туда и данные. Программу
+// можно распаковать в любой каталог, она сама поймёт, где искать и куда писать,
+// а всю папку целиком можно скопировать на другой компьютер или на флешку.
 //
-// • %APPDATA% (предложение Electron по умолчанию) — данные далеко от глаз,
-//   их неудобно найти, скопировать на другой компьютер и положить в бэкап.
-// • Папка рядом с exe выглядит удобной, но смертельно опасна: деинсталлятор
-//   NSIS выполняет RMDir /r $INSTDIR, а обновление версии запускает его же —
-//   то есть каждое обновление стирало бы все проекты вместе с программой.
+// Обычно так не делают, и по делу: деинсталлятор NSIS выполняет
+// RMDir /r $INSTDIR, а установка новой версии сначала запускает деинсталлятор
+// старой — при таком раскладе обновление стирало бы все проекты. Поэтому
+// деинсталлятору отдельно объяснено, что папку `data` трогать нельзя
+// (build/installer.nsh, макрос customRemoveFiles).
 //
-// «Документы» переживают и обновление, и переустановку, видны пользователю и
-// не требуют прав администратора. Если писать туда нельзя (перенаправленный
-// профиль, политика домена) — молча ломаться нельзя, откатываемся на userData.
+// Если писать рядом с программой нельзя (установка в Program Files без прав),
+// молча ломаться нельзя — откатываемся на «Документы», затем на userData.
 const DATA_FOLDER_NAME = 'Modbus Controller'
 
 function resolveDataDir() {
-  const candidates = []
+  const candidates = [path.join(path.dirname(app.getPath('exe')), 'data')]
   try { candidates.push(path.join(app.getPath('documents'), DATA_FOLDER_NAME)) } catch { /* нет «Документов» */ }
   candidates.push(app.getPath('userData'))
 
@@ -41,20 +41,35 @@ function resolveDataDir() {
   return app.getPath('userData')
 }
 
-// Разовый перенос данных из прежних мест хранения: иначе после обновления
-// пользователь увидел бы пустой список проектов и решил, что всё потерялось.
-// Порядок важен — сначала папка рядом с exe (более свежее место), потом APPDATA.
-// Копируем только то, чего в целевой папке ещё нет.
+// Перенос данных из прежних мест хранения: иначе после обновления пользователь
+// увидел бы пустой список проектов и решил, что всё потерялось.
+//
+// Переносим ПОШТУЧНО, а не папками целиком. Раньше копировалась папка `projects`
+// как единое целое и только если её ещё нет — из-за этого один проект, созданный
+// в новом месте, навсегда закрывал дорогу всем проектам из старого: папка уже
+// существует, значит «переносить нечего». Теперь сверяется каждый проект.
 function migrateLegacyData(targetDir) {
   const legacyDirs = [
-    path.join(path.dirname(app.getPath('exe')), 'data'),
+    path.join(app.getPath('documents') || '', DATA_FOLDER_NAME),
     app.getPath('userData'),
   ]
-  const items = ['projects', 'logs', 'templates', 'settings.json', 'value-presets.json', 'favorite-params.json', 'template-extras.json']
-  let moved = 0
+  const merged = ['projects', 'logs', 'templates']   // содержимое сливаем по элементам
+  const single = ['settings.json', 'value-presets.json', 'favorite-params.json', 'template-extras.json']
+
   for (const legacy of legacyDirs) {
-    if (path.resolve(legacy) === path.resolve(targetDir) || !fs.existsSync(legacy)) continue
-    for (const name of items) {
+    if (!legacy || path.resolve(legacy) === path.resolve(targetDir) || !fs.existsSync(legacy)) continue
+    let moved = 0
+    for (const name of merged) {
+      const fromDir = path.join(legacy, name)
+      if (!fs.existsSync(fromDir)) continue
+      fs.mkdirSync(path.join(targetDir, name), { recursive: true })
+      for (const entry of fs.readdirSync(fromDir)) {
+        const to = path.join(targetDir, name, entry)
+        if (fs.existsSync(to)) continue
+        try { fs.cpSync(path.join(fromDir, entry), to, { recursive: true }); moved++ } catch { /* пропускаем */ }
+      }
+    }
+    for (const name of single) {
       const from = path.join(legacy, name)
       const to = path.join(targetDir, name)
       if (!fs.existsSync(from) || fs.existsSync(to)) continue
@@ -220,8 +235,13 @@ function buildMenu() {
             type: 'info',
             title: 'О программе',
             message: 'Modbus Controller',
+            // Путь к данным показываем прямо здесь: вопрос «где мои проекты»
+            // возникает первым, а искать их наугад по диску неоткуда.
             detail: 'Версия ' + app.getVersion() + String.fromCharCode(10) +
-                    'Управление частотными преобразователями по Modbus RTU (RS-485).',
+                    'Управление частотными преобразователями по Modbus RTU (RS-485).' +
+                    String.fromCharCode(10) + String.fromCharCode(10) +
+                    'Данные (проекты, настройки, свои типы):' + String.fromCharCode(10) +
+                    (process.env.MODBUS_DATA_DIR || app.getPath('userData')),
             buttons: ['Закрыть'],
           }),
         },

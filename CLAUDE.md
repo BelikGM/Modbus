@@ -289,7 +289,7 @@ client.writeRegister(108, 150)
 **`project.types.ts`** — `ProjectMeta`, `DeviceInstance` (`id, name, templateId, connection, pendingWrites?, currentValues?, notes?`), `ProjectFile` (`ProjectMeta + devices[]`), `ProjectMismatch` (расхождение имени папки/файла/содержимого).
 
 **`projects.service.ts`**:
-- Хранит проекты в `<userData>/projects/<id>/<id>.project.json` (`userData` = `process.env.USER_DATA_PATH` в Electron, иначе `../` от backend)
+- Хранит проекты в `<userData>/projects/<id>/<id>.project.json` (`userData` = `process.env.USER_DATA_PATH` в Electron, иначе `../` от backend). В Electron это папка `data` РЯДОМ С EXE (`resolveDataDir`), с откатом на «Документы» и `%APPDATA%`, если писать туда нельзя. Деинсталлятор NSIS штатно сносит папку установки целиком (`RMDir /r $INSTDIR`), поэтому `build/installer.nsh` переопределяет макрос `customRemoveFiles` и обходит `data` стороной — иначе обновление версии стирало бы все проекты
 - chokidar следит за папкой проектов — правки/переименования файла проекта снаружи (например, руками в проводнике) детектятся как «рассинхрон» (`checkMismatches`, опрос раз в 2 сек) и шлются на фронт (`project:folder:mismatch`) с возможностью автоисправить (`fixMismatch`, режимы `sync-to-folder`/`rename-to-content`)
 - `listProjects/createProject/deleteProject/renameProject/importProject` — CRUD
 - `getActiveProjectId/setActiveProject` — активный проект хранится в `SettingsService`
