@@ -28,5 +28,6 @@ npm-debug.log*
 /settings.json
 /value-presets.json
 /favorite-params.json
+/template-extras.json
 /logs/
 /projects
