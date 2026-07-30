@@ -251,6 +251,7 @@ if (!gotTheLock) {
   // ── Жизненный цикл ──────────────────────────────────────────────────────────
   app.whenReady().then(async () => {
     try {
+      buildMenu()
       startBackend()
       await waitForBackend()
       createWindow()

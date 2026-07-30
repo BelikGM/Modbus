@@ -198,31 +198,243 @@ function decodePng(buf) {
   return { w, h, px: out }
 }
 
-// Делает фон прозрачным: цвет берётся из угла, стираются близкие к нему пиксели
-function knockoutBackground(img, tolerance = 40) {
-  const bg = [img.px[0], img.px[1], img.px[2]]
-  let cleared = 0
-  for (let i = 0; i < img.px.length; i += 4) {
+// ── Вырезание фона у исходного логотипа ─────────────────────────────────────
+//
+// В исходнике всего два цвета: тёмно-синий фон и белые линии. Буквы НЕ залиты
+// отдельным цветом — они лишь ОБВЕДЕНЫ линиями, причём обводка разомкнута
+// (у знака это фирменная черта). Поэтому «стереть цвет фона» здесь не работает:
+// от логотипа остались бы одни тонкие линии.
+//
+// Определять, где буква, приходится геометрией:
+//  • большая F — её левый и верхний края вообще не нарисованы, они совпадают с
+//    краем холста, поэтому заливка снаружи протекла бы внутрь буквы. Контур
+//    собирается из найденных штрихов: длинные горизонтали дают низ перекладин,
+//    длинные вертикали — правые края, крайние точки краски — левый и верхний
+//    край буквы;
+//  • подпись FBEST замкнута почти полностью, её достаточно «зашить»
+//    морфологическим замыканием (расширить краску, потом сжать обратно) и
+//    залить снаружи: что не залилось — внутренность букв.
+
+function inkMask(img, bg, tolerance = 60) {
+  const m = new Uint8Array(img.w * img.h)
+  for (let i = 0, p = 0; i < img.px.length; i += 4, p++) {
     const d = Math.abs(img.px[i] - bg[0]) + Math.abs(img.px[i + 1] - bg[1]) + Math.abs(img.px[i + 2] - bg[2])
-    if (d <= tolerance) { img.px[i + 3] = 0; cleared++ }
+    m[p] = d > tolerance ? 1 : 0
   }
-  return { bg, cleared, total: img.px.length / 4 }
+  return m
+}
+
+// Горизонтальная полоса без краски — граница между знаком и подписью
+function findWordmarkTop(img, ink) {
+  let lastInkRow = 0, gapStart = -1, best = -1
+  for (let y = 0; y < img.h; y++) {
+    let has = false
+    for (let x = 0; x < img.w && !has; x++) if (ink[y * img.w + x]) has = true
+    if (has) {
+      if (gapStart >= 0 && y - gapStart > 40 && gapStart > img.h * 0.5) { best = gapStart + Math.floor((y - gapStart) / 2); break }
+      gapStart = -1
+      lastInkRow = y
+    } else if (gapStart < 0) gapStart = lastInkRow + 1
+  }
+  return best
+}
+
+// Длинные прямые штрихи (толщина роли не играет — берём габарит)
+function strokes(img, ink, yFrom, yTo, minH, minV) {
+  const runs = []
+  for (let y = yFrom; y < yTo; y++) {
+    let s = -1
+    for (let x = 0; x <= img.w; x++) {
+      const on = x < img.w && ink[y * img.w + x]
+      if (on && s < 0) s = x
+      if (!on && s >= 0) { if (x - s >= minH) runs.push({ dir: 'h', y, x0: s, x1: x - 1 }); s = -1 }
+    }
+  }
+  for (let x = 0; x < img.w; x++) {
+    let s = -1
+    for (let y = yFrom; y <= yTo; y++) {
+      const on = y < yTo && ink[y * img.w + x]
+      if (on && s < 0) s = y
+      if (!on && s >= 0) { if (y - s >= minV) runs.push({ dir: 'v', x, y0: s, y1: y - 1 }); s = -1 }
+    }
+  }
+  // склеиваем соседние ряды одного штриха в один прямоугольник
+  const out = []
+  for (const r of runs) {
+    const hit = out.find(o => o.dir === r.dir && (r.dir === 'h'
+      ? Math.abs(o.y1b - r.y) <= 1 && Math.abs(o.x0 - r.x0) <= 6 && Math.abs(o.x1 - r.x1) <= 6
+      : Math.abs(o.x1b - r.x) <= 1 && Math.abs(o.y0 - r.y0) <= 6 && Math.abs(o.y1 - r.y1) <= 6))
+    if (hit) {
+      if (r.dir === 'h') { hit.y1b = r.y; hit.x0 = Math.min(hit.x0, r.x0); hit.x1 = Math.max(hit.x1, r.x1) }
+      else { hit.x1b = r.x; hit.y0 = Math.min(hit.y0, r.y0); hit.y1 = Math.max(hit.y1, r.y1) }
+    } else out.push(r.dir === 'h'
+      ? { dir: 'h', y0b: r.y, y1b: r.y, x0: r.x0, x1: r.x1 }
+      : { dir: 'v', x0b: r.x, x1b: r.x, y0: r.y0, y1: r.y1 })
+  }
+  return out
+}
+
+// Контур большой F по найденным штрихам
+function markPolygon(img, ink, yTo) {
+  let xLeft = img.w, yTop = img.h, xRight = 0
+  for (let y = 0; y < yTo; y++) for (let x = 0; x < img.w; x++) if (ink[y * img.w + x]) {
+    if (x < xLeft) xLeft = x
+    if (y < yTop) yTop = y
+    if (x > xRight) xRight = x
+  }
+  // Пороги разные: перекладины длинные, а короткий вертикальный штрих у стойки
+  // (между верхней и средней перекладиной) втрое короче — общий порог его терял.
+  const st = strokes(img, ink, 0, yTo, Math.floor(img.w * 0.25), Math.floor(yTo * 0.1))
+  const hs = st.filter(s => s.dir === 'h').sort((a, b) => a.y0b - b.y0b)
+  const vs = st.filter(s => s.dir === 'v').sort((a, b) => a.y0 - b.y0)
+  if (hs.length < 3 || vs.length < 4) {
+    throw new Error(`не удалось разобрать знак: горизонталей ${hs.length}, вертикалей ${vs.length}`)
+  }
+  const topBarBottom = hs[0].y1b            // низ верхней перекладины
+  const midBarBottom = hs[1].y1b            // низ средней перекладины
+  const stemBottom = hs[2].y1b              // низ стойки
+  const stemRight = Math.max(...vs.filter(v => v.x1b < img.w * 0.6).map(v => v.x1b))
+  const midTop = vs.filter(v => v.x0b > img.w * 0.6).map(v => v.y0).sort((a, b) => a - b)[1]
+  return {
+    poly: [
+      [xLeft, yTop], [xRight, yTop],
+      [xRight, topBarBottom], [stemRight, topBarBottom],
+      [stemRight, midTop], [xRight, midTop],
+      [xRight, midBarBottom], [stemRight, midBarBottom],
+      [stemRight, stemBottom], [xLeft, stemBottom],
+    ],
+    info: { xLeft, yTop, xRight, topBarBottom, midTop, midBarBottom, stemBottom, stemRight },
+  }
+}
+
+// Заливка многоугольника (все стороны вертикальные/горизонтальные)
+function fillPolygon(mask, w, h, poly) {
+  let minY = h, maxY = 0
+  for (const [, y] of poly) { if (y < minY) minY = y; if (y > maxY) maxY = y }
+  for (let y = minY; y <= maxY; y++) {
+    const xs = []
+    for (let i = 0; i < poly.length; i++) {
+      const [x0, y0] = poly[i], [x1, y1] = poly[(i + 1) % poly.length]
+      if (y0 === y1) continue
+      if (y >= Math.min(y0, y1) && y < Math.max(y0, y1)) xs.push(x0)
+    }
+    xs.sort((a, b) => a - b)
+    for (let k = 0; k + 1 < xs.length; k += 2) {
+      for (let x = xs[k]; x <= xs[k + 1]; x++) mask[y * w + x] = 1
+    }
+  }
+}
+
+// Морфология по прямоугольному окну (быстро, через частичные суммы)
+function morph(src, w, h, r, mode) {
+  const sum = new Int32Array((w + 1) * (h + 1))
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    sum[(y + 1) * (w + 1) + x + 1] = src[y * w + x] + sum[y * (w + 1) + x + 1] + sum[(y + 1) * (w + 1) + x] - sum[y * (w + 1) + x]
+  }
+  const out = new Uint8Array(w * h)
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const x0 = Math.max(0, x - r), y0 = Math.max(0, y - r)
+    const x1 = Math.min(w - 1, x + r), y1 = Math.min(h - 1, y + r)
+    const s = sum[(y1 + 1) * (w + 1) + x1 + 1] - sum[y0 * (w + 1) + x1 + 1] - sum[(y1 + 1) * (w + 1) + x0] + sum[y0 * (w + 1) + x0]
+    const area = (x1 - x0 + 1) * (y1 - y0 + 1)
+    out[y * w + x] = mode === 'dilate' ? (s > 0 ? 1 : 0) : (s === area ? 1 : 0)
+  }
+  return out
+}
+
+// Внутренность замкнутых контуров в полосе [yFrom, yTo)
+function enclosed(img, ink, yFrom, yTo, r) {
+  const w = img.w, h = yTo - yFrom
+  const band = new Uint8Array(w * h)
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) band[y * w + x] = ink[(y + yFrom) * w + x]
+  const closed = morph(morph(band, w, h, r, 'dilate'), w, h, r, 'erode')
+  const outside = new Uint8Array(w * h)
+  const st = []
+  const push = (x, y) => {
+    const p = y * w + x
+    if (x < 0 || y < 0 || x >= w || y >= h || outside[p] || closed[p]) return
+    outside[p] = 1; st.push(p)
+  }
+  for (let x = 0; x < w; x++) { push(x, 0); push(x, h - 1) }
+  for (let y = 0; y < h; y++) { push(0, y); push(w - 1, y) }
+  while (st.length) {
+    const p = st.pop(), x = p % w, y = (p - x) / w
+    push(x + 1, y); push(x - 1, y); push(x, y + 1); push(x, y - 1)
+  }
+  const res = new Uint8Array(w * h)
+  for (let i = 0; i < res.length; i++) res[i] = outside[i] ? 0 : 1
+  return { mask: res, yFrom, h }
+}
+
+// Уменьшение с усреднением — без него мелкие линии на значке рассыпаются
+function resizeInto(src, dst, dx, dy, dw, dh) {
+  for (let y = 0; y < dh; y++) {
+    const sy0 = Math.floor(y * src.h / dh), sy1 = Math.max(sy0 + 1, Math.floor((y + 1) * src.h / dh))
+    for (let x = 0; x < dw; x++) {
+      const sx0 = Math.floor(x * src.w / dw), sx1 = Math.max(sx0 + 1, Math.floor((x + 1) * src.w / dw))
+      let r = 0, g = 0, b = 0, a = 0, n = 0
+      for (let sy = sy0; sy < sy1; sy++) for (let sx = sx0; sx < sx1; sx++) {
+        const o = (sy * src.w + sx) * 4, al = src.px[o + 3] / 255
+        r += src.px[o] * al; g += src.px[o + 1] * al; b += src.px[o + 2] * al; a += src.px[o + 3]; n++
+      }
+      const o = ((y + dy) * dst.w + x + dx) * 4
+      const alpha = a / n
+      const k = alpha > 0 ? 255 / alpha : 0
+      dst.px[o] = Math.round(r / n * k); dst.px[o + 1] = Math.round(g / n * k)
+      dst.px[o + 2] = Math.round(b / n * k); dst.px[o + 3] = Math.round(alpha)
+    }
+  }
 }
 
 // ── сборка ───────────────────────────────────────────────────────────────────
 const outFile = path.join(__dirname, 'icon.png')
 const source = path.join(__dirname, 'logo-source.png')
 
+if (require.main === module) {
 if (process.argv.includes('--from-source')) {
   if (!fs.existsSync(source)) {
     console.error(`Нет файла ${source}. Положите оригинал логотипа туда и повторите.`)
     process.exit(1)
   }
   const img = decodePng(fs.readFileSync(source))
-  const r = knockoutBackground(img)
-  fs.writeFileSync(outFile, encodePng(img))
-  console.log(`Фон rgb(${r.bg.join(',')}) сделан прозрачным: ${(r.cleared / r.total * 100).toFixed(1)}% пикселей`)
-  console.log(`Готово: ${outFile} (${img.w}×${img.h})`)
+  const bg = [img.px[0], img.px[1], img.px[2]]
+  const ink = inkMask(img, bg)
+  const wordTop = findWordmarkTop(img, ink)
+  if (wordTop < 0) throw new Error('не нашлась граница между знаком и подписью')
+
+  const keep = new Uint8Array(img.w * img.h)
+  const { poly, info } = markPolygon(img, ink, wordTop)
+  fillPolygon(keep, img.w, img.h, poly)
+
+  // Подпись FBEST устроена иначе, чем знак: там белые линии — это САМИ БУКВЫ
+  // (штриховой шрифт), а не обводка залитой формы. Заливать внутри нечего —
+  // «залить букву» здесь значит оставить её штрихи, перекрасив в синий: белым
+  // на прозрачном фоне подпись была бы не видна на светлом рабочем столе.
+  for (let y = wordTop; y < img.h; y++) for (let x = 0; x < img.w; x++) {
+    const p = y * img.w + x
+    if (!ink[p]) continue
+    keep[p] = 1
+    img.px[p * 4] = bg[0]; img.px[p * 4 + 1] = bg[1]; img.px[p * 4 + 2] = bg[2]
+  }
+  // Линии внутри самого знака остаются белыми — это его исходный рисунок
+  for (let p = 0; p < wordTop * img.w; p++) if (ink[p]) keep[p] = 1
+
+  for (let p = 0; p < keep.length; p++) img.px[p * 4 + 3] = keep[p] ? 255 : 0
+
+  // Значок должен быть квадратным — вписываем по высоте, по бокам прозрачно
+  const out = canvas(SIZE)
+  // 4% поля по краям: исходник обрезан впритык к знаку, а ярлык, упирающийся
+  // в край плитки, выглядит обрезанным среди прочих значков.
+  const scale = SIZE * 0.92 / Math.max(img.w, img.h)
+  const dw = Math.round(img.w * scale), dh = Math.round(img.h * scale)
+  resizeInto(img, out, Math.round((SIZE - dw) / 2), Math.round((SIZE - dh) / 2), dw, dh)
+  fs.writeFileSync(outFile, encodePng(out))
+
+  const opaque = keep.reduce((n, v) => n + v, 0)
+  console.log(`Исходник: ${img.w}×${img.h}, фон rgb(${bg.join(',')}), подпись начинается с y=${wordTop}`)
+  console.log('Контур знака:', JSON.stringify(info))
+  console.log(`Непрозрачным осталось ${(opaque / (img.w * img.h) * 100).toFixed(1)}% (было 100%)`)
+  console.log(`Готово: ${outFile} (${SIZE}×${SIZE})`)
 } else {
   const c = canvas(SIZE)
   drawMark(c)
@@ -235,3 +447,6 @@ if (process.argv.includes('--from-source')) {
   const opaque = (() => { let n = 0; for (let i = 3; i < c.px.length; i += 4) if (c.px[i]) n++; return n })()
   console.log(`Готово: ${outFile} (${SIZE}×${SIZE}), непрозрачных пикселей ${(opaque / (SIZE * SIZE) * 100).toFixed(1)}%`)
 }
+}
+
+module.exports = { decodePng, encodePng, canvas, inkMask, findWordmarkTop, strokes, markPolygon, fillPolygon, morph, enclosed, resizeInto }
