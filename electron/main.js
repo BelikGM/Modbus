@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog } = require('electron')
+const { app, BrowserWindow, dialog, Menu, shell } = require('electron')
 const { fork } = require('child_process')
 const path = require('path')
 const fs = require('fs')
@@ -64,7 +64,7 @@ function startBackend() {
       ...process.env,
       ELECTRON_RUN_AS_NODE: '1',
       NODE_ENV: 'production',
-      USER_DATA_PATH: resolveDataDir(),
+      USER_DATA_PATH: (process.env.MODBUS_DATA_DIR = resolveDataDir()),
     },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   })
@@ -118,6 +118,84 @@ function createWindow() {
 
   mainWindow.loadURL('http://localhost:3000')
   mainWindow.on('closed', () => { mainWindow = null })
+}
+
+// ── Меню приложения на русском ────────────────────────────────────────────────
+// Стандартное меню Electron целиком на английском (File, Edit, View, Window…),
+// что для оператора на объекте бесполезно. Собираем своё: только нужные пункты
+// и с понятными названиями.
+function buildMenu() {
+  const templatesDir = app.isPackaged
+    ? path.join(process.resourcesPath, 'devices', 'templates')
+    : path.join(__dirname, '..', 'devices', 'templates')
+
+  const template = [
+    {
+      label: 'Файл',
+      submenu: [
+        { role: 'quit', label: 'Выход' },
+      ],
+    },
+    {
+      label: 'Правка',
+      submenu: [
+        { role: 'undo', label: 'Отменить' },
+        { role: 'redo', label: 'Повторить' },
+        { type: 'separator' },
+        { role: 'cut', label: 'Вырезать' },
+        { role: 'copy', label: 'Копировать' },
+        { role: 'paste', label: 'Вставить' },
+        { role: 'selectAll', label: 'Выделить всё' },
+      ],
+    },
+    {
+      label: 'Вид',
+      submenu: [
+        { role: 'reload', label: 'Обновить страницу' },
+        { role: 'forceReload', label: 'Обновить без кэша' },
+        { type: 'separator' },
+        { role: 'resetZoom', label: 'Обычный масштаб' },
+        { role: 'zoomIn', label: 'Увеличить' },
+        { role: 'zoomOut', label: 'Уменьшить' },
+        { type: 'separator' },
+        { role: 'togglefullscreen', label: 'Во весь экран' },
+        { role: 'toggleDevTools', label: 'Инструменты разработчика' },
+      ],
+    },
+    {
+      label: 'Окно',
+      submenu: [
+        { role: 'minimize', label: 'Свернуть' },
+        { role: 'close', label: 'Закрыть' },
+      ],
+    },
+    {
+      label: 'Справка',
+      submenu: [
+        {
+          label: 'Открыть папку с данными',
+          click: () => shell.openPath(process.env.MODBUS_DATA_DIR || app.getPath('userData')),
+        },
+        {
+          label: 'Открыть папку с типами ПЧ',
+          click: () => shell.openPath(templatesDir),
+        },
+        { type: 'separator' },
+        {
+          label: 'О программе',
+          click: () => dialog.showMessageBox({
+            type: 'info',
+            title: 'О программе',
+            message: 'Modbus Controller',
+            detail: 'Версия ' + app.getVersion() + String.fromCharCode(10) +
+                    'Управление частотными преобразователями по Modbus RTU (RS-485).',
+            buttons: ['Закрыть'],
+          }),
+        },
+      ],
+    },
+  ]
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
 // ── Только одна копия приложения ──────────────────────────────────────────────

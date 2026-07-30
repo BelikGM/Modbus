@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Layout, Typography, Empty, Button, Badge, ConfigProvider, theme as antdTheme } from 'antd'
-import { FileTextOutlined, SunOutlined, MoonOutlined, ApartmentOutlined } from '@ant-design/icons'
+import { FileTextOutlined, SunOutlined, MoonOutlined, BuildOutlined } from '@ant-design/icons'
 import DeviceList from './components/DeviceList'
 import DeviceDetail from './components/DeviceDetail'
 import BulkPanel from './components/BulkPanel'
@@ -283,7 +283,7 @@ export default function App() {
           <ConnectionPanel connected={connected} reconnecting={reconnecting} reconnectAttempt={reconnectAttempt} connectedPort={connectedPort} waitingPort={waitingPort} />
           <BusScanner connected={connected} />
           <Button
-            icon={<ApartmentOutlined />}
+            icon={<BuildOutlined />}
             onClick={() => setTypesOpen(true)}
             style={{ background: "transparent", borderColor: "#ffffff40", color: "#fff" }}
           >

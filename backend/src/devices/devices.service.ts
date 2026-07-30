@@ -551,13 +551,27 @@ export class DevicesService implements OnModuleInit, OnModuleDestroy {
     return {};
   }
 
+  // Дополнения именно ДОБАВЛЯЮТСЯ к поставке, а не заменяют её: список из файла
+  // шаблона всегда остаётся на месте. Поэтому удалить штатное исполнение или
+  // штатную версию прошивки невозможно в принципе — убрать можно только своё.
+  // Заодно отдаём фронту, что именно пришло из поставки (builtin*), чтобы он
+  // показал такие строки как неудаляемые.
   private withExtras(tpl: DeviceConfig): DeviceConfig {
     const extra = this.loadExtras()[tpl.id];
-    if (!extra) return tpl;
+    const builtinModels = tpl.models ?? [];
+    const builtinFirmwares = tpl.firmwares ?? [];
+    if (!extra) return { ...tpl, builtinModels, builtinFirmwares };
+
+    const addedModels = (extra.models ?? []).filter(
+      m => !builtinModels.some(b => b.code === m.code),
+    );
+    const addedFirmwares = (extra.firmwares ?? []).filter(f => !builtinFirmwares.includes(f));
     return {
       ...tpl,
-      ...(extra.models ? { models: extra.models } : {}),
-      ...(extra.firmwares ? { firmwares: extra.firmwares } : {}),
+      models: [...builtinModels, ...addedModels],
+      firmwares: [...builtinFirmwares, ...addedFirmwares],
+      builtinModels,
+      builtinFirmwares,
     };
   }
 

@@ -1,0 +1,35 @@
+{
+  "Elhart-Emd-Pump-Full": {
+    "models": [
+      {
+        "code": "EMD-PUMP-0022 T",
+        "powerKw": 2.2,
+        "supply": "3~380В"
+      },
+      {
+        "code": "EMD-PUMP-0037 T",
+        "powerKw": 3.7,
+        "supply": "3~380В"
+      },
+      {
+        "code": "EMD-PUMP-0055 T",
+        "powerKw": 5.5,
+        "supply": "3~380В"
+      },
+      {
+        "code": "EMD-PUMP-0075 T",
+        "powerKw": 7.5,
+        "supply": "3~380В"
+      },
+      {
+        "code": "EMD-PUMP-0110 T",
+        "powerKw": 11,
+        "supply": "3~380В"
+      }
+    ],
+    "firmwares": [
+      "v1.2",
+      "v2.0"
+    ]
+  }
+}

@@ -6,6 +6,7 @@ import {
 import { PlusOutlined, EditOutlined, DeleteOutlined, ApartmentOutlined, CopyOutlined } from '@ant-design/icons'
 import api from '../api'
 import { addLog } from '../log'
+import { normalizeOptions } from '../paramFormat'
 
 // Редактор типов ПЧ (шаблонов).
 //
@@ -41,6 +42,11 @@ export default function TemplateEditor({ open, onClose }) {
   // ШТАТНЫХ типов эти данные хранятся не в файле поставки, а в отдельном файле
   // дополнений — так эталон остаётся нетронутым, а список переживает обновление.
   const [extras, setExtras] = useState(null) // { type, models: [], firmwares: [] }
+  // Редактор вариантов значения для параметров типа «Перечисление»
+  // (пуск/стоп/вперёд/назад и т.п.) — иначе такой параметр пришлось бы
+  // дописывать в JSON руками.
+  const [optionsEditor, setOptionsEditor] = useState(null)
+  const [newFirmware, setNewFirmware] = useState('')
 
   function startExtras(t) {
     setExtras({
@@ -48,6 +54,22 @@ export default function TemplateEditor({ open, onClose }) {
       models: [...(t.models ?? [])],
       firmwares: [...(t.firmwares ?? [])],
     })
+  }
+
+  function addFirmware() {
+    const v = newFirmware.trim()
+    if (!v) return
+    if (extras.firmwares.includes(v)) { message.warning('Такая версия уже есть'); return }
+    setExtras({ ...extras, firmwares: [...extras.firmwares, v] })
+    setNewFirmware('')
+  }
+
+  function removeFirmware(fw) {
+    if ((extras.type.builtinFirmwares ?? []).includes(fw)) {
+      message.warning('Версия из поставки — её удалить нельзя')
+      return
+    }
+    setExtras({ ...extras, firmwares: extras.firmwares.filter(x => x !== fw) })
   }
 
   async function saveExtras() {
@@ -110,10 +132,23 @@ export default function TemplateEditor({ open, onClose }) {
     if (groups.length === 0) { message.warning('Отметьте хотя бы один параметр'); return }
     setEditing(prev => ({
       ...prev,
-      // подтягиваем и служебные поля основы — их обычно хотят сохранить
+      // Переносим ВСЕ корневые поля основы, чтобы структура нового типа была
+      // такой же полной, как у штатного (описание, картинки, коды ошибок,
+      // оповещения, команда заводского сброса, каталоги и т.д.). Иначе часть
+      // возможностей у своего типа просто не работала бы.
+      description: base.description,
       connection: base.connection,
+      images: base.images,
       access_legend: base.access_legend,
       errorCodes: base.errorCodes,
+      alerts: base.alerts,
+      factoryReset: base.factoryReset,
+      models: base.models,
+      firmwares: base.firmwares,
+      firmwareOverrides: base.firmwareOverrides,
+      modelDependentParams: base.modelDependentParams,
+      modelDefaults: base.modelDefaults,
+      builtinFavorites: (base.builtinFavorites ?? []).filter(id => picked.has(id)),
       groups,
     }))
     message.success(`Перенесено ${groups.flatMap(g => g.params).length} параметров из «${base.name}»`)
@@ -128,6 +163,48 @@ export default function TemplateEditor({ open, onClose }) {
       for (const p of group.params) on ? n.add(p.id) : n.delete(p.id)
       return n
     })
+  }
+
+  // ─── Ручное наполнение: группы и параметры ─────────────────────────────────
+  // Без этого тип «с нуля» невозможно было сохранить: параметры брались только
+  // из типа-основы, а пустой тип бэкенд справедливо отклонял.
+  function addGroup() {
+    const n = (editing.groups?.length ?? 0) + 1
+    setEditing(prev => ({
+      ...prev,
+      groups: [...(prev.groups ?? []), { id: `G${n}`, name: `Группа ${n}`, params: [] }],
+    }))
+  }
+
+  function patchGroup(groupId, patch) {
+    setEditing(prev => ({
+      ...prev,
+      groups: prev.groups.map(g => g.id === groupId ? { ...g, ...patch } : g),
+    }))
+  }
+
+  function removeGroup(groupId) {
+    setEditing(prev => ({ ...prev, groups: prev.groups.filter(g => g.id !== groupId) }))
+  }
+
+  function addParam(groupId) {
+    setEditing(prev => ({
+      ...prev,
+      groups: prev.groups.map(g => {
+        if (g.id !== groupId) return g
+        const n = g.params.length + 1
+        return {
+          ...g,
+          params: [...g.params, {
+            id: `${g.id}.${String(n).padStart(2, '0')}`,
+            name: 'Новый параметр',
+            register: 0,
+            access: 'read-write',
+            type: 'integer',
+          }],
+        }
+      }),
+    }))
   }
 
   // ─── Правка параметров черновика ───────────────────────────────────────────
@@ -204,16 +281,46 @@ export default function TemplateEditor({ open, onClose }) {
         />
 
         <Typography.Text strong style={{ fontSize: 12 }}>Версии прошивки</Typography.Text>
-        <Select
-          mode="tags"
-          style={{ width: '100%', marginTop: 6, marginBottom: 14 }}
-          placeholder="Например: v1.2, v2.0 — введите и нажмите Enter"
-          value={extras.firmwares}
-          onChange={v => setExtras({ ...extras, firmwares: v })}
-        />
+        <div style={{ marginTop: 6, marginBottom: 14 }}>
+          <Space wrap style={{ marginBottom: 8 }}>
+            <Input
+              size="small"
+              style={{ width: 200 }}
+              placeholder="например v3.0"
+              value={newFirmware}
+              onChange={e => setNewFirmware(e.target.value)}
+              onPressEnter={addFirmware}
+            />
+            <Button size="small" type="primary" icon={<PlusOutlined />} onClick={addFirmware}>
+              Добавить прошивку
+            </Button>
+          </Space>
+          <div>
+            {extras.firmwares.length === 0 && (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>Версий пока нет</Typography.Text>
+            )}
+            {extras.firmwares.map(fw => {
+              const builtin = (extras.type.builtinFirmwares ?? []).includes(fw)
+              return (
+                <Tag
+                  key={fw}
+                  color={builtin ? 'default' : 'green'}
+                  closable={!builtin}
+                  onClose={e => { e.preventDefault(); removeFirmware(fw) }}
+                  style={{ marginBottom: 4 }}
+                >
+                  {fw}{builtin && ' · из поставки'}
+                </Tag>
+              )
+            })}
+          </div>
+          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+            Версии из поставки удалить нельзя — убрать можно только добавленные вами.
+          </Typography.Text>
+        </div>
 
         <Space style={{ marginBottom: 8 }}>
-          <Typography.Text strong style={{ fontSize: 12 }}>Исполнения (мощности)</Typography.Text>
+          <Typography.Text strong style={{ fontSize: 12 }}>Модель (мощность)</Typography.Text>
           <Button size="small" icon={<PlusOutlined />} onClick={() => setExtras({
             ...extras, models: [...extras.models, { code: '', powerKw: 0, supply: '3~380В' }],
           })}>Добавить</Button>
@@ -253,10 +360,13 @@ export default function TemplateEditor({ open, onClose }) {
               ),
             },
             {
-              title: '', width: 40, render: (_, __, i) => (
-                <Button size="small" type="text" danger icon={<DeleteOutlined />}
-                  onClick={() => setExtras({ ...extras, models: extras.models.filter((_, j) => j !== i) })} />
-              ),
+              title: '', width: 60, render: (_, m, i) => {
+                const builtin = (extras.type.builtinModels ?? []).some(b => b.code === m.code)
+                return builtin
+                  ? <Tooltip title="Модель из поставки — удалить нельзя"><Tag style={{ margin: 0 }}>штат.</Tag></Tooltip>
+                  : <Button size="small" type="text" danger icon={<DeleteOutlined />}
+                      onClick={() => setExtras({ ...extras, models: extras.models.filter((_, j) => j !== i) })} />
+              },
             },
           ]}
         />
@@ -373,6 +483,13 @@ export default function TemplateEditor({ open, onClose }) {
           style={{ width: 260 }}
         />
       </Space>
+      <Input
+        addonBefore="Описание"
+        placeholder="Преобразователь частоты ..."
+        value={editing.description ?? ""}
+        onChange={e => setEditing({ ...editing, description: e.target.value })}
+        style={{ width: "100%", marginBottom: 8 }}
+      />
       <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: -4 }}>
         Идентификатор — латиницей, без пробелов, он же имя файла и его нельзя поменять позже.
         Семейство определяет, с какими типами разрешены групповые операции: у одного семейства
@@ -433,6 +550,25 @@ export default function TemplateEditor({ open, onClose }) {
       <Divider orientation="left" style={{ margin: '8px 0' }}>
         Параметры типа ({draftParams.length})
       </Divider>
+      <Space wrap style={{ marginBottom: 8 }}>
+        <Button size="small" icon={<PlusOutlined />} onClick={addGroup}>Добавить группу</Button>
+        {editing.groups.map(g => (
+          <Space key={g.id} size={2} style={{ border: '1px solid #f0f0f0', borderRadius: 4, padding: '2px 4px' }}>
+            <Input
+              size="small"
+              value={g.name}
+              onChange={e => patchGroup(g.id, { name: e.target.value })}
+              style={{ width: 150 }}
+            />
+            <Tooltip title="Добавить параметр в эту группу">
+              <Button size="small" icon={<PlusOutlined />} onClick={() => addParam(g.id)} />
+            </Tooltip>
+            <Tooltip title="Удалить группу целиком">
+              <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => removeGroup(g.id)} />
+            </Tooltip>
+          </Space>
+        ))}
+      </Space>
       {draftParams.length === 0 ? (
         <Alert
           type="warning"
@@ -440,7 +576,7 @@ export default function TemplateEditor({ open, onClose }) {
           message="Параметров пока нет"
           description={editing.isNew && base
             ? 'Отметьте нужные выше и нажмите «Перенести отмеченные».'
-            : 'Создайте тип на основе имеющегося — так проще всего получить готовую карту регистров.'}
+            : 'Нажмите «Добавить группу», затем «+» рядом с ней — и заполните параметры. Либо вернитесь в список и создайте тип на основе имеющегося: так карта регистров получится готовой.'}
         />
       ) : (
         <Table
@@ -450,7 +586,13 @@ export default function TemplateEditor({ open, onClose }) {
           dataSource={draftParams}
           columns={[
             { title: 'Группа', dataIndex: '__groupName', width: 130, ellipsis: true },
-            { title: 'Код', dataIndex: 'id', width: 80 },
+            {
+              title: 'Код', width: 100,
+              render: (_, r) => (
+                <Input size="small" value={r.id}
+                  onChange={e => patchParam(r.__group, r.id, { id: e.target.value })} />
+              ),
+            },
             {
               title: 'Название', width: 220,
               render: (_, r) => (
@@ -516,6 +658,14 @@ export default function TemplateEditor({ open, onClose }) {
               ),
             },
             {
+              title: 'Варианты', width: 110,
+              render: (_, r) => r.type !== 'enum' ? <Typography.Text type="secondary" style={{ fontSize: 11 }}>—</Typography.Text> : (
+                <Button size="small" onClick={() => setOptionsEditor({ groupId: r.__group, paramId: r.id, list: normalizeOptions(r.options) })}>
+                  {normalizeOptions(r.options).length || 0} шт.
+                </Button>
+              ),
+            },
+            {
               title: '', width: 40,
               render: (_, r) => (
                 <Tooltip title="Убрать параметр из типа">
@@ -528,6 +678,64 @@ export default function TemplateEditor({ open, onClose }) {
           scroll={{ x: 'max-content' }}
         />
       )}
+
+      {/* Варианты значения для «Перечисления»: пары «число -> подпись». Именно
+          так они хранятся в наших шаблонах (пуск/стоп/вперёд/назад и т.п.). */}
+      <Modal
+        title="Варианты значения"
+        open={!!optionsEditor}
+        onCancel={() => setOptionsEditor(null)}
+        onOk={() => {
+          const list = optionsEditor.list.filter(o => String(o.label ?? '').trim() !== '')
+          patchParam(optionsEditor.groupId, optionsEditor.paramId, { options: list })
+          setOptionsEditor(null)
+        }}
+        okText="Применить"
+        cancelText="Отмена"
+        width={520}
+      >
+        <Space style={{ marginBottom: 8 }}>
+          <Button size="small" icon={<PlusOutlined />} onClick={() => setOptionsEditor({
+            ...optionsEditor,
+            list: [...optionsEditor.list, { value: optionsEditor.list.length, label: '' }],
+          })}>Добавить вариант</Button>
+        </Space>
+        <Table
+          size="small"
+          pagination={false}
+          rowKey={(_, i) => i}
+          dataSource={optionsEditor?.list ?? []}
+          locale={{ emptyText: 'Вариантов пока нет' }}
+          columns={[
+            {
+              title: 'Значение', width: 110, render: (_, o, i) => (
+                <InputNumber size="small" value={o.value} style={{ width: '100%' }}
+                  onChange={v => setOptionsEditor({
+                    ...optionsEditor,
+                    list: optionsEditor.list.map((x, j) => j === i ? { ...x, value: v } : x),
+                  })} />
+              ),
+            },
+            {
+              title: 'Подпись', render: (_, o, i) => (
+                <Input size="small" value={o.label} placeholder="например: ПУСК"
+                  onChange={e => setOptionsEditor({
+                    ...optionsEditor,
+                    list: optionsEditor.list.map((x, j) => j === i ? { ...x, label: e.target.value } : x),
+                  })} />
+              ),
+            },
+            {
+              title: '', width: 40, render: (_, __, i) => (
+                <Button size="small" type="text" danger icon={<DeleteOutlined />}
+                  onClick={() => setOptionsEditor({
+                    ...optionsEditor, list: optionsEditor.list.filter((_, j) => j !== i),
+                  })} />
+              ),
+            },
+          ]}
+        />
+      </Modal>
     </Modal>
   )
 }
