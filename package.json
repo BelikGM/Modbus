@@ -5,7 +5,7 @@
   "main": "electron/main.js",
   "private": true,
   "scripts": {
-    "build:frontend": "cd frontend && npm run build && node -e \"require('fs').cpSync('dist', '../backend/frontend-dist', {recursive:true})\"",
+    "build:frontend": "cd frontend && npm run build && node -e \"const fs=require('fs'); fs.rmSync('../backend/frontend-dist',{recursive:true,force:true}); fs.cpSync('dist','../backend/frontend-dist',{recursive:true})\"",
     "build:backend": "cd backend && npm run build",
     "rebuild:native": "electron-rebuild -f -w serialport -m backend",
     "build": "npm run build:frontend && npm run build:backend",
