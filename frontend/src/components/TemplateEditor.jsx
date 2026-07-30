@@ -70,6 +70,32 @@ function pruneToParams(draft) {
   return next
 }
 
+// Незаконченный тип переживает закрытие окна и перезапуск программы. Тип на
+// полсотни регистров заполняется по бумажному руководству не за один присест, и
+// забытое «Сохранить» не должно стоить всей работы. Черновик всегда один: он
+// либо превращается в сохранённый тип, либо удаляется руками.
+const DRAFT_KEY = 'modbus.templateDraft'
+
+function readDraft() {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY)
+    const kept = raw ? JSON.parse(raw) : null
+    return kept?.draft ? kept : null
+  } catch { return null }   // хранилище недоступно или запись битая
+}
+
+function writeDraft(kept) {
+  try {
+    if (kept) localStorage.setItem(DRAFT_KEY, JSON.stringify(kept))
+    else localStorage.removeItem(DRAFT_KEY)
+  } catch { /* переполнение/приватный режим: черновик просто не переживёт окно */ }
+}
+
+function draftSize(d) {
+  const groups = d?.groups ?? []
+  return { groups: groups.length, params: groups.flatMap(g => g.params ?? []).length }
+}
+
 export default function TemplateEditor({ open, onClose }) {
   const [templates, setTemplates] = useState([])
   const [loading, setLoading] = useState(false)
@@ -92,10 +118,11 @@ export default function TemplateEditor({ open, onClose }) {
   const [openGroup, setOpenGroup] = useState(null)
   const [hoverGroup, setHoverGroup] = useState(null)
   const [renamingGroup, setRenamingGroup] = useState(null)
-  // Черновик «как был при открытии»: по нему видно, правили ли тип, — чтобы
-  // спрашивать про потерю работы только когда терять действительно есть что.
+  // Черновик «как был при открытии формы»: по нему видно, правили ли тип, —
+  // чтобы не запоминать пустую заготовку, которую просто открыли и закрыли.
   const draftOpened = useRef(null)
-  const [exitAsk, setExitAsk] = useState(false)
+  // Отложенный незаконченный тип (из хранилища) — то, что ждёт в списке типов.
+  const [stash, setStash] = useState(readDraft)
 
   // Отмена действий. Два независимых журнала: правка типа и каталог моделей —
   // это разные экраны, и общая история путала бы шаги между ними. Дальше по
@@ -169,21 +196,26 @@ export default function TemplateEditor({ open, onClose }) {
       .catch(() => setTemplates([]))
       .finally(() => setLoading(false))
   }
-  useEffect(() => { if (open) load() }, [open])
+  useEffect(() => { if (open) { load(); setStash(readDraft()) } }, [open])
 
-  // Окно «Типы ПЧ» закрыли целиком — забываем всё незаписанное. Компонент
-  // остаётся смонтированным (open=false только прячет окно), поэтому без явной
-  // очистки недоделанный тип со всеми группами и параметрами всплывал бы при
-  // следующем открытии как ни в чём не бывало.
+  // Окно «Типы ПЧ» закрыли целиком — форму сворачиваем, но незаписанный тип
+  // откладываем, а не выбрасываем: он ждёт в списке типов.
   useEffect(() => {
     if (open) return
-    draftOpened.current = null
-    setEditingState(null); draftUndo.reset()
+    keepDraft()
+    clearForm()
     setExtrasState(null); extrasUndo.reset()
-    setBaseId(null); setPicked(new Set()); setExitAsk(false)
-    setOpenGroup(null); setHoverGroup(null); setRenamingGroup(null)
-    setOptionsEditor(null); setNewFirmware('')
+    setNewFirmware('')
   }, [open])
+
+  // Страховка от вылета/закрытия всей программы: черновик пишется не только при
+  // выходе из формы, но и сам по себе — с задержкой, чтобы каждая набранная
+  // буква не уходила в хранилище.
+  useEffect(() => {
+    if (!editing) return
+    const t = setTimeout(keepDraft, 600)
+    return () => clearTimeout(t)
+  }, [editing, baseId, picked])
 
   const base = templates.find(t => t.id === baseId) ?? null
 
@@ -194,21 +226,46 @@ export default function TemplateEditor({ open, onClose }) {
     setEditing(draft)
   }
 
-  // Закрыли форму — черновик забыт целиком: ни поля, ни созданные группы и
-  // параметры не «донашиваются» до следующего открытия.
-  function closeDraft() {
+  // Отложить черновик. Нетронутую заготовку не запоминаем — иначе список типов
+  // навсегда обзавёлся бы пустым «незаконченным типом» от одного случайного
+  // клика по «Создать с нуля». Чужой отложенный черновик при этом не трогаем.
+  function keepDraft() {
+    if (!editing || JSON.stringify(editing) === draftOpened.current) return
+    const kept = { draft: editing, baseId, picked: [...picked], savedAt: Date.now() }
+    writeDraft(kept)
+    setStash(kept)
+  }
+
+  // Сама форма: закрыть и обнулить экранное состояние (черновик к этому моменту
+  // уже отложен либо намеренно выброшен).
+  function clearForm() {
     draftOpened.current = null
-    setExitAsk(false)
     setBaseId(null); setPicked(new Set())
     setOpenGroup(null); setHoverGroup(null); setRenamingGroup(null); setOptionsEditor(null)
     setEditing(null)   // заодно чистит историю отмены
   }
 
-  // Но случайный клик по крестику (или мимо окна) не должен молча стирать
-  // полчаса работы — если черновик правили, сначала спрашиваем.
-  function requestCloseDraft() {
-    if (editing && JSON.stringify(editing) !== draftOpened.current) setExitAsk(true)
-    else closeDraft()
+  // Выход из формы (крестик, Escape, «Назад к списку») — ничего не теряется.
+  function leaveDraft() {
+    const kept = editing && JSON.stringify(editing) !== draftOpened.current
+    keepDraft()
+    clearForm()
+    if (kept) message.info('Черновик отложен — вернуться к нему можно кнопкой «Продолжить черновик»')
+  }
+
+  // Черновик больше не нужен: тип сохранён или выброшен руками.
+  function forgetDraft() {
+    writeDraft(null)
+    setStash(null)
+  }
+
+  // Вернуться к отложенному типу ровно в том виде, в каком его оставили, —
+  // вместе с выбранной основой и отметками параметров.
+  function resumeDraft() {
+    if (!stash) return
+    setBaseId(stash.baseId ?? null)
+    setPicked(new Set(stash.picked ?? []))
+    beginDraft(stash.draft)
   }
 
   // ─── Создание ──────────────────────────────────────────────────────────────
@@ -228,7 +285,16 @@ export default function TemplateEditor({ open, onClose }) {
   // отмеченные», и до первого переноса форма выглядела пустой, хотя основа уже
   // выбрана; заодно терялись поля, которых перенос не знал (addressingRules у
   // VL, familyLabel, примечание к прошивкам).
+  // Предупреждение, а не запрет: отложенный черновик один, и начатый заново тип
+  // займёт его место — но только когда его действительно начнут править.
+  function warnStashReplaced() {
+    if (!stash) return
+    const name = stash.draft.name || stash.draft.id || 'без названия'
+    message.warning(`Отложенный черновик «${name}» будет заменён, как только вы измените этот тип`)
+  }
+
   function startNew(fromId) {
+    warnStashReplaced()
     const src = fromId ? templates.find(t => t.id === fromId) : null
     setBaseId(fromId ?? null)
     if (!src) {
@@ -251,6 +317,10 @@ export default function TemplateEditor({ open, onClose }) {
   }
 
   function startEdit(t) {
+    // Незаконченная правка ЭТОГО же типа — продолжаем её, а не начинаем заново
+    // с файла: иначе «Изменить» молча выбрасывало бы отложенную работу.
+    if (stash && !stash.draft.isNew && stash.draft.id === t.id) { resumeDraft(); return }
+    warnStashReplaced()
     setBaseId(null)
     setPicked(new Set())
     // Работаем с копией — «Отмена» не должна оставлять следов
@@ -371,7 +441,8 @@ export default function TemplateEditor({ open, onClose }) {
       else await api.put(`/devices/templates/${encodeURIComponent(d.id)}`, payload)
       message.success(`Тип «${d.name}» сохранён`)
       addLog('success', `${d.isNew ? 'Создан' : 'Изменён'} тип ПЧ «${d.name}» (${d.groups.flatMap(g => g.params).length} параметров)`)
-      closeDraft()
+      forgetDraft()   // черновик стал типом — держать его дальше незачем
+      clearForm()
       load()
     } catch (e) {
       message.error(e?.response?.data?.message ?? 'Не удалось сохранить тип')
@@ -518,10 +589,43 @@ export default function TemplateEditor({ open, onClose }) {
         onEnter={onClose}
         width={820}
         footer={[
-          <Button key="new" icon={<PlusOutlined />} onClick={() => startNew(null)}>Создать с нуля</Button>,
+          // Пока есть отложенный тип, эта кнопка возвращает к нему, а не
+          // открывает пустую форму: забытое «Сохранить» не должно означать
+          // «начинай заново». Начать с чистого листа — из панели черновика.
+          stash
+            ? <Button key="new" icon={<EditOutlined />} onClick={resumeDraft}>Продолжить черновик</Button>
+            : <Button key="new" icon={<PlusOutlined />} onClick={() => startNew(null)}>Создать с нуля</Button>,
           <Button key="close" type="primary" onClick={onClose}>Закрыть</Button>,
         ]}
       >
+        {stash && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message={`Незаконченный тип: ${stash.draft.name || stash.draft.id || 'без названия'}`}
+            description={(
+              <>
+                Групп: {draftSize(stash.draft).groups}, параметров: {draftSize(stash.draft).params}.
+                Отложен {new Date(stash.savedAt).toLocaleString('ru-RU')} — переживает закрытие окна и
+                перезапуск программы. Исчезнет, когда вы сохраните тип или удалите черновик.
+              </>
+            )}
+            action={(
+              <Space direction="vertical" size={4}>
+                <Button size="small" type="primary" onClick={resumeDraft}>Продолжить</Button>
+                <Popconfirm
+                  title="Удалить черновик?"
+                  description="Заполненные поля, созданные группы и параметры будут потеряны безвозвратно."
+                  okText="Удалить" cancelText="Отмена" okButtonProps={{ danger: true }}
+                  onConfirm={() => { forgetDraft(); message.success('Черновик удалён') }}
+                >
+                  <Button size="small" danger>Удалить</Button>
+                </Popconfirm>
+              </Space>
+            )}
+          />
+        )}
         <Alert
           type="info"
           showIcon
@@ -587,12 +691,14 @@ export default function TemplateEditor({ open, onClose }) {
     <AppModal
       title={<Space><ApartmentOutlined />{editing.isNew ? 'Новый тип ПЧ' : `Правка типа: ${editing.name}`}</Space>}
       open={open}
-      onCancel={requestCloseDraft}
+      onCancel={leaveDraft}
       onEnter={save}
       width={1100}
       footer={[
         ...undoButtons(draftUndo),
-        <Button key="back" onClick={requestCloseDraft}>Назад к списку</Button>,
+        <Tooltip key="back" title="Незаписанный тип не пропадёт: он отложится и будет ждать в списке типов">
+          <Button onClick={leaveDraft}>Назад к списку</Button>
+        </Tooltip>,
         <Button key="save" type="primary" loading={saving} onClick={save}>Сохранить тип</Button>,
       ]}
     >
@@ -875,27 +981,6 @@ export default function TemplateEditor({ open, onClose }) {
           }))}
         />
       )}
-
-      {/* Выход из формы без сохранения. Enter здесь намеренно НЕ нажимает
-          основную кнопку (enterSubmit={false}): это окно уничтожает работу, и
-          случайный Enter не должен быть тем, что её стирает. */}
-      <AppModal
-        title="Черновик не сохранён"
-        open={exitAsk}
-        onCancel={() => setExitAsk(false)}
-        onOk={closeDraft}
-        enterSubmit={false}
-        okText="Выйти без сохранения"
-        cancelText="Вернуться к правке"
-        okButtonProps={{ danger: true }}
-        width={480}
-      >
-        <Typography.Paragraph style={{ marginBottom: 0 }}>
-          {editing.isNew
-            ? 'Новый тип ещё не сохранён. Заполненные поля, созданные группы и параметры будут удалены — при следующем открытии форма начнётся с чистого листа.'
-            : `Изменения типа «${editing.name}» не сохранены и будут потеряны.`}
-        </Typography.Paragraph>
-      </AppModal>
 
       {/* Варианты значения для «Перечисления»: пары «число -> подпись». Именно
           так они хранятся в наших шаблонах (пуск/стоп/вперёд/назад и т.п.). */}
