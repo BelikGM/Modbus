@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, Menu, shell } = require('electron')
+const { app, BrowserWindow, dialog, Menu, shell, ipcMain } = require('electron')
 const { fork } = require('child_process')
 const path = require('path')
 const fs = require('fs')
@@ -151,11 +151,40 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
     },
   })
 
   mainWindow.loadURL('http://localhost:3000')
   mainWindow.on('closed', () => { mainWindow = null })
+}
+
+// ── Диалог выбора файла с правильной начальной папкой ────────────────────────
+// Страница просит открыть файл, главный процесс показывает родной диалог и
+// возвращает содержимое. Начальная папка отсчитывается от папки данных, поэтому
+// импорт проекта открывается сразу в <установка>\data\projects, а не там, где
+// Chromium в последний раз что-то открывал.
+function registerIpc() {
+  ipcMain.handle('app:data-dir', () => process.env.MODBUS_DATA_DIR || app.getPath('userData'))
+
+  ipcMain.handle('dialog:open-file', async (_e, opts = {}) => {
+    const base = process.env.MODBUS_DATA_DIR || app.getPath('userData')
+    const dir = path.join(base, opts.subdir ?? '')
+    try { fs.mkdirSync(dir, { recursive: true }) } catch { /* покажем что есть */ }
+
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: opts.title ?? 'Выберите файл',
+      defaultPath: dir,
+      properties: ['openFile'],
+      filters: [
+        { name: opts.filterName ?? 'Файлы', extensions: opts.extensions ?? ['json'] },
+        { name: 'Все файлы', extensions: ['*'] },
+      ],
+    })
+    if (result.canceled || !result.filePaths?.length) return null
+    const filePath = result.filePaths[0]
+    return { path: filePath, name: path.basename(filePath), content: fs.readFileSync(filePath, 'utf-8') }
+  })
 }
 
 // ── Меню приложения на русском ────────────────────────────────────────────────
@@ -272,6 +301,7 @@ if (!gotTheLock) {
   app.whenReady().then(async () => {
     try {
       buildMenu()
+      registerIpc()
       startBackend()
       await waitForBackend()
       createWindow()

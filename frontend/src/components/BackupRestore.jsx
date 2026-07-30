@@ -88,24 +88,37 @@ export default function BackupRestore({ device, modbusConnected }) {
 
   // ── Restore ─────────────────────────────────────────────────────────────────
 
-  function handleRestoreClick() {
+  // В desktop-версии — родной диалог с началом в папке данных (см. тот же приём
+  // при импорте проекта); в браузере остаётся скрытый input.
+  async function handleRestoreClick() {
+    if (window.modbusDesktop?.pickFile) {
+      const picked = await window.modbusDesktop.pickFile({
+        title: 'Выберите файл резервной копии',
+        filterName: 'Резервная копия',
+        extensions: ['json'],
+      })
+      if (picked) loadBackupText(picked.content)
+      return
+    }
     fileRef.current.click()
+  }
+
+  function loadBackupText(text) {
+    try {
+      const data = JSON.parse(text)
+      if (!data.parameters || !Array.isArray(data.parameters)) throw new Error('bad format')
+      setBackupData(data)
+      setPhase('restore-preview')
+    } catch {
+      addLog('error', 'Файл резервной копии повреждён или имеет неверный формат')
+    }
   }
 
   function handleFileLoad(e) {
     const file = e.target.files[0]
     if (!file) return
     const reader = new FileReader()
-    reader.onload = evt => {
-      try {
-        const data = JSON.parse(evt.target.result)
-        if (!data.parameters || !Array.isArray(data.parameters)) throw new Error('bad format')
-        setBackupData(data)
-        setPhase('restore-preview')
-      } catch {
-        addLog('error', 'Файл резервной копии повреждён или имеет неверный формат')
-      }
-    }
+    reader.onload = evt => loadBackupText(evt.target.result)
     reader.readAsText(file)
     e.target.value = ''
   }

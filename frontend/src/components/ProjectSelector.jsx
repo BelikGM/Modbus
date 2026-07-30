@@ -155,28 +155,48 @@ export default function ProjectSelector({ onProjectChange, onProjectInit }) {
 
   // ─── Import ───────────────────────────────────────────────────────────────
 
-  function handleImportClick() {
+  // В desktop-версии открываем РОДНОЙ диалог: у <input type="file"> начальную
+  // папку задать нельзя — её выбирает Chromium по последней использованной, и
+  // импорт открывался где угодно, только не в папке данных. В браузере (режим
+  // разработки) моста нет, поэтому остаётся прежний скрытый input.
+  async function handleImportClick() {
+    if (window.modbusDesktop?.pickFile) {
+      try {
+        const picked = await window.modbusDesktop.pickFile({
+          subdir: 'projects',
+          title: 'Выберите файл проекта',
+          filterName: 'Файл проекта',
+          extensions: ['json'],
+        })
+        if (picked) await importContent(picked.content)
+      } catch (err) {
+        message.error(err?.message ?? 'Не удалось открыть файл')
+      }
+      return
+    }
     importRef.current.value = ''
     importRef.current.click()
+  }
+
+  async function importContent(text) {
+    try {
+      const content = JSON.parse(text)
+      const { data: project } = await api.post('/projects/import', { content })
+      await api.post('/projects/active', { id: project.id })
+      setProjects(prev => [...prev, project])
+      setActiveId(project.id)
+      onProjectChange?.(project.id)
+      message.success(`Проект «${project.name}» импортирован и открыт`)
+    } catch (err) {
+      message.error(err?.response?.data?.message ?? 'Ошибка импорта файла')
+    }
   }
 
   function handleImportFile(e) {
     const file = e.target.files[0]
     if (!file) return
     const reader = new FileReader()
-    reader.onload = async evt => {
-      try {
-        const content = JSON.parse(evt.target.result)
-        const { data: project } = await api.post('/projects/import', { content })
-        await api.post('/projects/active', { id: project.id })
-        setProjects(prev => [...prev, project])
-        setActiveId(project.id)
-        onProjectChange?.(project.id)
-        message.success(`Проект «${project.name}» импортирован и открыт`)
-      } catch (err) {
-        message.error(err?.response?.data?.message ?? 'Ошибка импорта файла')
-      }
-    }
+    reader.onload = evt => importContent(evt.target.result)
     reader.readAsText(file)
   }
 
