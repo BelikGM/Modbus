@@ -29,4 +29,9 @@ contextBridge.exposeInMainWorld('modbusDesktop', {
       return () => ipcRenderer.off('window:state', handler)
     },
   },
+  // Полоса меню обычно скрыта и выезжает по наведению на самый верх окна
+  menuBar: {
+    show: () => ipcRenderer.send('menu:show'),
+    hide: () => ipcRenderer.send('menu:hide'),
+  },
 })

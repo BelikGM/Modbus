@@ -194,6 +194,11 @@ function registerIpc() {
   })
   ipcMain.on('window:close', () => mainWindow?.close())
 
+  // Полоса меню скрыта (autoHideMenuBar) и выезжает, когда мышь доводят до
+  // самого верха окна, — см. MenuHotZone.jsx. Alt продолжает работать сам.
+  ipcMain.on('menu:show', () => mainWindow?.setMenuBarVisibility(true))
+  ipcMain.on('menu:hide', () => mainWindow?.setMenuBarVisibility(false))
+
   ipcMain.handle('dialog:open-file', async (_e, opts = {}) => {
     const base = process.env.MODBUS_DATA_DIR || app.getPath('userData')
     const dir = path.join(base, opts.subdir ?? '')

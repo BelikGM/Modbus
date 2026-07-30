@@ -10,6 +10,7 @@ import TemplateEditor from './components/TemplateEditor'
 import LogDrawer from './components/LogDrawer'
 import ProjectSelector from './components/ProjectSelector'
 import WindowControls from './components/WindowControls'
+import MenuHotZone from './components/MenuHotZone'
 import socket from './socket'
 import api from './api'
 import { useLog, setLogProject } from './log'
@@ -32,6 +33,9 @@ function ThemeToggle({ dark, onChange }) {
       aria-checked={dark}
       onClick={() => onChange(!dark)}
       title="Тёмная тема"
+      // Лежит внутри перетаскиваемой части шапки — без этого класса нажатия
+      // забирает область перетаскивания окна (см. .app-drag в App.css).
+      className="app-no-drag"
       style={{
         width: 50,
         height: 26,
@@ -246,6 +250,8 @@ export default function App() {
   return (
     <ConfigProvider theme={{ algorithm: theme === 'dark' ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm }}>
     <Layout data-theme={theme} style={{ height: '100vh', overflow: 'hidden' }}>
+      {/* Ловушка у верхнего края: подвели мышь — выехало меню программы */}
+      <MenuHotZone />
       {/* В собранной программе окно идёт без рамки Windows, и эта шапка
           работает вместо заголовка окна: за неё окно таскают, двойной клик
           разворачивает. В браузере класс не вешается — там окно обычное. */}
@@ -258,7 +264,10 @@ export default function App() {
           background: '#001529',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0, height: '100%' }}>
+        {/* Логотип с названием — основная площадка для перетаскивания окна:
+            она есть всегда, в отличие от пустых промежутков, которые на узком
+            окне схлопываются в ноль. */}
+        <div className="app-drag" style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0, height: '100%' }}>
           <img
             src="/fbest-logo.png"
             alt="Fbest"
@@ -278,7 +287,7 @@ export default function App() {
           <ThemeToggle dark={theme === 'dark'} onChange={checked => toggleTheme(checked)} />
         </div>
 
-        <div style={{ flex: 1 }} />
+        <div className="app-drag" style={{ flex: 1 }} />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexShrink: 0 }}>
           <ProjectSelector
@@ -304,7 +313,7 @@ export default function App() {
           </Button>
         </div>
 
-        <div style={{ flex: 1 }} />
+        <div className="app-drag" style={{ flex: 1 }} />
 
         <div style={{ flexShrink: 0 }}>
           <Badge count={errorCount} size="small">
