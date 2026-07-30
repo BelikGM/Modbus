@@ -11,7 +11,7 @@ export class PresetsController {
   }
 
   @Post()
-  create(@Body() body: { name: string; family: 'pump' | 'vl'; values?: Record<string, number> }) {
+  create(@Body() body: { name: string; family: string; values?: Record<string, number> }) {
     return this.presetsService.create(body.name, body.family, body.values ?? {});
   }
 

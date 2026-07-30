@@ -1,6 +1,8 @@
 {
   "id": "Elhart-Emd-VL-Full",
   "name": "Elhart-Emd-VL-Full",
+  "family": "vl",
+  "familyLabel": "VL",
   "description": "Преобразователь частоты для насосов EMD-VL (FULL)",
   "template": true,
   "connection": {

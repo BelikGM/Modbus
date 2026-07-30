@@ -1,6 +1,8 @@
 {
   "id": "Elhart-Emd-Pump-Full",
   "name": "Elhart-Emd-Pump-Full",
+  "family": "pump",
+  "familyLabel": "Pump",
   "description": "Преобразователь частоты для насосов EMD-PUMP (FULL)",
   "template": true,
   "connection": {

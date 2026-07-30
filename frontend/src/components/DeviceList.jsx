@@ -19,21 +19,7 @@ import api from '../api'
 import { sortByDeviceOrder } from '../deviceOrder'
 import { ALL_DEVICES } from './ParamGroups'
 
-// Семейство ПЧ. Приоритет — явное поле family из шаблона: у своих типов оно
-// задаётся в редакторе. Для штатных шаблонов, где поля ещё нет, оставлен
-// прежний разбор по названию, чтобы старые проекты не поехали.
-function deviceType(device) {
-  if (device.family) return device.family
-  return (device.templateId ?? device.id ?? '').toLowerCase().includes('vl') ? 'vl' : 'pump'
-}
-
-function familyLabel(device) {
-  if (device.familyLabel) return device.familyLabel
-  const f = deviceType(device)
-  if (f === 'vl') return 'VL'
-  if (f === 'pump') return 'Pump'
-  return f.charAt(0).toUpperCase() + f.slice(1)
-}
+import { deviceFamily as deviceType, familyLabel } from '../family'
 
 function SortableDeviceRow({ id, compact, mirrored, children }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })

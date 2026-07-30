@@ -1,6 +1,8 @@
 {
   "id": "Elhart-Emd-Pump-OWN",
   "name": "Elhart-Emd-Pump-OWN",
+  "family": "pump",
+  "familyLabel": "Pump",
   "description": "Преобразователь частоты для насосов EMD-PUMP (OWN)",
   "template": true,
   "connection": {

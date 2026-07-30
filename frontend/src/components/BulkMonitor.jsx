@@ -20,10 +20,7 @@ import { addLog } from '../log'
 import { formatParamValue } from '../paramFormat'
 import { getMonitorParams } from '../monitorParams'
 import { setBusy } from '../busy'
-
-function deviceFamily(templateId) {
-  return (templateId ?? '').toLowerCase().includes('vl') ? 'vl' : 'pump'
-}
+import { deviceFamily } from '../family'
 
 function formatCell(entry) {
   if (!entry) return <span style={{ color: '#bbb' }}>—</span>
@@ -163,7 +160,7 @@ export default function BulkMonitor({ devices, modbusConnected, sameType }) {
   // Группируем по семейству ПЧ — при смешанном выборе у каждого своя карта
   // регистров мониторинга; при однотипном выборе получится одна группа.
   const familyGroups = ['pump', 'vl']
-    .map(family => ({ family, devices: devices.filter(d => deviceFamily(d.templateId) === family) }))
+    .map(family => ({ family, devices: devices.filter(d => deviceFamily(d) === family) }))
     .filter(g => g.devices.length > 0)
 
   const paramsByFamily = Object.fromEntries(

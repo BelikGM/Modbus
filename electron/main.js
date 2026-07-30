@@ -141,8 +141,12 @@ function buildMenu() {
     {
       label: 'Правка',
       submenu: [
-        { role: 'undo', label: 'Отменить' },
-        { role: 'redo', label: 'Повторить' },
+        // registerAccelerator: false — иначе Ctrl+Z перехватывает меню и до
+        // страницы клавиша не доходит, а отмена действий в редакторе типов
+        // живёт именно там. Пункты меню при этом работают по клику как обычно,
+        // и в обычных полях ввода Ctrl+Z по-прежнему отменяет текст.
+        { role: 'undo', label: 'Отменить', registerAccelerator: false },
+        { role: 'redo', label: 'Повторить', registerAccelerator: false },
         { type: 'separator' },
         { role: 'cut', label: 'Вырезать' },
         { role: 'copy', label: 'Копировать' },

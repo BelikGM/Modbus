@@ -6,10 +6,7 @@ import { formatParamValue, normalizeOptions } from '../paramFormat'
 import { isParamWritable } from '../access'
 import { downloadCsv, parseCsv } from '../csv'
 import { addLog } from '../log'
-
-function deviceFamily(templateId) {
-  return (templateId ?? '').toLowerCase().includes('vl') ? 'vl' : 'pump'
-}
+import { deviceFamily } from '../family'
 
 // Вкладка "Шаблоны" — именованные наборы подготовленных значений (пресеты) для
 // одного семейства ПЧ. Изначально шаблон пуст (0 групп, 0 регистров); галочка
@@ -20,7 +17,7 @@ function deviceFamily(templateId) {
 // кнопкой у конкретного шаблона в списке (только если открыто в контексте
 // уже выбранных ПЧ этого семейства — `devices`).
 export default function ValuePresets({ device, devices }) {
-  const family = deviceFamily(device.templateId ?? device.id)
+  const family = deviceFamily(device)
   const targetDevices = devices ?? [device]
   const [presets, setPresets] = useState([])
   const [loading, setLoading] = useState(false)

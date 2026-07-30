@@ -3,10 +3,14 @@ import {
   Modal, Button, Table, Input, Select, InputNumber, Space, Typography, Tag,
   message, Popconfirm, Alert, Collapse, Checkbox, Divider, Tooltip,
 } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, ApartmentOutlined, CopyOutlined } from '@ant-design/icons'
+import {
+  PlusOutlined, EditOutlined, DeleteOutlined, ApartmentOutlined, CopyOutlined,
+  UndoOutlined, RedoOutlined,
+} from '@ant-design/icons'
 import api from '../api'
 import { addLog } from '../log'
 import { normalizeOptions } from '../paramFormat'
+import useUndoHistory from '../useUndoHistory'
 
 // Редактор типов ПЧ (шаблонов).
 //
@@ -34,14 +38,14 @@ const ACCESS_OPTIONS = [
 export default function TemplateEditor({ open, onClose }) {
   const [templates, setTemplates] = useState([])
   const [loading, setLoading] = useState(false)
-  const [editing, setEditing] = useState(null) // редактируемый тип (черновик)
+  const [editing, setEditingState] = useState(null) // редактируемый тип (черновик)
   const [baseId, setBaseId] = useState(null)   // тип-основа при создании
   const [picked, setPicked] = useState(new Set()) // выбранные paramId из основы
   const [saving, setSaving] = useState(false)
   // Отдельный режим: каталог исполнений (моделей) и список прошивок. Для
   // ШТАТНЫХ типов эти данные хранятся не в файле поставки, а в отдельном файле
   // дополнений — так эталон остаётся нетронутым, а список переживает обновление.
-  const [extras, setExtras] = useState(null) // { type, models: [], firmwares: [] }
+  const [extras, setExtrasState] = useState(null) // { type, models: [], firmwares: [] }
   // Редактор вариантов значения для параметров типа «Перечисление»
   // (пуск/стоп/вперёд/назад и т.п.) — иначе такой параметр пришлось бы
   // дописывать в JSON руками.
@@ -53,6 +57,26 @@ export default function TemplateEditor({ open, onClose }) {
   const [openGroup, setOpenGroup] = useState(null)
   const [hoverGroup, setHoverGroup] = useState(null)
   const [renamingGroup, setRenamingGroup] = useState(null)
+
+  // Отмена действий. Два независимых журнала: правка типа и каталог моделей —
+  // это разные экраны, и общая история путала бы шаги между ними. Дальше по
+  // коду используются именно обёртки — через них проходит каждое изменение.
+  const draftUndo = useUndoHistory(editing, setEditingState, open)
+  const extrasUndo = useUndoHistory(extras, setExtrasState, open)
+  const setEditing = draftUndo.set
+  const setExtras = extrasUndo.set
+
+  // Кнопки «Отменить»/«Вернуть» — одинаковые на обоих экранах
+  function undoButtons(h) {
+    return [
+      <Tooltip key="undo" title={h.canUndo ? `Отменить последнее действие (Ctrl+Z), шагов: ${h.steps}` : 'Отменять нечего'}>
+        <Button icon={<UndoOutlined />} disabled={!h.canUndo} onClick={h.undo} />
+      </Tooltip>,
+      <Tooltip key="redo" title="Вернуть отменённое (Ctrl+Y)">
+        <Button icon={<RedoOutlined />} disabled={!h.canRedo} onClick={h.redo} />
+      </Tooltip>,
+    ]
+  }
 
   function startExtras(t) {
     setExtras({
@@ -286,6 +310,7 @@ export default function TemplateEditor({ open, onClose }) {
         onCancel={() => setExtras(null)}
         width={780}
         footer={[
+          ...undoButtons(extrasUndo),
           <Button key="back" onClick={() => setExtras(null)}>Назад к списку</Button>,
           <Button key="save" type="primary" loading={saving} onClick={saveExtras}>Сохранить</Button>,
         ]}
@@ -424,7 +449,7 @@ export default function TemplateEditor({ open, onClose }) {
                 <span>
                   <b>{t.name ?? t.id}</b>{' '}
                   {t.custom
-                    ? <Tag color="green">создан вами</Tag>
+                    ? <Tag color="green">личный</Tag>
                     : <Tag>из поставки</Tag>}
                   <div><Typography.Text type="secondary" style={{ fontSize: 11 }}>{t.id}</Typography.Text></div>
                 </span>
@@ -473,6 +498,7 @@ export default function TemplateEditor({ open, onClose }) {
       onCancel={() => setEditing(null)}
       width={1100}
       footer={[
+        ...undoButtons(draftUndo),
         <Button key="back" onClick={() => setEditing(null)}>Назад к списку</Button>,
         <Button key="save" type="primary" loading={saving} onClick={save}>Сохранить тип</Button>,
       ]}

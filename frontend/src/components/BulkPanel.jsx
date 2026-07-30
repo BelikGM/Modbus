@@ -19,15 +19,13 @@ import { addLog } from '../log'
 import { stopOnlyParamsOf, statusParamId, isRunningFromStatus, stopCommandValue } from '../driveControl'
 import { parseParamsCsv } from '../csvImport'
 import { ALL_DEVICES } from './ParamGroups'
+import { deviceFamily } from '../family'
 
 // Pump-Full и Pump-OWN — один и тот же физический ПЧ, у OWN просто урезанный
 // (но регистрово идентичный) набор параметров — сверено вручную: все параметры
 // OWN присутствуют в Full с теми же номерами регистров. Групповые операции между
 // ними безопасны, поэтому они считаются одним "семейством". VL — другая карта
 // регистров, отдельное семейство.
-function deviceFamily(templateId) {
-  return (templateId ?? '').toLowerCase().includes('vl') ? 'vl' : 'pump'
-}
 
 function formatResult(entry) {
   if (!entry) return <span style={{ color: '#bbb' }}>—</span>
@@ -45,7 +43,7 @@ const TAB_LABELS = { params: 'Параметры', templates: 'Шаблоны' }
 
 export default function BulkPanel({ devices, modbusConnected, onDeselect, activeTab, onActiveTabChange, focusedDeviceId, onFocusDevice, focusedDevice, locked = false, lockLabel = '' }) {
   const templateIds = [...new Set(devices.map(d => d.templateId))]
-  const families = [...new Set(devices.map(d => deviceFamily(d.templateId)))]
+  const families = [...new Set(devices.map(d => deviceFamily(d)))]
   const sameType = families.length === 1
   // Устройство с наибольшим числом параметров в выборке (напр. Full среди Full+OWN) —
   // используется как эталон для отображения групп, чтобы не потерять группы,
@@ -568,12 +566,12 @@ export default function BulkPanel({ devices, modbusConnected, onDeselect, active
   // наоборот). Секции идут одна под другой в одном файле, у каждой — своя
   // строка заголовков со своим набором колонок.
   function buildAndDownloadAllCsv(collected) {
-    const maxCols = Math.max(...families.map(f => devices.filter(d => deviceFamily(d.templateId) === f).length))
+    const maxCols = Math.max(...families.map(f => devices.filter(d => deviceFamily(d) === f).length))
     const pad = arr => [...arr, ...Array(Math.max(0, maxCols + 2 - arr.length)).fill('')]
     const rows = []
     let first = true
     for (const fam of families) {
-      const famDevices = devices.filter(d => deviceFamily(d.templateId) === fam)
+      const famDevices = devices.filter(d => deviceFamily(d) === fam)
       if (famDevices.length === 0) continue
       // Эталон семейства — с самой полной картой параметров.
       const famTemplate = famDevices.reduce((best, d) => (

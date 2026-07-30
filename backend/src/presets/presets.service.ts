@@ -10,7 +10,9 @@ import * as path from 'path';
 export interface ValuePreset {
   id: string;
   name: string;
-  family: 'pump' | 'vl';
+  // Семейство — произвольная строка: свои типы из редактора могут завести
+  // новое семейство, и пресеты для него должны работать так же.
+  family: string;
   values: Record<string, number>;
   updatedAt: string;
 }
@@ -50,10 +52,10 @@ export class PresetsService {
     return preset;
   }
 
-  create(name: string, family: 'pump' | 'vl', values: Record<string, number> = {}): ValuePreset {
+  create(name: string, family: string, values: Record<string, number> = {}): ValuePreset {
     const trimmed = (name ?? '').trim();
     if (!trimmed) throw new BadRequestException('Укажите название шаблона');
-    if (family !== 'pump' && family !== 'vl') throw new BadRequestException(`Неизвестное семейство ПЧ: ${family}`);
+    if (typeof family !== 'string' || !family.trim()) throw new BadRequestException('Не указано семейство ПЧ');
     if (this.presets.some(p => p.name === trimmed && p.family === family)) {
       throw new BadRequestException(`Шаблон «${trimmed}» для этого типа ПЧ уже существует`);
     }

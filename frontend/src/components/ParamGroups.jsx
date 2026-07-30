@@ -24,6 +24,7 @@ import { downloadCsv, groupFileLabel } from '../csv'
 import { processStart, processUpdate, processDone, processInfo } from '../notify'
 import { addLog } from '../log'
 import OverwriteGuard, { collectOverwriteConflicts } from './OverwriteGuard'
+import { deviceFamily } from '../family'
 
 // Значение/запись специально не растянуты "с запасом" — короткие значения
 // (типично "—" пока не считано, или пара символов/цифр) не должны тянуть за
@@ -38,10 +39,6 @@ const MIN_COLS     = { id: 60, desc: 100, def: 70,  cur: 80,  write: 160 }
 // подсветить ВСЕ выбранные строки, а не одну — иначе при переходе в этот режим
 // в сайдбаре продолжал ярко гореть тот ПЧ, что был активен раньше.
 export const ALL_DEVICES = '__all__'
-
-function deviceFamily(templateId) {
-  return (templateId ?? '').toLowerCase().includes('vl') ? 'vl' : 'pump'
-}
 
 function SortableCollapseItem({ id, children }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
@@ -387,7 +384,7 @@ export default function ParamGroups({
   // ─── Избранное: своя группа из произвольных параметров ────────────────────
   const FAV_GROUP_ID = '__favorites__'   // постоянное «Избранное» из шаблона
   const DEBUG_GROUP_ID = '__debug__'    // рабочая «Отладка», редактируется на месте
-  const deviceFamilyId = deviceFamily(device.templateId ?? device.id)
+  const deviceFamilyId = deviceFamily(device)
 
   useEffect(() => {
     let cancelled = false
@@ -853,7 +850,7 @@ export default function ParamGroups({
 
   // ─── Шаблоны значений (пресеты) ────────────────────────────────────────────
 
-  const family = deviceFamily(device.templateId ?? device.id)
+  const family = deviceFamily(device)
 
   async function openPresetModal() {
     setSelectedPresetId(null)
@@ -1045,7 +1042,7 @@ export default function ParamGroups({
             // групповые операции по разным картам регистров невозможны.
             ? mixedSelectable.map(d => ({
                 value: d.id,
-                label: `${d.name} · Адрес ${d.connection.slaveId} · ${deviceFamily(d.templateId) === 'vl' ? 'VL' : 'Pump'}`,
+                label: `${d.name} · Адрес ${d.connection.slaveId} · ${deviceFamily(d) === 'vl' ? 'VL' : 'Pump'}`,
               }))
             : [
                 ...(isBulk ? [{

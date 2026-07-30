@@ -2,7 +2,10 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 
-export type DeviceFamily = 'pump' | 'vl';
+// Семейство — произвольная строка, а не «pump | vl»: в редакторе типов можно
+// создать ПЧ любого семейства, и у него тоже должно быть своё «Избранное».
+// Штатные pump/vl — просто два первых значения, а не исчерпывающий список.
+export type DeviceFamily = string;
 
 // «Избранное» — собственная группа параметров на СЕМЕЙСТВО ПЧ (pump | vl):
 // произвольный список конкретных параметров (не групп целиком), собранный
@@ -36,18 +39,20 @@ export class FavoritesService {
     try {
       if (fs.existsSync(this.filePath)) {
         const parsed = JSON.parse(fs.readFileSync(this.filePath, 'utf-8'));
-        const stored = {
-          pump: Array.isArray(parsed?.pump) ? parsed.pump : [],
-          vl: Array.isArray(parsed?.vl) ? parsed.vl : [],
-        };
+        // Берём ВСЕ семейства из файла, а не только pump/vl: пользователь мог
+        // создать свой тип с новым семейством, и его список тоже надо вернуть.
+        const stored: Record<DeviceFamily, string[]> = {};
+        for (const [key, val] of Object.entries(parsed ?? {})) {
+          if (key !== 'version' && Array.isArray(val)) stored[key] = val as string[];
+        }
         if (parsed?.version === FavoritesService.SCHEMA_VERSION) return stored;
 
         // Разовая миграция старого файла: добавляем стартовый набор, СОХРАНЯЯ
         // всё, что пользователь уже отметил (его пункты идут после наших).
-        const merged: Record<DeviceFamily, string[]> = {
-          pump: [...new Set([...FavoritesService.DEFAULTS.pump, ...stored.pump])],
-          vl: [...new Set([...FavoritesService.DEFAULTS.vl, ...stored.vl])],
-        };
+        const merged: Record<DeviceFamily, string[]> = { ...stored };
+        for (const [fam, def] of Object.entries(FavoritesService.DEFAULTS)) {
+          merged[fam] = [...new Set([...def, ...(stored[fam] ?? [])])];
+        }
         this.favorites = merged;
         this.persist();
         return merged;
@@ -62,14 +67,16 @@ export class FavoritesService {
   }
 
   private assertFamily(family: string): asserts family is DeviceFamily {
-    if (family !== 'pump' && family !== 'vl') {
-      throw new BadRequestException(`Неизвестное семейство ПЧ: ${family}`);
+    if (typeof family !== 'string' || !family.trim()) {
+      throw new BadRequestException('Не указано семейство ПЧ');
     }
   }
 
+  // У незнакомого семейства (новый тип из редактора) списка ещё нет — это не
+  // ошибка, просто пустое «Избранное».
   get(family: string): string[] {
     this.assertFamily(family);
-    return this.favorites[family];
+    return this.favorites[family] ?? [];
   }
 
   getAll(): Record<DeviceFamily, string[]> {
