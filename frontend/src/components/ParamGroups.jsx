@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Collapse, Button, Input, message, Typography, Popconfirm, Space, Modal, Checkbox, Progress, Select, Tag, Tooltip, Table, Alert } from 'antd'
-import { DownloadOutlined, SearchOutlined, RollbackOutlined, HolderOutlined, UploadOutlined, FileTextOutlined, StarOutlined } from '@ant-design/icons'
+import { DownloadOutlined, SearchOutlined, RollbackOutlined, HolderOutlined, UploadOutlined, FileTextOutlined, ToolOutlined } from '@ant-design/icons'
 import {
   DndContext,
   closestCenter,
@@ -1260,7 +1260,7 @@ export default function ParamGroups({
         </div>
         {/* Управление составом избранного — рядом с чекбоксами групп */}
         <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <Button size="small" icon={<StarOutlined />} onClick={openFavModal}>
+          <Button size="small" icon={<ToolOutlined />} onClick={openFavModal}>
             {favoriteParams.length > 0 ? `Изменить «Отладку» (${favoriteParams.length})` : 'Собрать группу «Отладка»'}
           </Button>
           {favoriteParams.length > 0 && (
@@ -1322,7 +1322,7 @@ export default function ParamGroups({
 
       {/* Состав избранного: отмечаем ОТДЕЛЬНЫЕ параметры (не группы целиком) */}
       <Modal
-        title={<Space><StarOutlined />Состав группы «🔧 Отладка»</Space>}
+        title={<Space><ToolOutlined />Состав группы «🔧 Отладка»</Space>}
         open={favModalOpen}
         onCancel={() => setFavModalOpen(false)}
         width={760}
