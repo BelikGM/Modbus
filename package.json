@@ -1,7 +1,7 @@
 {
   "name": "modbus-controller",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Modbus RTU / RS-485 device manager",
   "author": {
     "name": "BelikGM",
@@ -14,9 +14,10 @@
     "rebuild:native": "electron-rebuild -f -w serialport -m backend",
     "build": "npm run build:frontend && npm run build:backend",
     "electron:dev": "npm run build && npx electron .",
-    "dist:win": "npm run build && npx electron-builder --win",
-    "dist:mac": "npm run build && npx electron-builder --mac",
-    "dist:linux": "npm run build && npx electron-builder --linux"
+    "version:bump": "node scripts/bump-version.js",
+    "dist:win": "npm run version:bump && npm run build && npx electron-builder --win",
+    "dist:mac": "npm run version:bump && npm run build && npx electron-builder --mac",
+    "dist:linux": "npm run version:bump && npm run build && npx electron-builder --linux"
   },
   "build": {
     "appId": "com.modbus.controller",

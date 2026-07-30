@@ -128,6 +128,23 @@
 }
 
 
+/* ─── Шапка как заголовок окна ─────────────────────────────────────────────
+   В собранной программе окно идёт без рамки Windows, и роль заголовка играет
+   шапка приложения: за неё окно перетаскивается, двойной клик разворачивает.
+   Всё нажимаемое внутри из области перетаскивания исключено — иначе кнопка
+   «Журнал» или выбор проекта таскали бы окно вместо нажатия. */
+.app-header-desktop {
+  -webkit-app-region: drag;
+}
+.app-header-desktop button,
+.app-header-desktop input,
+.app-header-desktop a,
+.app-header-desktop .ant-select,
+.app-header-desktop .ant-switch,
+.app-header-desktop .ant-badge {
+  -webkit-app-region: no-drag;
+}
+
 body {
   margin: 0;
 }

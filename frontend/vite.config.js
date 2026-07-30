@@ -1,7 +1,15 @@
+import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+// Номер версии — из КОРНЕВОГО package.json, того же, по которому
+// electron-builder называет инсталлятор. Одна точка правды: то, что показано в
+// шапке программы, совпадает с версией установленного пакета. Подставляется на
+// сборке, поэтому в готовом приложении никаких запросов за версией не нужно.
+const rootPkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'))
+
 export default defineConfig({
+  define: { __APP_VERSION__: JSON.stringify(rootPkg.version) },
   plugins: [react()],
   server: {
     // По умолчанию Vite слушает localhost, что на некоторых машинах резолвится

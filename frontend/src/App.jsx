@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Layout, Typography, Empty, Button, Badge, ConfigProvider, theme as antdTheme } from 'antd'
+import { Layout, Typography, Empty, Button, Badge, Tooltip, ConfigProvider, theme as antdTheme } from 'antd'
 import { FileTextOutlined, SunOutlined, MoonOutlined, BuildOutlined } from '@ant-design/icons'
 import DeviceList from './components/DeviceList'
 import DeviceDetail from './components/DeviceDetail'
@@ -9,6 +9,7 @@ import BusScanner from './components/BusScanner'
 import TemplateEditor from './components/TemplateEditor'
 import LogDrawer from './components/LogDrawer'
 import ProjectSelector from './components/ProjectSelector'
+import WindowControls from './components/WindowControls'
 import socket from './socket'
 import api from './api'
 import { useLog, setLogProject } from './log'
@@ -245,7 +246,11 @@ export default function App() {
   return (
     <ConfigProvider theme={{ algorithm: theme === 'dark' ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm }}>
     <Layout data-theme={theme} style={{ height: '100vh', overflow: 'hidden' }}>
+      {/* В собранной программе окно идёт без рамки Windows, и эта шапка
+          работает вместо заголовка окна: за неё окно таскают, двойной клик
+          разворачивает. В браузере класс не вешается — там окно обычное. */}
       <Header
+        className={window.modbusDesktop ? 'app-header app-header-desktop' : 'app-header'}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -262,6 +267,14 @@ export default function App() {
           <Typography.Title level={4} style={{ color: '#fff', margin: 0, whiteSpace: 'nowrap' }}>
             Modbus Controller
           </Typography.Title>
+          {/* Версия видна сразу, без захода в «Справка → О программе»: на
+              объекте первый вопрос при разборе странного поведения — «какая
+              сборка стоит», и ответ должен быть на экране, а не в меню. */}
+          <Tooltip title="Версия программы — она же в имени файла инсталлятора и в «Справка → О программе»">
+            <Typography.Text style={{ color: '#ffffff8c', fontSize: 12, whiteSpace: 'nowrap' }}>
+              v{__APP_VERSION__}
+            </Typography.Text>
+          </Tooltip>
           <ThemeToggle dark={theme === 'dark'} onChange={checked => toggleTheme(checked)} />
         </div>
 
@@ -303,6 +316,12 @@ export default function App() {
               Журнал
             </Button>
           </Badge>
+        </div>
+
+        {/* Кнопки окна прижаты к правому краю вплотную, как системные, —
+            поэтому съедаем правый отступ шапки. В браузере не рисуются. */}
+        <div style={{ flexShrink: 0, marginLeft: 16, marginRight: -24, alignSelf: 'stretch', display: 'flex' }}>
+          <WindowControls />
         </div>
       </Header>
 

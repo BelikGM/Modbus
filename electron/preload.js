@@ -15,4 +15,18 @@ contextBridge.exposeInMainWorld('modbusDesktop', {
   pickFile: opts => ipcRenderer.invoke('dialog:open-file', opts ?? {}),
   // Путь к папке данных — чтобы показывать его в интерфейсе
   dataDir: () => ipcRenderer.invoke('app:data-dir'),
+  // Окно идёт без рамки Windows, поэтому свернуть/развернуть/закрыть страница
+  // делает сама. Наличие этого объекта заодно и есть признак «мы в программе,
+  // а не в браузере» — по нему шапка решает, рисовать ли кнопки окна.
+  windowControls: {
+    minimize: () => ipcRenderer.send('window:minimize'),
+    toggleMaximize: () => ipcRenderer.send('window:toggle-maximize'),
+    close: () => ipcRenderer.send('window:close'),
+    // Возвращает функцию отписки — её ждёт useEffect в WindowControls.
+    onState: cb => {
+      const handler = (_e, state) => cb(state)
+      ipcRenderer.on('window:state', handler)
+      return () => ipcRenderer.off('window:state', handler)
+    },
+  },
 })

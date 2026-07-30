@@ -144,6 +144,16 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     title: 'Modbus Controller',
+    // Без рамки и заголовка Windows: сверху оставалась лишняя синяя полоса
+    // поверх собственной шапки программы. Заголовок и кнопки окна теперь свои
+    // (шапка приложения + компонент WindowControls), окно по-прежнему тянется
+    // за края и разворачивается двойным кликом по шапке.
+    frame: false,
+    // Иначе на освободившемся месте вылезала бы полоса меню — она остаётся
+    // доступной по Alt (и через неё же «Справка → О программе»).
+    autoHideMenuBar: true,
+    // Пока грузится страница, окно не должно моргать белым поверх тёмной шапки.
+    backgroundColor: '#001529',
     // Иконка окна и панели задач. Значок самого exe ставит electron-builder,
     // но окно берёт свой отдельно — без этого в панели задач висел бы
     // стандартный значок Electron.
@@ -157,6 +167,14 @@ function createWindow() {
 
   mainWindow.loadURL('http://localhost:3000')
   mainWindow.on('closed', () => { mainWindow = null })
+
+  // Кнопка «развернуть» должна менять вид на «восстановить» — в том числе
+  // когда окно развернули не ею (двойной клик по шапке, Win+Стрелка, системное
+  // меню). Поэтому состояние сообщает главный процесс, а не сама кнопка.
+  const sendState = () => mainWindow?.webContents.send('window:state', { maximized: mainWindow.isMaximized() })
+  mainWindow.on('maximize', sendState)
+  mainWindow.on('unmaximize', sendState)
+  mainWindow.webContents.on('did-finish-load', sendState)
 }
 
 // ── Диалог выбора файла с правильной начальной папкой ────────────────────────
@@ -166,6 +184,15 @@ function createWindow() {
 // Chromium в последний раз что-то открывал.
 function registerIpc() {
   ipcMain.handle('app:data-dir', () => process.env.MODBUS_DATA_DIR || app.getPath('userData'))
+
+  // Управление окном: рамки Windows нет, кнопки нарисованы в шапке страницы.
+  ipcMain.on('window:minimize', () => mainWindow?.minimize())
+  ipcMain.on('window:toggle-maximize', () => {
+    if (!mainWindow) return
+    if (mainWindow.isMaximized()) mainWindow.unmaximize()
+    else mainWindow.maximize()
+  })
+  ipcMain.on('window:close', () => mainWindow?.close())
 
   ipcMain.handle('dialog:open-file', async (_e, opts = {}) => {
     const base = process.env.MODBUS_DATA_DIR || app.getPath('userData')
