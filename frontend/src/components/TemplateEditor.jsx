@@ -47,6 +47,12 @@ export default function TemplateEditor({ open, onClose }) {
   // дописывать в JSON руками.
   const [optionsEditor, setOptionsEditor] = useState(null)
   const [newFirmware, setNewFirmware] = useState('')
+  // Раскрытая группа (режим «гармошки»: открыта всегда одна) и группа под
+  // курсором — кнопки правки показываем только при наведении, чтобы список
+  // групп оставался читаемым.
+  const [openGroup, setOpenGroup] = useState(null)
+  const [hoverGroup, setHoverGroup] = useState(null)
+  const [renamingGroup, setRenamingGroup] = useState(null)
 
   function startExtras(t) {
     setExtras({
@@ -169,11 +175,19 @@ export default function TemplateEditor({ open, onClose }) {
   // Без этого тип «с нуля» невозможно было сохранить: параметры брались только
   // из типа-основы, а пустой тип бэкенд справедливо отклонял.
   function addGroup() {
-    const n = (editing.groups?.length ?? 0) + 1
+    // Номер ищем свободный, а не «сколько групп + 1»: после удаления средней
+    // группы такой счётчик выдал бы уже занятый id, и правка одной группы
+    // молча меняла бы другую.
+    const used = new Set((editing.groups ?? []).map(g => g.id))
+    let n = (editing.groups?.length ?? 0) + 1
+    while (used.has(`G${n}`)) n++
+    const id = `G${n}`
     setEditing(prev => ({
       ...prev,
-      groups: [...(prev.groups ?? []), { id: `G${n}`, name: `Группа ${n}`, params: [] }],
+      groups: [...(prev.groups ?? []), { id, name: `Группа ${n}`, params: [] }],
     }))
+    setOpenGroup(id)
+    setRenamingGroup(id)
   }
 
   function patchGroup(groupId, patch) {
@@ -188,6 +202,7 @@ export default function TemplateEditor({ open, onClose }) {
   }
 
   function addParam(groupId) {
+    setOpenGroup(groupId)
     setEditing(prev => ({
       ...prev,
       groups: prev.groups.map(g => {
@@ -218,11 +233,11 @@ export default function TemplateEditor({ open, onClose }) {
     }))
   }
   function removeParam(groupId, paramId) {
+    // Пустую группу НЕ удаляем: она создаётся вручную и живёт сама по себе —
+    // иначе удаление последнего параметра неожиданно сносило бы и саму группу.
     setEditing(prev => ({
       ...prev,
-      groups: prev.groups
-        .map(g => g.id !== groupId ? g : { ...g, params: g.params.filter(p => p.id !== paramId) })
-        .filter(g => g.params.length > 0),
+      groups: prev.groups.map(g => g.id !== groupId ? g : { ...g, params: g.params.filter(p => p.id !== paramId) }),
     }))
   }
 
@@ -230,10 +245,13 @@ export default function TemplateEditor({ open, onClose }) {
     const d = editing
     if (!d.id?.trim()) { message.warning('Укажите идентификатор типа (латиницей, без пробелов)'); return }
     if (!d.name?.trim()) { message.warning('Укажите название типа'); return }
-    if (!d.groups?.length) { message.warning('В типе нет ни одного параметра'); return }
+    // Группы теперь могут быть пустыми (создаются вручную), поэтому считаем
+    // сами параметры, а не количество групп.
+    const filled = (d.groups ?? []).filter(g => g.params?.length > 0)
+    if (filled.length === 0) { message.warning('В типе нет ни одного параметра'); return }
     setSaving(true)
     try {
-      const payload = { ...d }
+      const payload = { ...d, groups: filled }
       delete payload.isNew
       if (d.isNew) await api.post('/devices/templates', payload)
       else await api.put(`/devices/templates/${encodeURIComponent(d.id)}`, payload)
@@ -291,7 +309,7 @@ export default function TemplateEditor({ open, onClose }) {
               onChange={e => setNewFirmware(e.target.value)}
               onPressEnter={addFirmware}
             />
-            <Button size="small" type="primary" icon={<PlusOutlined />} onClick={addFirmware}>
+            <Button size="small" icon={<PlusOutlined />} onClick={addFirmware}>
               Добавить прошивку
             </Button>
           </Space>
@@ -323,7 +341,7 @@ export default function TemplateEditor({ open, onClose }) {
           <Typography.Text strong style={{ fontSize: 12 }}>Модель (мощность)</Typography.Text>
           <Button size="small" icon={<PlusOutlined />} onClick={() => setExtras({
             ...extras, models: [...extras.models, { code: '', powerKw: 0, supply: '3~380В' }],
-          })}>Добавить</Button>
+          })}>Добавить модель</Button>
         </Space>
         <Table
           size="small"
@@ -392,7 +410,7 @@ export default function TemplateEditor({ open, onClose }) {
           showIcon
           style={{ marginBottom: 12 }}
           message="Свои типы ПЧ можно создавать прямо здесь"
-          description="Штатные типы менять нельзя — возьмите такой за основу, отберите нужные группы и параметры и сохраните под своим именем. Файл появится в папке devices/templates и подхватится сразу, переустановка не нужна."
+          description="Типы из поставки менять нельзя — возьмите такой за основу, отберите нужные группы и параметры и сохраните под своим именем. Файл появится в папке devices/templates и подхватится сразу, переустановка не нужна."
         />
         <Table
           size="small"
@@ -406,8 +424,8 @@ export default function TemplateEditor({ open, onClose }) {
                 <span>
                   <b>{t.name ?? t.id}</b>{' '}
                   {t.custom
-                    ? <Tag color="green">свой</Tag>
-                    : <Tag>штатный</Tag>}
+                    ? <Tag color="green">создан вами</Tag>
+                    : <Tag>из поставки</Tag>}
                   <div><Typography.Text type="secondary" style={{ fontSize: 11 }}>{t.id}</Typography.Text></div>
                 </span>
               ),
@@ -551,42 +569,90 @@ export default function TemplateEditor({ open, onClose }) {
         Параметры типа ({draftParams.length})
       </Divider>
       <Space wrap style={{ marginBottom: 8 }}>
-        <Button size="small" icon={<PlusOutlined />} onClick={addGroup}>Добавить группу</Button>
-        {editing.groups.map(g => (
-          <Space key={g.id} size={2} style={{ border: '1px solid #f0f0f0', borderRadius: 4, padding: '2px 4px' }}>
-            <Input
-              size="small"
-              value={g.name}
-              onChange={e => patchGroup(g.id, { name: e.target.value })}
-              style={{ width: 150 }}
-            />
-            <Tooltip title="Добавить параметр в эту группу">
-              <Button size="small" icon={<PlusOutlined />} onClick={() => addParam(g.id)} />
-            </Tooltip>
-            <Tooltip title="Удалить группу целиком">
-              <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => removeGroup(g.id)} />
-            </Tooltip>
-          </Space>
-        ))}
+        <Tooltip title="Создать новую группу параметров">
+          <Button size="small" icon={<PlusOutlined />} onClick={addGroup}>Создать группу</Button>
+        </Tooltip>
       </Space>
-      {draftParams.length === 0 ? (
+      {editing.groups.length === 0 ? (
         <Alert
           type="warning"
           showIcon
           message="Параметров пока нет"
           description={editing.isNew && base
             ? 'Отметьте нужные выше и нажмите «Перенести отмеченные».'
-            : 'Нажмите «Добавить группу», затем «+» рядом с ней — и заполните параметры. Либо вернитесь в список и создайте тип на основе имеющегося: так карта регистров получится готовой.'}
+            : 'Нажмите «Создать группу», затем «+» на её заголовке — и заполните параметры. Либо вернитесь в список и создайте тип на основе имеющегося: так карта регистров получится готовой.'}
         />
       ) : (
-        <Table
+        // Гармошка по группам: открыта всегда одна — так карта регистров даже
+        // на сотню параметров остаётся обозримой. Плоская таблица со столбцом
+        // «Группа» этого не давала.
+        <Collapse
+          accordion
           size="small"
-          pagination={{ pageSize: 8, size: 'small' }}
-          rowKey={r => `${r.__group}:${r.id}`}
-          dataSource={draftParams}
-          columns={[
-            { title: 'Группа', dataIndex: '__groupName', width: 130, ellipsis: true },
-            {
+          activeKey={openGroup ? [openGroup] : []}
+          onChange={k => setOpenGroup(Array.isArray(k) ? (k[0] ?? null) : (k ?? null))}
+          items={editing.groups.map(g => ({
+            key: g.id,
+            label: (
+              <div
+                onMouseEnter={() => setHoverGroup(g.id)}
+                onMouseLeave={() => setHoverGroup(null)}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}
+              >
+                {renamingGroup === g.id ? (
+                  <Input
+                    size="small"
+                    autoFocus
+                    value={g.name}
+                    style={{ width: 240 }}
+                    onClick={e => e.stopPropagation()}
+                    onChange={e => patchGroup(g.id, { name: e.target.value })}
+                    onPressEnter={() => setRenamingGroup(null)}
+                    onBlur={() => setRenamingGroup(null)}
+                  />
+                ) : (
+                  <span style={{ fontWeight: 500 }}>{g.name}</span>
+                )}
+                <Tag style={{ margin: 0 }}>{g.params.length}</Tag>
+                {/* visibility, а не условный рендер: место под кнопки
+                    зарезервировано, поэтому заголовок не «дёргается». */}
+                <span
+                  style={{ marginLeft: 'auto', visibility: hoverGroup === g.id ? 'visible' : 'hidden' }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <Space size={2}>
+                    <Tooltip title="Добавить параметр в эту группу">
+                      <Button size="small" type="text" icon={<PlusOutlined />} onClick={() => addParam(g.id)} />
+                    </Tooltip>
+                    <Tooltip title="Переименовать группу">
+                      <Button size="small" type="text" icon={<EditOutlined />} onClick={() => setRenamingGroup(g.id)} />
+                    </Tooltip>
+                    <Popconfirm
+                      title="Удалить группу?"
+                      description={g.params.length > 0 ? `Вместе с ней исчезнут ${g.params.length} параметров.` : 'Группа пустая.'}
+                      okText="Удалить" cancelText="Отмена" okButtonProps={{ danger: true }}
+                      onConfirm={() => removeGroup(g.id)}
+                    >
+                      <Tooltip title="Удалить группу целиком">
+                        <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+                      </Tooltip>
+                    </Popconfirm>
+                  </Space>
+                </span>
+              </div>
+            ),
+            children: g.params.length === 0 ? (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                Группа пустая — нажмите «+» в её заголовке, чтобы добавить параметр.
+              </Typography.Text>
+            ) : (
+              <Table
+                size="small"
+                pagination={{ pageSize: 10, size: 'small', hideOnSinglePage: true }}
+                rowKey={r => `${r.__group}:${r.id}`}
+                dataSource={g.params.map(p => ({ ...p, __group: g.id }))}
+                columns={[
+                  {
               title: 'Код', width: 100,
               render: (_, r) => (
                 <Input size="small" value={r.id}
@@ -674,8 +740,11 @@ export default function TemplateEditor({ open, onClose }) {
                 </Tooltip>
               ),
             },
-          ]}
-          scroll={{ x: 'max-content' }}
+                ]}
+                scroll={{ x: 'max-content' }}
+              />
+            ),
+          }))}
         />
       )}
 
